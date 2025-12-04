@@ -1,0 +1,5 @@
+{
+  "name": "Generator cenników z Excela - Beauty",
+  "description": "Inteligentny generator cenników dla salonów beauty. Wklej dane z Excela/Sheets, a AI stworzy piękny, gotowy do osadzenia cennik.",
+  "requestFramePermissions": []
+}
