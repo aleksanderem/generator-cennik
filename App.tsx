@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { AppState, PricingData, ThemeConfig, DEFAULT_THEME } from './types';
 import { parsePricingData } from './services/geminiService';
@@ -5,7 +6,8 @@ import InputSection from './components/InputSection';
 import Accordion from './components/Accordion';
 import EmbedCode from './components/EmbedCode';
 import ConfigPanel from './components/ConfigPanel';
-import { Sparkles, ArrowLeft, Gem, Check } from 'lucide-react';
+import TerminalLoader from './components/TerminalLoader';
+import { ArrowLeft, Check } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -14,6 +16,9 @@ const App: React.FC = () => {
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
+  
+  // New State for Loader Logic
+  const [isApiDataReady, setIsApiDataReady] = useState(false);
 
   // Load last session from local storage immediately for better UX
   useEffect(() => {
@@ -27,7 +32,6 @@ const App: React.FC = () => {
 
   const handleThemeChange = (newTheme: ThemeConfig) => {
     setThemeConfig(newTheme);
-    // Keep local cache for immediate restoration on reload
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newTheme));
   };
 
@@ -35,12 +39,17 @@ const App: React.FC = () => {
     if (!rawData.trim()) return;
 
     setAppState(AppState.PROCESSING);
+    setIsApiDataReady(false);
     setErrorMsg(null);
 
     try {
+      // 1. Start fetching in "background" while loader plays
       const data = await parsePricingData(rawData);
+      
+      // 2. Data is ready, notify loader
       setPricingData(data);
-      setAppState(AppState.PREVIEW);
+      setIsApiDataReady(true);
+      
     } catch (err) {
       console.error(err);
       setErrorMsg("Wystąpił błąd podczas przetwarzania danych. Spróbuj ponownie lub sprawdź format danych.");
@@ -48,10 +57,18 @@ const App: React.FC = () => {
     }
   };
 
+  // Called by TerminalLoader when it finishes all animations
+  const handleLoaderComplete = () => {
+    if (pricingData) {
+      setAppState(AppState.PREVIEW);
+    }
+  };
+
   const resetApp = () => {
     setAppState(AppState.INPUT);
     setPricingData(null);
     setErrorMsg(null);
+    setIsApiDataReady(false);
   };
 
   return (
@@ -117,21 +134,18 @@ const App: React.FC = () => {
 
         {/* State: PROCESSING */}
         {appState === AppState.PROCESSING && (
-          <div className="flex flex-col items-center justify-center py-20 animate-in fade-in duration-500">
-            <div className="relative">
-              <div 
-                className="absolute inset-0 rounded-full blur-xl animate-pulse opacity-50"
-                style={{ backgroundColor: themeConfig.secondaryColor }}
-              ></div>
-              <div className="relative bg-white p-6 rounded-full shadow-lg border border-slate-100">
-                <Sparkles size={48} className="animate-spin-slow" style={{ color: themeConfig.primaryColor }} />
-              </div>
-            </div>
-            <h2 className="mt-8 text-2xl font-medium text-slate-800" style={{ fontFamily: themeConfig.fontHeading }}>
-              Analizuję Twój cennik...
+          <div className="flex flex-col items-center justify-center py-10 lg:py-20 animate-in fade-in duration-500">
+            
+            <TerminalLoader 
+              isDataReady={isApiDataReady} 
+              onComplete={handleLoaderComplete} 
+            />
+            
+            <h2 className="mt-12 text-2xl font-medium text-slate-800" style={{ fontFamily: themeConfig.fontHeading }}>
+              Przetwarzanie danych...
             </h2>
-            <p className="mt-2 text-slate-500" style={{ fontFamily: themeConfig.fontBody }}>
-              AI sortuje kategorie i wykrywa promocje
+            <p className="mt-2 text-slate-500 text-center max-w-md mx-auto" style={{ fontFamily: themeConfig.fontBody }}>
+              Proszę czekać, AI analizuje i kategoryzuje Twoje usługi.
             </p>
           </div>
         )}
@@ -179,7 +193,7 @@ const App: React.FC = () => {
                           color: themeConfig.textColor 
                         }}
                        >
-                         {(pricingData.salonName && pricingData.salonName !== 'null') ? pricingData.salonName : "Cennik Usług"}
+                         {(pricingData.salonName) ? pricingData.salonName : "Cennik Usług"}
                        </h3>
                        <div 
                         className="w-12 h-1 mx-auto mt-4 rounded-full"

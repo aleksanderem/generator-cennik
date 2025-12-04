@@ -13,7 +13,42 @@ const simpleHash = (str: string): string => {
   return hash.toString();
 };
 
-const CACHE_PREFIX = 'bp_cache_v1_';
+const CACHE_PREFIX = 'bp_cache_v2_'; // Incremented version
+
+// Recursive function to clean up AI hallucinations (like "null" strings)
+const sanitizePricingData = (obj: any): any => {
+  if (typeof obj !== 'object' || obj === null) {
+    // If a value is the string "null", return undefined to prune it
+    if (typeof obj === 'string' && (obj.toLowerCase() === 'null' || obj.toLowerCase() === 'undefined')) {
+      return undefined;
+    }
+    return obj;
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizePricingData).filter(item => item !== undefined);
+  }
+
+  const result: any = {};
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = sanitizePricingData(obj[key]);
+      
+      // specific check for imageUrl
+      if (key === 'imageUrl' && typeof value === 'string') {
+        // If it doesn't look like a real URL, drop it
+        if (!value.startsWith('http')) {
+          continue; 
+        }
+      }
+
+      if (value !== undefined) {
+        result[key] = value;
+      }
+    }
+  }
+  return result;
+};
 
 const parsePricingData = async (rawData: string): Promise<PricingData> => {
   // 1. Check Cache
@@ -40,21 +75,25 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
 
   const prompt = `
     Jesteś ekspertem od strukturyzowania danych dla salonów beauty.
-    Twoim zadaniem jest przeanalizowanie poniższego tekstu, który został skopiowany z arkusza kalkulacyjnego (Google Sheets/Excel) zawierającego cennik usług.
+    Twoim zadaniem jest przeanalizowanie poniższego tekstu, który został skopiowany z arkusza kalkulacyjnego (Google Sheets/Excel).
     
-    Zorganizuj te dane w logiczne kategorie (np. Fryzjerstwo, Kosmetyka, Manicure).
+    Zorganizuj te dane w logiczne kategorie.
+    
+    ZASADY KRYTYCZNE:
+    1. Jeśli nie znajdziesz URL obrazka w tekście, NIE WYMYŚLAJ GO. Zostaw pole puste.
+    2. Jeśli nie ma nazwy salonu, zostaw pole puste. Nie wpisuj "null" ani "brak".
+    3. Wyciągnij tagi jak "Bestseller" czy "Nowość" tylko jeśli występują w tekście.
+
     Dla każdej usługi wyciągnij:
     - Nazwę usługi
-    - Cenę (jako tekst, np. "100 zł", "od 150 zł")
-    - Krótki opis (jeśli istnieje w tekście)
-    - Czas trwania (jeśli istnieje, np. "60 min")
-    - Czy jest to promocja (isPromo)? Jeśli cena jest wyraźnie obniżona, oznaczona jako "promocja", "rabat", "hit" lub "super cena", ustaw true.
-    - URL obrazka (imageUrl): Jeśli w tekście znajdziesz link URL kończący się na jpg, png, webp lub jpeg, przypisz go tutaj.
-    - Tagi (tags): Jeśli w tekście znajdziesz słowa kluczowe typu "Bestseller", "Nowość", "Hit", "Polecane", dodaj je jako listę tekstową.
+    - Cenę (jako tekst)
+    - Krótki opis
+    - Czas trwania
+    - isPromo (true jeśli cena jest obniżona/promocyjna)
+    - imageUrl (Tylko jeśli w tekście jest link zaczynający się od http/https)
+    - tags (Lista tekstowa)
 
-    Jeśli znajdziesz nazwę salonu na początku, wyciągnij ją.
-
-    Oto dane surowe:
+    Dane surowe:
     """
     ${rawData}
     """
@@ -75,7 +114,7 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
               items: {
                 type: Type.OBJECT,
                 properties: {
-                  categoryName: { type: Type.STRING, description: "Nazwa kategorii, np. Stylizacja Paznokci" },
+                  categoryName: { type: Type.STRING },
                   services: {
                     type: Type.ARRAY,
                     items: {
@@ -86,8 +125,8 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
                         description: { type: Type.STRING },
                         duration: { type: Type.STRING },
                         isPromo: { type: Type.BOOLEAN },
-                        imageUrl: { type: Type.STRING, description: "Link do zdjęcia usługi jeśli znaleziono" },
-                        tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Np. Bestseller, Nowość" }
+                        imageUrl: { type: Type.STRING, description: "Link URL do zdjęcia" },
+                        tags: { type: Type.ARRAY, items: { type: Type.STRING } }
                       },
                       required: ["name", "price", "isPromo"],
                     },
@@ -107,18 +146,16 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
       throw new Error("Otrzymano pustą odpowiedź od AI.");
     }
 
-    const parsedData = JSON.parse(text) as PricingData;
+    let parsedData = JSON.parse(text) as PricingData;
 
-    // Sanitize 'null' string if present
-    if (parsedData.salonName === 'null') {
-      parsedData.salonName = undefined;
-    }
+    // Apply strict sanitization
+    parsedData = sanitizePricingData(parsedData);
 
     // 3. Save to Cache
     try {
       localStorage.setItem(cacheKey, JSON.stringify(parsedData));
     } catch (e) {
-      console.warn("Could not save to cache (quota exceeded?)", e);
+      console.warn("Could not save to cache", e);
     }
 
     return parsedData;

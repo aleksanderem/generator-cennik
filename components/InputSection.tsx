@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
 import { ClipboardList, Wand2 } from 'lucide-react';
+import { ShineBorder } from './ShineBorder';
 
 interface InputSectionProps {
   onProcess: (data: string) => void;
@@ -21,8 +22,17 @@ Masaż Relaksacyjny	200 zł	Pełny masaż ciała olejkami eterycznymi.	60 min	Hi
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-10 rounded-2xl shadow-xl shadow-rose-100/50 border border-rose-50">
-      <div className="text-center mb-8">
+    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-10 rounded-2xl shadow-xl shadow-rose-100/50 relative overflow-hidden">
+      
+      {/* Shine Border Effect */}
+      <ShineBorder 
+        shineColor={["#fb7185", "#fda4af", "#e11d48"]} 
+        duration={10} 
+        borderWidth={2}
+        className="opacity-80"
+      />
+
+      <div className="text-center mb-8 relative z-20">
         <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-100 text-rose-600 mb-4">
           <ClipboardList size={24} />
         </div>
@@ -36,14 +46,14 @@ Masaż Relaksacyjny	200 zł	Pełny masaż ciała olejkami eterycznymi.	60 min	Hi
       </div>
 
       <textarea
-        className="w-full h-64 p-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all outline-none resize-none font-mono text-sm"
+        className="w-full h-64 p-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all outline-none resize-none font-mono text-sm relative z-20"
         placeholder="Wklej tutaj dane (np. Nazwa usługi, Cena, Opis, URL zdjęcia, Tagi)..."
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         disabled={isLoading}
       />
 
-      <div className="mt-4 flex justify-between items-center">
+      <div className="mt-4 flex justify-between items-center relative z-20">
         <button
           onClick={handleExample}
           className="text-sm text-slate-400 hover:text-rose-500 underline underline-offset-2 transition-colors"
