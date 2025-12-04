@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { ClipboardList, Wand2 } from 'lucide-react';
 
@@ -10,11 +11,12 @@ const InputSection: React.FC<InputSectionProps> = ({ onProcess, isLoading }) => 
   const [inputText, setInputText] = useState('');
 
   const handleExample = () => {
-    const example = `Manicure Hybrydowy	120 zł	Zdjęcie poprzedniej stylizacji, opracowanie skórek, malowanie.	60 min
+    // Richer example data with images and tags
+    const example = `Manicure Hybrydowy	120 zł	Zdjęcie poprzedniej stylizacji, opracowanie skórek, malowanie.	60 min	Bestseller
 Pedicure SPA	180 zł	Peeling, maska, masaż, malowanie. PROMOCJA!	90 min
-Strzyżenie damskie (włosy krótkie)	100 zł	Mycie, strzyżenie, modelowanie.	45 min
-Strzyżenie damskie (włosy długie)	150 zł	Mycie, strzyżenie, modelowanie.	60 min
-Koloryzacja globalna	od 300 zł	Jeden kolor, bez rozjaśniania.	120 min`;
+Strzyżenie damskie	150 zł	Mycie, strzyżenie, modelowanie.	60 min	Nowość
+Koloryzacja globalna	od 300 zł	Jeden kolor, bez rozjaśniania.	120 min	https://images.unsplash.com/photo-1562322140-8baeececf3df?q=80&w=200&auto=format&fit=crop
+Masaż Relaksacyjny	200 zł	Pełny masaż ciała olejkami eterycznymi.	60 min	Hit Sezonu`;
     setInputText(example);
   };
 
@@ -29,13 +31,13 @@ Koloryzacja globalna	od 300 zł	Jeden kolor, bez rozjaśniania.	120 min`;
         </h2>
         <p className="text-slate-500 max-w-md mx-auto">
           Skopiuj komórki ze swojego arkusza Google Sheets lub Excela i wklej je poniżej. 
-          AI automatycznie rozpozna strukturę.
+          AI automatycznie rozpozna strukturę, zdjęcia (linki URL) oraz oznaczenia takie jak "Bestseller" czy "Nowość".
         </p>
       </div>
 
       <textarea
         className="w-full h-64 p-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all outline-none resize-none font-mono text-sm"
-        placeholder="Wklej tutaj dane (np. Nazwa usługi, Cena, Opis)..."
+        placeholder="Wklej tutaj dane (np. Nazwa usługi, Cena, Opis, URL zdjęcia, Tagi)..."
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         disabled={isLoading}

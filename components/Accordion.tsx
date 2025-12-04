@@ -1,5 +1,6 @@
+
 import React, { useState } from 'react';
-import { ChevronDown, Sparkles } from 'lucide-react';
+import { ChevronDown, Sparkles, Tag, Star } from 'lucide-react';
 import { Category, ThemeConfig } from '../types';
 
 interface AccordionProps {
@@ -64,20 +65,34 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
             {category.services.map((service, index) => (
               <div 
                 key={index} 
-                className={`flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-lg border transition-all`}
+                className={`flex flex-col sm:flex-row gap-4 p-3 rounded-lg border transition-all`}
                 style={{
                   backgroundColor: service.isPromo ? theme.promoBgColor : theme.boxBgColor,
-                  borderColor: service.isPromo ? theme.promoColor + '40' : theme.boxBorderColor, // 40 is hex opacity
+                  borderColor: service.isPromo ? theme.promoColor + '40' : theme.boxBorderColor, 
                 }}
               >
-                <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                {/* Image Section - displayed if imageUrl exists */}
+                {service.imageUrl && (
+                  <div className="flex-shrink-0">
+                    <img 
+                      src={service.imageUrl} 
+                      alt={service.name} 
+                      className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-md border"
+                      style={{ borderColor: theme.boxBorderColor }}
+                    />
+                  </div>
+                )}
+
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="flex flex-wrap items-center gap-2 mb-1">
                     <h4 
-                      className="font-medium"
+                      className="font-medium text-lg leading-tight"
                       style={{ color: theme.textColor }}
                     >
                       {service.name}
                     </h4>
+                    
+                    {/* Tags */}
                     {service.isPromo && (
                       <span 
                         className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full"
@@ -90,10 +105,24 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
                         <Sparkles size={10} /> Promocja
                       </span>
                     )}
+                    
+                    {service.tags && service.tags.map((tag, tIdx) => (
+                      <span 
+                        key={tIdx}
+                        className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full"
+                        style={{
+                          color: theme.primaryColor,
+                          backgroundColor: theme.secondaryColor,
+                        }}
+                      >
+                         <Star size={10} /> {tag}
+                      </span>
+                    ))}
                   </div>
+
                   {service.description && (
                     <p 
-                      className="text-sm mt-1"
+                      className="text-sm"
                       style={{ color: theme.mutedColor }}
                     >
                       {service.description}
@@ -108,9 +137,10 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
                     </p>
                   )}
                 </div>
-                <div className="mt-2 sm:mt-0 sm:ml-4 text-right">
+
+                <div className="mt-2 sm:mt-0 sm:ml-4 flex items-start sm:items-center justify-end">
                   <span 
-                    className="text-lg font-semibold"
+                    className="text-lg font-semibold whitespace-nowrap"
                     style={{ color: service.isPromo ? theme.promoColor : theme.primaryColor }}
                   >
                     {service.price}

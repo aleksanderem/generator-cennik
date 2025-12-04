@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Check, Copy, Code, ChevronDown } from 'lucide-react';
 import { PricingData, ThemeConfig } from '../types';
@@ -17,19 +18,32 @@ const EmbedCode: React.FC<EmbedCodeProps> = ({ data, theme }) => {
     const fontBodyUrl = theme.fontBody.replace(/ /g, '+');
 
     const categoriesHTML = data.categories.map((cat, catIndex) => {
-      const servicesHTML = cat.services.map(svc => `
-        <div class="service-item ${svc.isPromo ? 'promo' : ''}">
-          <div class="service-details">
+      const servicesHTML = cat.services.map(svc => {
+        const imageHTML = svc.imageUrl ? 
+          `<div class="service-image"><img src="${svc.imageUrl}" alt="${svc.name}" /></div>` : '';
+        
+        let tagsHTML = '';
+        if (svc.isPromo) tagsHTML += `<span class="tag promo">Promocja</span>`;
+        if (svc.tags) {
+           svc.tags.forEach(t => {
+             tagsHTML += `<span class="tag standard">${t}</span>`;
+           });
+        }
+
+        return `
+        <div class="service-item ${svc.isPromo ? 'is-promo-row' : ''}">
+          ${imageHTML}
+          <div class="service-content">
             <div class="service-header">
               <span class="service-name">${svc.name}</span>
-              ${svc.isPromo ? '<span class="promo-tag">Promocja</span>' : ''}
+              ${tagsHTML ? `<div class="tags-wrapper">${tagsHTML}</div>` : ''}
             </div>
             ${svc.description ? `<p class="service-desc">${svc.description}</p>` : ''}
             ${svc.duration ? `<p class="service-duration">⏱ ${svc.duration}</p>` : ''}
           </div>
           <div class="service-price">${svc.price}</div>
         </div>
-      `).join('');
+      `}).join('');
 
       return `
         <details class="category-group" ${catIndex === 0 ? 'open' : ''}>
@@ -72,8 +86,9 @@ const EmbedCode: React.FC<EmbedCodeProps> = ({ data, theme }) => {
     --bp-promo-bg: ${theme.promoBgColor};
   }
   
-  .salon-pricing { font-family: var(--bp-font-body); max-width: 800px; margin: 0 auto; color: var(--bp-text); }
-  
+  .salon-pricing { font-family: var(--bp-font-body); max-width: 800px; margin: 0 auto; color: var(--bp-text); box-sizing: border-box; }
+  .salon-pricing * { box-sizing: border-box; }
+
   /* Details & Summary */
   .salon-pricing details { margin-bottom: 1rem; border: 1px solid var(--bp-box-border); border-radius: 0.75rem; overflow: hidden; background: var(--bp-box-bg); transition: all 0.2s; }
   .salon-pricing summary { padding: 1.25rem; background: var(--bp-box-bg); cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 1.125rem; color: var(--bp-text); transition: background 0.2s; font-family: var(--bp-font-heading); }
@@ -85,24 +100,37 @@ const EmbedCode: React.FC<EmbedCodeProps> = ({ data, theme }) => {
   
   /* List Layout */
   .salon-pricing .services-list { padding: 1.25rem; background: var(--bp-box-bg); }
-  .salon-pricing .service-item { display: flex; justify-content: space-between; padding: 0.75rem; border-bottom: 1px solid var(--bp-box-border); }
+  .salon-pricing .service-item { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; padding: 1rem; border-bottom: 1px solid var(--bp-box-border); }
   .salon-pricing .service-item:last-child { border-bottom: none; }
   
   /* Promo Box Styles */
-  .salon-pricing .service-item.promo { background: var(--bp-promo-bg); border-radius: 0.5rem; border: 1px solid var(--bp-promo-text); border-color: color-mix(in srgb, var(--bp-promo-text), transparent 70%); margin-bottom: 0.5rem; }
+  .salon-pricing .service-item.is-promo-row { background: var(--bp-promo-bg); border-radius: 0.5rem; border: 1px solid var(--bp-promo-text); border-color: color-mix(in srgb, var(--bp-promo-text), transparent 70%); margin-bottom: 0.5rem; }
   
-  /* Service Details */
-  .salon-pricing .service-header { display: flex; align-items: center; gap: 0.5rem; }
-  .salon-pricing .service-name { font-weight: 500; color: var(--bp-text); }
-  .salon-pricing .promo-tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--bp-promo-text); color: var(--bp-box-bg); padding: 0.1rem 0.4rem; border-radius: 99px; font-weight: 700; font-family: sans-serif; }
-  .salon-pricing .service-desc { font-size: 0.875rem; color: var(--bp-text-muted); margin: 0.25rem 0 0 0; }
+  /* Image */
+  .salon-pricing .service-image img { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid var(--bp-box-border); display: block; }
+
+  /* Service Content */
+  .salon-pricing .service-content { flex: 1; min-width: 200px; }
+  .salon-pricing .service-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+  .salon-pricing .service-name { font-weight: 500; font-size: 1.05rem; color: var(--bp-text); }
+  
+  /* Tags */
+  .salon-pricing .tags-wrapper { display: flex; gap: 4px; }
+  .salon-pricing .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.1rem 0.5rem; border-radius: 99px; font-weight: 700; font-family: sans-serif; white-space: nowrap; }
+  .salon-pricing .tag.promo { background: var(--bp-promo-text); color: var(--bp-box-bg); }
+  .salon-pricing .tag.standard { background: var(--bp-secondary); color: var(--bp-primary); }
+
+  .salon-pricing .service-desc { font-size: 0.875rem; color: var(--bp-text-muted); margin: 0.25rem 0 0 0; line-height: 1.4; }
   .salon-pricing .service-duration { font-size: 0.75rem; color: var(--bp-text-muted); opacity: 0.8; margin: 0.25rem 0 0 0; }
   
   /* Price */
-  .salon-pricing .service-price { font-weight: 700; color: var(--bp-primary); white-space: nowrap; margin-left: 1rem; }
-  .salon-pricing .service-item.promo .service-price { color: var(--bp-promo-text); }
+  .salon-pricing .service-price { font-weight: 700; color: var(--bp-primary); white-space: nowrap; font-size: 1.1rem; }
+  .salon-pricing .service-item.is-promo-row .service-price { color: var(--bp-promo-text); }
   
-  @media (max-width: 600px) { .salon-pricing .service-item { flex-direction: column; } .salon-pricing .service-price { margin-left: 0; margin-top: 0.5rem; align-self: flex-end; } }
+  @media (max-width: 600px) { 
+    .salon-pricing .service-item { align-items: flex-start; } 
+    .salon-pricing .service-price { margin-left: auto; }
+  }
 </style>
 
 <div class="salon-pricing">

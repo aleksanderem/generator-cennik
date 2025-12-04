@@ -1,9 +1,12 @@
+
 export interface ServiceItem {
   name: string;
   price: string;
   description?: string;
   duration?: string;
   isPromo: boolean;
+  imageUrl?: string; // Optional image URL
+  tags?: string[];   // Optional tags like "Bestseller", "Nowość"
 }
 
 export interface Category {

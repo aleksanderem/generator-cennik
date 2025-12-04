@@ -73,7 +73,7 @@ const App: React.FC = () => {
             <div className="flex items-center gap-2">
               <div className="flex flex-col">
                 <span className="font-serif text-xl font-bold leading-none transition-colors" style={{ fontFamily: themeConfig.fontHeading, color: themeConfig.primaryColor }}>
-                Generatort Cennika
+                Generator Cennika
                 </span>
                 <span className="font-handwriting text-3xl text-slate-500 -mt-2 ml-auto transform -rotate-2 origin-center" style={{ color: themeConfig.mutedColor }}>
                 by Alex M.
@@ -179,7 +179,7 @@ const App: React.FC = () => {
                           color: themeConfig.textColor 
                         }}
                        >
-                         {pricingData.salonName || "Cennik Usług"}
+                         {(pricingData.salonName && pricingData.salonName !== 'null') ? pricingData.salonName : "Cennik Usług"}
                        </h3>
                        <div 
                         className="w-12 h-1 mx-auto mt-4 rounded-full"
