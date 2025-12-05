@@ -80,6 +80,14 @@ export const FONT_OPTIONS = {
 
 // --- AUDIT INTERFACES ---
 
+export interface StructuredAudit {
+  executiveSummary: string; // Short paragraph
+  strengths: string[]; // Bullet points of what is good
+  weaknesses: string[]; // Bullet points of what is bad
+  marketingScore: number; // 0-100 score calculated by AI
+  toneVoice: string; // e.g. "Formalny", "Chaotyczny"
+}
+
 export interface AuditCategory {
   name: string;
   score: number; // 0-100
@@ -101,4 +109,6 @@ export interface AuditResult {
   rawCsv: string; // The raw data extracted
   optimizedText: string; // The AI improved version
   generalFeedback: string;
+  recommendations?: string[]; // New list for specific bullet points in PDF
+  structuredReport?: StructuredAudit; // New AI-processed report structure
 }

@@ -1,7 +1,8 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { AuditResult } from '../types';
-import { CheckCircle2, AlertTriangle, XCircle, FileDown, ArrowRight, TrendingUp } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, Printer, ArrowRight, Loader2, ThumbsUp, ThumbsDown, Activity } from 'lucide-react';
+import { pdfService } from '../services/pdfService';
 
 interface AuditResultsProps {
   result: AuditResult;
@@ -9,150 +10,162 @@ interface AuditResultsProps {
 }
 
 const AuditResults: React.FC<AuditResultsProps> = ({ result, onProceed }) => {
-  
-  const getScoreColor = (score: number) => {
-    if (score >= 80) return 'text-emerald-600 bg-emerald-50 border-emerald-200';
-    if (score >= 50) return 'text-amber-600 bg-amber-50 border-amber-200';
-    return 'text-red-600 bg-red-50 border-red-200';
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+  // Fallback if structured data is missing (backward compatibility)
+  const report = result.structuredReport || {
+    executiveSummary: result.generalFeedback,
+    strengths: ["Brak szczegółowych danych o mocnych stronach."],
+    weaknesses: result.recommendations || ["Brak szczegółowych danych o słabych stronach."],
+    marketingScore: result.overallScore,
+    toneVoice: "Standardowy"
   };
 
-  const getStatusIcon = (status: 'ok' | 'warning' | 'error') => {
-    switch(status) {
-      case 'ok': return <CheckCircle2 size={18} className="text-emerald-500 shrink-0" />;
-      case 'warning': return <AlertTriangle size={18} className="text-amber-500 shrink-0" />;
-      case 'error': return <XCircle size={18} className="text-red-500 shrink-0" />;
-    }
-  };
-
-  const downloadCsv = () => {
-    const blob = new Blob([result.rawCsv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.setAttribute('download', 'cennik_booksy_raw.csv');
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadPdf = async () => {
+    setIsGeneratingPdf(true);
+    await pdfService.generateAuditReport('audit-report-content', 'Raport_Audytu_Cennika.pdf');
+    setIsGeneratingPdf(false);
   };
 
   return (
     <div className="w-full max-w-5xl mx-auto animate-in fade-in slide-in-from-bottom-6 duration-700">
       
-      {/* Header */}
-      <div className="text-center mb-10">
-        <h2 className="text-3xl font-serif font-bold text-slate-800 mb-2">Wynik Audytu Cennika</h2>
-        <p className="text-slate-500">Oto co znaleźliśmy i co poprawiliśmy.</p>
+      {/* ACTION HEADER */}
+      <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
+        <div>
+           <h2 className="text-3xl font-serif font-bold text-slate-800">Wynik Audytu</h2>
+           <p className="text-slate-500">Przeanalizowaliśmy Twój cennik pod kątem sprzedaży.</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={handleDownloadPdf}
+            disabled={isGeneratingPdf}
+            className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium text-sm shadow-sm"
+          >
+             {isGeneratingPdf ? <Loader2 size={16} className="animate-spin" /> : <Printer size={16} />}
+             Pobierz PDF
+          </button>
+          <button 
+            onClick={() => onProceed(result.optimizedText)}
+            className="flex items-center gap-2 px-6 py-2 bg-rose-600 text-white rounded-lg hover:bg-rose-700 transition-colors font-bold text-sm shadow-lg shadow-rose-200"
+          >
+             Generuj Cennik <ArrowRight size={16} />
+          </button>
+        </div>
       </div>
 
-      <div className="grid lg:grid-cols-12 gap-8">
+      {/* PRINTABLE REPORT CONTAINER */}
+      <div id="audit-report-content" className="bg-white rounded-none md:rounded-2xl shadow-none md:shadow-xl overflow-hidden print:shadow-none print:rounded-none">
         
-        {/* Left Col: Audit Stats */}
-        <div className="lg:col-span-5 space-y-6">
-          
-          {/* Overall Score Card */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 relative overflow-hidden">
-             <div className="flex justify-between items-start mb-4">
-               <div>
-                 <h3 className="text-lg font-bold text-slate-700">Jakość Cennika</h3>
-                 <p className="text-sm text-slate-400">Ocena AI według 5 kryteriów</p>
-               </div>
-               <div className={`flex items-center justify-center w-16 h-16 rounded-full border-4 text-xl font-bold ${getScoreColor(result.overallScore)}`}>
-                 {result.overallScore}%
-               </div>
-             </div>
-             <p className="text-sm text-slate-600 italic border-l-2 border-indigo-200 pl-3">
-               "{result.generalFeedback}"
-             </p>
-          </div>
-
-          {/* Detailed Breakdown */}
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-             <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Szczegóły Audytu</h3>
-             <div className="space-y-4">
-               {result.categories.map((cat, idx) => (
-                 <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                    <div className="flex items-center justify-between mb-1">
-                       <span className="font-medium text-slate-700 flex items-center gap-2">
-                         {getStatusIcon(cat.status)} {cat.name}
-                       </span>
-                       <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${cat.score > 70 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                         {cat.score}/100
-                       </span>
-                    </div>
-                    <p className="text-xs text-slate-500 pl-7">{cat.message}</p>
-                    {cat.suggestion && (
-                      <p className="text-xs text-indigo-600 pl-7 mt-1 font-medium">💡 Sugestia: {cat.suggestion}</p>
-                    )}
-                 </div>
-               ))}
-             </div>
-          </div>
-
-          {/* Stats */}
-          <div className="grid grid-cols-3 gap-4">
-             <div className="bg-slate-50 p-4 rounded-xl text-center border border-slate-100">
-               <div className="text-2xl font-bold text-slate-800">{result.stats.serviceCount}</div>
-               <div className="text-[10px] uppercase text-slate-400 font-bold">Usług</div>
-             </div>
-             <div className="bg-slate-50 p-4 rounded-xl text-center border border-slate-100">
-               <div className={`text-2xl font-bold ${result.stats.missingDescriptions > 0 ? 'text-amber-500' : 'text-green-500'}`}>{result.stats.missingDescriptions}</div>
-               <div className="text-[10px] uppercase text-slate-400 font-bold">Brak opisów</div>
-             </div>
-             <div className="bg-slate-50 p-4 rounded-xl text-center border border-slate-100">
-               <div className="text-2xl font-bold text-slate-800">{result.stats.missingDurations}</div>
-               <div className="text-[10px] uppercase text-slate-400 font-bold">Brak czasu</div>
-             </div>
-          </div>
-
-        </div>
-
-        {/* Right Col: Actions & Optimization */}
-        <div className="lg:col-span-7 space-y-6">
-           
-           <div className="bg-indigo-900 text-white p-6 rounded-2xl shadow-xl shadow-indigo-200 relative overflow-hidden">
-              <div className="relative z-10">
-                <h3 className="text-xl font-bold mb-2 flex items-center gap-2">
-                  <TrendingUp className="text-emerald-400" />
-                  Optymalizacja zakończona
-                </h3>
-                <p className="text-indigo-200 text-sm mb-6">
-                  AI przygotowało nową wersję cennika. Opisy zostały rozszerzone o język korzyści, dodano tagi marketingowe i poprawiono formatowanie.
-                </p>
-
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <button 
-                    onClick={() => onProceed(result.optimizedText)}
-                    className="flex-1 flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white px-6 py-3 rounded-xl font-bold transition-all transform hover:-translate-y-1 shadow-lg shadow-emerald-900/20"
-                  >
-                    Generuj Cennik HTML <ArrowRight size={18} />
-                  </button>
-                  <button 
-                    onClick={downloadCsv}
-                    className="flex items-center justify-center gap-2 bg-white/10 hover:bg-white/20 text-white px-6 py-3 rounded-xl font-medium transition-colors backdrop-blur-sm"
-                  >
-                    <FileDown size={18} /> Pobierz Surowe CSV
-                  </button>
+        {/* REPORT HEADER */}
+        <div className="bg-slate-900 text-white p-8 md:p-12 relative overflow-hidden print:bg-slate-900 print:text-white">
+           <div className="absolute top-0 right-0 w-64 h-64 bg-rose-500 rounded-full blur-[100px] opacity-20 pointer-events-none"></div>
+           <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-8">
+              <div>
+                <span className="text-rose-400 font-bold tracking-widest uppercase text-xs mb-2 block">Raport Optymalizacji</span>
+                <h1 className="text-3xl md:text-4xl font-serif font-bold mb-4">Audyt Skuteczności Cennika</h1>
+                <div className="flex items-center gap-4 text-sm text-slate-300">
+                   <div className="flex items-center gap-1">
+                      <Activity size={16} className="text-rose-400" />
+                      <span>{result.stats.serviceCount} analizowanych usług</span>
+                   </div>
+                   <div className="w-1 h-1 bg-slate-600 rounded-full"></div>
+                   <div>Ton oferty: <span className="text-white font-medium">{report.toneVoice}</span></div>
                 </div>
               </div>
               
-              {/* Bg Decoration */}
-              <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-indigo-500 rounded-full blur-3xl opacity-50"></div>
-           </div>
-
-           <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col h-[500px]">
-              <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-                <span className="text-xs font-bold uppercase text-slate-500 tracking-wider">Podgląd zoptymalizowanej treści</span>
-                <span className="text-xs text-indigo-600 bg-indigo-50 px-2 py-1 rounded border border-indigo-100">Ready to use</span>
+              {/* Score Chart */}
+              <div className="flex flex-col items-center shrink-0">
+                 <div className="relative w-28 h-28 rounded-full flex items-center justify-center bg-slate-800 border-4 border-slate-700 shadow-xl">
+                    <svg className="absolute top-0 left-0 w-full h-full transform -rotate-90">
+                      <circle cx="50%" cy="50%" r="46" fill="transparent" stroke="#334155" strokeWidth="8" />
+                      <circle 
+                        cx="50%" cy="50%" r="46" fill="transparent" stroke={report.marketingScore > 80 ? '#10b981' : '#f59e0b'} strokeWidth="8"
+                        strokeDasharray={`${2 * Math.PI * 46}`}
+                        strokeDashoffset={`${2 * Math.PI * 46 * (1 - report.marketingScore / 100)}`}
+                        strokeLinecap="round"
+                        style={{ transition: 'stroke-dashoffset 1s ease-in-out' }}
+                      />
+                    </svg>
+                    <div className="text-center">
+                       <span className="text-3xl font-bold block leading-none">{report.marketingScore}</span>
+                       <span className="text-[10px] text-slate-400 uppercase">Punkty</span>
+                    </div>
+                 </div>
+                 <span className="text-xs text-rose-400 mt-3 font-bold uppercase tracking-wider">Potencjał Sprzedażowy</span>
               </div>
-              <textarea 
-                readOnly
-                className="flex-1 w-full p-5 text-sm font-mono text-slate-600 resize-none outline-none"
-                value={result.optimizedText}
-              />
            </div>
+        </div>
+
+        <div className="p-8 md:p-12 grid gap-10">
+          
+          {/* Executive Summary */}
+          <section>
+            <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2 flex items-center gap-2">
+               Podsumowanie Eksperckie
+            </h3>
+            <div className="bg-slate-50 p-6 rounded-xl border-l-4 border-slate-900 text-slate-700 leading-relaxed text-sm md:text-base">
+               {report.executiveSummary}
+            </div>
+          </section>
+
+          {/* Pros & Cons Grid */}
+          <section className="grid md:grid-cols-2 gap-8">
+             {/* Strengths */}
+             <div className="bg-emerald-50/50 rounded-xl border border-emerald-100 p-6">
+                <h3 className="text-lg font-bold text-emerald-900 mb-4 flex items-center gap-2">
+                   <ThumbsUp size={20} className="text-emerald-600" />
+                   Mocne Strony
+                </h3>
+                <ul className="space-y-3">
+                   {report.strengths.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-3 text-sm text-emerald-800">
+                         <CheckCircle2 size={16} className="text-emerald-500 mt-0.5 shrink-0" />
+                         <span>{item}</span>
+                      </li>
+                   ))}
+                   {report.strengths.length === 0 && <li className="text-sm text-slate-400 italic">Brak wyraźnych mocnych stron.</li>}
+                </ul>
+             </div>
+
+             {/* Weaknesses */}
+             <div className="bg-rose-50/50 rounded-xl border border-rose-100 p-6">
+                <h3 className="text-lg font-bold text-rose-900 mb-4 flex items-center gap-2">
+                   <ThumbsDown size={20} className="text-rose-600" />
+                   Obszary do Poprawy
+                </h3>
+                <ul className="space-y-3">
+                   {report.weaknesses.map((item, idx) => (
+                      <li key={idx} className="flex items-start gap-3 text-sm text-rose-800">
+                         <AlertTriangle size={16} className="text-rose-500 mt-0.5 shrink-0" />
+                         <span>{item}</span>
+                      </li>
+                   ))}
+                   {report.weaknesses.length === 0 && <li className="text-sm text-slate-400 italic">Brak krytycznych błędów.</li>}
+                </ul>
+             </div>
+          </section>
+
+          {/* Sample Data Preview */}
+          <section className="break-inside-avoid">
+             <h3 className="text-lg font-bold text-slate-800 mb-4 border-b pb-2">Przykład Zoptymalizowanej Treści</h3>
+             <div className="font-mono text-xs bg-slate-900 text-slate-300 p-6 rounded-xl overflow-x-auto whitespace-pre-wrap max-h-64 border border-slate-700 shadow-inner">
+                {result.optimizedText.split('\n').slice(0, 8).join('\n')}
+                {result.optimizedText.split('\n').length > 8 && '\n... (dalsza część przygotowana do generowania) ...'}
+             </div>
+             <p className="text-xs text-slate-400 mt-2 text-center">
+               Kliknij "Generuj Cennik", aby zobaczyć pełny efekt wizualny.
+             </p>
+          </section>
 
         </div>
 
+        {/* Footer for PDF */}
+        <div className="bg-slate-50 p-6 text-center border-t border-slate-100">
+           <p className="text-xs text-slate-400 font-serif italic">
+             Raport wygenerowany automatycznie przez BeautyPricer AI • {new Date().toLocaleDateString()}
+           </p>
+        </div>
       </div>
     </div>
   );

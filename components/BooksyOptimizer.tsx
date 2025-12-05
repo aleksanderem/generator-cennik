@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Search, Wand2, Loader2, Link as LinkIcon, Info, CheckCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Search, Wand2, Link as LinkIcon, Info, CheckCircle, ChevronDown, ChevronUp, AlertOctagon } from 'lucide-react';
 import { optimizeBooksyContent } from '../services/geminiService';
 import { ShineBorder } from './ShineBorder';
 import TerminalLoader from './TerminalLoader';
@@ -11,15 +11,13 @@ interface BooksyOptimizerProps {
   onUseData: (data: string) => void;
 }
 
-const AUDIT_STEPS = [
-  "Nawiązywanie połączenia z Firecrawl API...",
-  "Pobieranie surowej treści strony (Markdown)...",
-  "Ekstrakcja usług i cen...",
-  "AUDYT: Analiza struktury i kategoryzacji...",
-  "AUDYT: Weryfikacja transparentności cen...",
-  "AUDYT: Ocena języka korzyści...",
-  "OPTYMALIZACJA: Przeredagowywanie opisów...",
-  "Generowanie raportu końcowego..."
+const N8N_AUDIT_STEPS = [
+  "Inicjalizacja workflow...",
+  "Wysyłanie URL do silnika analizy...",
+  "Scraping i przetwarzanie treści...",
+  "Wykonywanie audytu UX/Copywriting...",
+  "Generowanie zoptymalizowanej treści...",
+  "Pobieranie raportu końcowego..."
 ];
 
 const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
@@ -29,24 +27,40 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
   const [result, setResult] = useState<AuditResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
+  const [customSteps, setCustomSteps] = useState<string[]>(N8N_AUDIT_STEPS);
+
+  const handleProgress = (msg: string) => {
+    // Optional: if n8n supported streaming progress, we'd use this. 
+    // For now we just stick to the predefined steps mostly.
+    // console.log(msg);
+  };
 
   const handleOptimize = async () => {
     if (!url) return;
+    
+    // Validate URL lightly
+    if (!url.startsWith('http')) {
+      setError("Link musi zaczynać się od http:// lub https://");
+      return;
+    }
+
     setIsLoading(true);
     setIsDataReady(false);
     setError(null);
     setResult(null);
+    setCustomSteps(N8N_AUDIT_STEPS);
 
     try {
-      // 1. Fetch data in background
-      const auditResult = await optimizeBooksyContent(url);
+      // 1. Fetch data from n8n
+      const auditResult = await optimizeBooksyContent(url, handleProgress);
       
       // 2. Set ready flag for loader
       setResult(auditResult);
       setIsDataReady(true);
       
-    } catch (e) {
-      setError("Nie udało się pobrać danych. Sprawdź link lub spróbuj ponownie.");
+    } catch (e: any) {
+      // Use specific error message
+      setError(e.message || "Nie udało się pobrać danych. Sprawdź link lub spróbuj ponownie.");
       console.error(e);
       setIsLoading(false);
     }
@@ -109,10 +123,10 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
           <TerminalLoader 
             isDataReady={isDataReady} 
             onComplete={handleLoaderComplete}
-            customSteps={AUDIT_STEPS}
+            customSteps={customSteps}
           />
           <p className="mt-8 text-slate-500 animate-pulse font-medium">
-            AI Audytor analizuje Twój salon...
+            Workflow n8n przetwarza dane...
           </p>
         </div>
       ) : (
@@ -133,7 +147,7 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
               Importuj i Audytuj
             </h2>
             <p className="text-slate-500 max-w-lg mx-auto">
-              Wklej link do profilu Booksy lub strony salonu. Przeprowadzimy <strong className="text-indigo-600">pełny audyt</strong> i przygotujemy zoptymalizowaną wersję cennika.
+              Wklej link do profilu Booksy lub strony salonu. Uruchomimy zewnętrzny <strong>workflow n8n</strong>, który przeprowadzi audyt i zwróci zoptymalizowaną treść.
             </p>
           </div>
 
@@ -161,8 +175,12 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
             </div>
 
             {error && (
-              <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
-                {error}
+              <div className="p-4 bg-red-50 text-red-700 text-sm rounded-xl border border-red-200 flex items-start gap-3">
+                <AlertOctagon className="shrink-0 mt-0.5" size={18} />
+                <div className="flex-1">
+                  <p className="font-bold mb-1">Błąd Audytu</p>
+                  <p className="font-mono text-xs opacity-90">{error}</p>
+                </div>
               </div>
             )}
           </div>

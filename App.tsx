@@ -9,7 +9,7 @@ import ConfigPanel from './components/ConfigPanel';
 import TerminalLoader from './components/TerminalLoader';
 import { LightRays } from './components/LightRays';
 import BooksyOptimizer from './components/BooksyOptimizer';
-import { ArrowLeft, Check, FileText, Link } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Link, AlertCircle } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -56,9 +56,10 @@ const App: React.FC = () => {
       setPricingData(data);
       setIsApiDataReady(true);
       
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setErrorMsg("Wystąpił błąd podczas przetwarzania danych. Spróbuj ponownie lub sprawdź format danych.");
+      // Display specific error message for debugging/user info
+      setErrorMsg(err.message || "Wystąpił nieoczekiwany błąd.");
       setAppState(AppState.INPUT);
     }
   };
@@ -77,12 +78,16 @@ const App: React.FC = () => {
     setIsApiDataReady(false);
   };
 
-  // Handler for data coming from BooksyOptimizer (Audit)
-  const handleImportedData = (data: string) => {
+  // Updated Handler for data coming from BooksyOptimizer (Audit)
+  const handleAuditProceed = async (data: string) => {
     setImportedText(data);
+    
+    // Switch to Paste mode internally just to keep state clean
     setInputMode('PASTE');
-    // Scroll to input just in case
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    
+    // "Background Process": Immediately trigger the processing flow
+    // This skips the manual "Click Generate" step
+    await handleProcessData(data);
   };
 
   return (
@@ -127,9 +132,13 @@ const App: React.FC = () => {
         
         {/* Error Notification */}
         {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-between">
-            <span>{errorMsg}</span>
-            <button onClick={() => setErrorMsg(null)} className="font-bold">&times;</button>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
+            <AlertCircle className="shrink-0 mt-0.5" size={20} />
+            <div className="flex-1">
+              <h4 className="font-bold text-sm mb-1">Wystąpił błąd</h4>
+              <p className="text-sm opacity-90 font-mono text-xs">{errorMsg}</p>
+            </div>
+            <button onClick={() => setErrorMsg(null)} className="font-bold text-red-400 hover:text-red-700">&times;</button>
           </div>
         )}
 
@@ -175,7 +184,7 @@ const App: React.FC = () => {
                    initialValue={importedText}
                  />
                ) : (
-                 <BooksyOptimizer onUseData={handleImportedData} />
+                 <BooksyOptimizer onUseData={handleAuditProceed} />
                )}
              </div>
           </div>

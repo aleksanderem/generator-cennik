@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { PricingData, AuditResult } from "../types";
+import { PricingData, AuditResult, StructuredAudit } from "../types";
 
 // Simple string hash function for cache keys
 const simpleHash = (str: string): string => {
@@ -14,8 +14,8 @@ const simpleHash = (str: string): string => {
 };
 
 const CACHE_PREFIX = 'bp_cache_v2_'; // Incremented version
-const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v1_'; // Separate cache for audits
-const FIRECRAWL_API_KEY = "fc-6a543492d8b84218882f9aeeb7b5f29b"; // Firecrawl API Key
+const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v2_'; // Incremented for new n8n format
+const N8N_WEBHOOK_URL = "https://n8n.kolabogroup.pl/webhook/36fc010f-9dd1-4554-b027-3497525babe9";
 
 // Recursive function to clean up AI hallucinations (like "null" strings)
 const sanitizePricingData = (obj: any): any => {
@@ -52,9 +52,9 @@ const sanitizePricingData = (obj: any): any => {
   return result;
 };
 
-const parsePricingData = async (rawData: string): Promise<PricingData> => {
+const parsePricingData = async (rawData: string, auditContext?: string): Promise<PricingData> => {
   // 1. Check Cache
-  const cacheKey = CACHE_PREFIX + simpleHash(rawData.trim());
+  const cacheKey = CACHE_PREFIX + simpleHash(rawData.trim() + (auditContext || ''));
   const cachedData = localStorage.getItem(cacheKey);
   
   if (cachedData) {
@@ -75,9 +75,9 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
 
   const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `
+  let instructions = `
     Jesteś ekspertem od strukturyzowania danych dla salonów beauty.
-    Twoim zadaniem jest przeanalizowanie poniższego tekstu, który został skopiowany z arkusza kalkulacyjnego (Google Sheets/Excel).
+    Twoim zadaniem jest przeanalizowanie poniższego tekstu, który został skopiowany z arkusza kalkulacyjnego lub wygenerowany automatycznie.
     
     Zorganizuj te dane w logiczne kategorie.
     
@@ -85,17 +85,27 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
     1. Jeśli nie znajdziesz URL obrazka w tekście, NIE WYMYŚLAJ GO. Zostaw pole puste.
     2. Jeśli nie ma nazwy salonu, zostaw pole puste. Nie wpisuj "null" ani "brak".
     3. Wyciągnij tagi jak "Bestseller" czy "Nowość" tylko jeśli występują w tekście.
+    4. Zachowaj ceny BEZ ZMIAN.
+  `;
 
-    Dla każdej usługi wyciągnij:
-    - Nazwę usługi
-    - Cenę (jako tekst)
-    - Krótki opis
-    - Czas trwania
-    - isPromo (true jeśli cena jest obniżona/promocyjna)
-    - imageUrl (Tylko jeśli w tekście jest link zaczynający się od http/https)
-    - tags (Lista tekstowa)
+  if (auditContext) {
+    instructions += `
+    DODATKOWE ZADANIE (COPYWRITING):
+    Otrzymałeś następujące wytyczne z audytu jakościowego:
+    """${auditContext}"""
+    
+    Twoim zadaniem jest nie tylko sformatowanie danych, ale także ULEPSZENIE opisów usług zgodnie z tymi wytycznymi.
+    - Dodaj język korzyści.
+    - Jeśli brakuje opisu, stwórz krótki, zachęcający opis na podstawie nazwy usługi.
+    - Popraw literówki i błędy stylistyczne.
+    - Nie zmieniaj cen ani czasu trwania.
+    `;
+  }
 
-    Dane surowe:
+  const prompt = `
+    ${instructions}
+
+    Dane surowe do przetworzenia:
     """
     ${rawData}
     """
@@ -148,7 +158,14 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
       throw new Error("Otrzymano pustą odpowiedź od AI.");
     }
 
-    let parsedData = JSON.parse(text) as PricingData;
+    let parsedData: PricingData;
+    try {
+      parsedData = JSON.parse(text) as PricingData;
+    } catch (e: any) {
+      console.error("JSON Parse Error in parsePricingData:", e);
+      // Re-throw with detailed message so UI shows "Unterminated string..."
+      throw new Error(`Błąd parsowania JSON (Gemini): ${e.message}`);
+    }
 
     // Apply strict sanitization
     parsedData = sanitizePricingData(parsedData);
@@ -162,130 +179,37 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
 
     return parsedData;
 
-  } catch (error) {
-    console.error("Błąd podczas przetwarzania danych przez Gemini:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Błąd krytyczny (parsePricingData):", error);
+    // Ensure we throw the specific message
+    throw new Error(error.message || "Wystąpił nieznany błąd podczas generowania cennika.");
   }
 };
 
 /**
- * Helper to fetch page content using Firecrawl API with RETRY logic.
- * Uses the /scrape endpoint to get clean Markdown.
+ * Takes raw audit text and structures it into a JSON object using Gemini
  */
-const fetchPageContent = async (url: string): Promise<string> => {
-  const MAX_RETRIES = 3;
-  let attempt = 0;
-  
-  while (attempt < MAX_RETRIES) {
-    try {
-      attempt++;
-      console.log(`Fetching attempt ${attempt}/${MAX_RETRIES} for ${url}`);
-      
-      const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${FIRECRAWL_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          url: url,
-          formats: ["markdown"],
-          // Critical for SPAs like Booksy: Wait for hydration
-          waitFor: 3000 
-        })
-      });
-
-      if (!response.ok) {
-         const errText = await response.text();
-         // If server error, throw to retry
-         if (response.status >= 500 || response.status === 429) {
-            throw new Error(`Server Error ${response.status}: ${errText}`);
-         }
-         // If client error (400, 404), do not retry
-         console.error("Firecrawl Client Error:", errText);
-         throw new Error(`Błąd pobierania strony: ${response.status}`);
-      }
-
-      const json = await response.json();
-      
-      if (!json.success || !json.data || !json.data.markdown) {
-         console.warn("Firecrawl output structure unexpected:", json);
-         throw new Error("Nie udało się uzyskać treści (Markdown) z odpowiedzi Firecrawl.");
-      }
-
-      return json.data.markdown;
-
-    } catch (error) {
-      console.error(`Attempt ${attempt} failed:`, error);
-      if (attempt === MAX_RETRIES) {
-        throw new Error("Nie udało się pobrać zawartości strony po 3 próbach. Sprawdź łącze internetowe lub poprawność linku.");
-      }
-      // Exponential backoff: 1s, 2s, 4s...
-      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
-    }
-  }
-  
-  throw new Error("Unexpected error in fetch loop");
-};
-
-/**
- * Fetches pricing data from a given URL (using Firecrawl) AND performs a comprehensive Audit.
- * Includes Caching.
- */
-const optimizeBooksyContent = async (url: string): Promise<AuditResult> => {
+const structureAuditReport = async (rawAuditText: string): Promise<StructuredAudit> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) throw new Error("Brak klucza API Gemini.");
-
-  // 1. Check Cache
-  const cacheKey = AUDIT_CACHE_PREFIX + simpleHash(url.trim());
-  const cachedAudit = localStorage.getItem(cacheKey);
-
-  if (cachedAudit) {
-    console.log("Returning cached AUDIT result");
-    try {
-      const parsed = JSON.parse(cachedAudit);
-      // Simple validation to ensure it's not a stale/bad cache
-      if (parsed && parsed.overallScore !== undefined) {
-        return parsed as AuditResult;
-      }
-    } catch (e) {
-      console.warn("Audit cache parse error, proceeding to fetch");
-      localStorage.removeItem(cacheKey);
-    }
-  }
-
-  // 2. Fetch content (Markdown)
-  console.log("Fetching Markdown content for:", url);
-  const markdownContent = await fetchPageContent(url);
-  const truncatedContent = markdownContent.substring(0, 80000);
+  if (!apiKey) return { executiveSummary: rawAuditText, strengths: [], weaknesses: [], marketingScore: 50, toneVoice: "Standardowy" };
 
   const ai = new GoogleGenAI({ apiKey });
 
   const prompt = `
-    Jesteś Audytorem Cenników Salonów Beauty z 15-letnim doświadczeniem w marketingu.
+    Przeanalizuj poniższy tekst audytu cennika salonu beauty.
+    Wyciągnij z niego kluczowe informacje i sformatuj je w strukturę JSON.
     
-    Twoim zadaniem jest przeanalizowanie surowej treści strony salonu (Markdown) i wykonanie trzech zadań:
-    
-    ZADANIE 1: EKSTRAKCJA (rawCsv)
-    Wyciągnij wszystkie usługi w formacie surowym CSV (Nazwa, Cena, Opis, Czas). Bez żadnych zmian.
-    
-    ZADANIE 2: AUDYT (audit)
-    Oceń cennik pod kątem 5 kluczowych kryteriów:
-    1. Struktura (czy są kategorie?)
-    2. Transparentność (czy wiadomo co zawiera cena?)
-    3. Czas (czy podano czas trwania?)
-    4. Język korzyści (czy opis sprzedaje?)
-    5. Strategia (czy są warianty cenowe/promocje?)
-    
-    ZADANIE 3: OPTYMALIZACJA (optimizedText)
-    Stwórz nową, ulepszoną wersję cennika gotową do wklejenia do generatora.
-    - Dodaj język korzyści do opisów.
-    - Dodaj tagi (Bestseller, Hit) tam gdzie to ma sens.
-    
-    Treść strony:
+    Tekst audytu:
     """
-    ${truncatedContent}
+    ${rawAuditText}
     """
+    
+    Wymagania:
+    1. executiveSummary: Krótkie podsumowanie dla właściciela (max 3 zdania).
+    2. strengths: Lista 3-5 mocnych stron wymienionych w audycie.
+    3. weaknesses: Lista 3-5 błędów/braków do poprawy.
+    4. marketingScore: Ocena ogólna (liczba 0-100) na podstawie tonu audytu.
+    5. toneVoice: Określ ton obecnego cennika (np. "Chaotyczny", "Profesjonalny", "Surowy").
   `;
 
   try {
@@ -297,51 +221,153 @@ const optimizeBooksyContent = async (url: string): Promise<AuditResult> => {
         responseSchema: {
           type: Type.OBJECT,
           properties: {
-            overallScore: { type: Type.NUMBER, description: "Ogólna ocena cennika 0-100" },
-            generalFeedback: { type: Type.STRING, description: "Krótkie podsumowanie audytu" },
-            stats: {
-                type: Type.OBJECT,
-                properties: {
-                    serviceCount: { type: Type.NUMBER },
-                    missingDescriptions: { type: Type.NUMBER },
-                    missingDurations: { type: Type.NUMBER }
-                }
-            },
-            categories: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  score: { type: Type.NUMBER },
-                  status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
-                  message: { type: Type.STRING },
-                  suggestion: { type: Type.STRING },
-                }
-              }
-            },
-            rawCsv: { type: Type.STRING, description: "Surowe dane w formacie CSV z nagłówkami" },
-            optimizedText: { type: Type.STRING, description: "Gotowy tekst do wklejenia: Nazwa [TAB] Cena [TAB] Opis [TAB] Czas [TAB] Tagi" }
+            executiveSummary: { type: Type.STRING },
+            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+            weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
+            marketingScore: { type: Type.NUMBER },
+            toneVoice: { type: Type.STRING }
           },
-          required: ["overallScore", "categories", "rawCsv", "optimizedText", "stats"]
+          required: ["executiveSummary", "strengths", "weaknesses", "marketingScore"]
         }
+      }
+    });
+    
+    return JSON.parse(response.text!) as StructuredAudit;
+  } catch (e) {
+    console.error("Failed to structure audit report", e);
+    // Fallback
+    return {
+      executiveSummary: rawAuditText.substring(0, 200) + "...",
+      strengths: ["Brak danych"],
+      weaknesses: ["Brak danych"],
+      marketingScore: 50,
+      toneVoice: "Nieznany"
+    };
+  }
+};
+
+/**
+ * Sends the URL to n8n workflow for processing and audit.
+ */
+const optimizeBooksyContent = async (url: string, onProgress?: (msg: string) => void): Promise<AuditResult> => {
+  // 1. Check Cache
+  const cacheKey = AUDIT_CACHE_PREFIX + simpleHash(url.trim());
+  const cachedAudit = localStorage.getItem(cacheKey);
+
+  if (cachedAudit) {
+    console.log("Returning cached AUDIT result");
+    if (onProgress) onProgress("Wczytano wynik z pamięci podręcznej.");
+    try {
+      const parsed = JSON.parse(cachedAudit);
+      if (parsed && parsed.overallScore !== undefined) {
+        return parsed as AuditResult;
+      }
+    } catch (e) {
+      console.warn("Audit cache parse error, proceeding to fetch");
+      localStorage.removeItem(cacheKey);
+    }
+  }
+
+  // 2. Call n8n Webhook
+  if (onProgress) onProgress("Wysyłanie zlecenia do n8n...");
+  console.log("Calling n8n webhook:", N8N_WEBHOOK_URL);
+
+  try {
+    const response = await fetch(N8N_WEBHOOK_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
       },
+      body: JSON.stringify({ url: url })
     });
 
-    const result = JSON.parse(response.text!) as AuditResult;
+    if (!response.ok) {
+      throw new Error(`Błąd połączenia z n8n: ${response.status} ${response.statusText}`);
+    }
+
+    if (onProgress) onProgress("Odbieranie wyników audytu...");
     
-    // 3. Save to Cache on success
+    // We get the text first to handle JSON parsing manually for better error reporting
+    const responseText = await response.text();
+    let result: any;
+    
     try {
-      localStorage.setItem(cacheKey, JSON.stringify(result));
+       result = JSON.parse(responseText);
+    } catch (e: any) {
+       console.error("n8n JSON Parse Error. Raw response:", responseText);
+       // Throw specific error for UI
+       throw new Error(`Błąd parsowania odpowiedzi n8n (JSON): ${e.message}. Sprawdź logi konsoli.`);
+    }
+
+    if (result.success === false) {
+       throw new Error("Workflow n8n zwrócił informację o błędzie (success: false).");
+    }
+
+    // Handle pricing content (could be string or object)
+    let pricingText = "";
+    if (typeof result.pricing === 'string') {
+      pricingText = result.pricing;
+    } else if (result.pricing) {
+      // If it's an object, we format it roughly as text/json for the input box
+      pricingText = JSON.stringify(result.pricing, null, 2);
+    }
+
+    // Handle audit content
+    let auditText = "";
+    if (typeof result.audit === 'string') {
+      auditText = result.audit;
+    } else if (result.audit) {
+      auditText = JSON.stringify(result.audit, null, 2);
+    }
+
+    // Basic Validation
+    if (!pricingText && !auditText) {
+      throw new Error("Otrzymano pustą odpowiedź z n8n (brak pól pricing/audit).");
+    }
+
+    // --- NEW STEP: Structure the audit report with Gemini ---
+    if (onProgress) onProgress("AI formatuje raport...");
+    const structuredReport = await structureAuditReport(auditText);
+
+    // Create a synthesized AuditResult compatible with the UI
+    const lines = pricingText.split('\n').filter(l => l.trim().length > 0);
+    
+    const finalResult: AuditResult = {
+      overallScore: structuredReport.marketingScore,
+      categories: [
+        {
+          name: "Analiza UX i Sprzedażowa",
+          score: structuredReport.marketingScore,
+          status: structuredReport.marketingScore > 75 ? 'ok' : 'warning',
+          message: "Analiza AI zakończona.",
+          suggestion: "Szczegółowe wnioski znajdują się w raporcie."
+        }
+      ],
+      stats: {
+        serviceCount: lines.length || 0,
+        missingDescriptions: 0, 
+        missingDurations: 0
+      },
+      rawCsv: "", 
+      optimizedText: pricingText,
+      generalFeedback: auditText, // Keep raw for backup
+      recommendations: structuredReport.weaknesses, // Map weaknesses to recommendations for PDF
+      structuredReport: structuredReport // Attach the structured data
+    };
+
+    // 3. Save to Cache
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(finalResult));
     } catch (e) {
       console.warn("Could not save audit to cache", e);
     }
 
-    return result;
+    return finalResult;
 
-  } catch (error) {
-    console.error("Audit error:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("n8n Audit Error:", error);
+    // Explicitly rethrow the message so UI sees it
+    throw new Error(error.message || "Wystąpił błąd podczas komunikacji z workflow n8n.");
   }
 };
 
