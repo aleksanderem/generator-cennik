@@ -1,15 +1,23 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ClipboardList, Wand2 } from 'lucide-react';
 import { ShineBorder } from './ShineBorder';
 
 interface InputSectionProps {
   onProcess: (data: string) => void;
   isLoading: boolean;
+  initialValue?: string; // New prop for pre-filling data
 }
 
-const InputSection: React.FC<InputSectionProps> = ({ onProcess, isLoading }) => {
-  const [inputText, setInputText] = useState('');
+const InputSection: React.FC<InputSectionProps> = ({ onProcess, isLoading, initialValue = '' }) => {
+  const [inputText, setInputText] = useState(initialValue);
+
+  // Update internal state if prop changes (e.g. coming from Optimizer)
+  useEffect(() => {
+    if (initialValue) {
+      setInputText(initialValue);
+    }
+  }, [initialValue]);
 
   const handleExample = () => {
     // Richer example data with images and tags

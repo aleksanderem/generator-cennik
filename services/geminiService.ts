@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { PricingData } from "../types";
+import { PricingData, AuditResult } from "../types";
 
 // Simple string hash function for cache keys
 const simpleHash = (str: string): string => {
@@ -14,6 +14,8 @@ const simpleHash = (str: string): string => {
 };
 
 const CACHE_PREFIX = 'bp_cache_v2_'; // Incremented version
+const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v1_'; // Separate cache for audits
+const FIRECRAWL_API_KEY = "fc-6a543492d8b84218882f9aeeb7b5f29b"; // Firecrawl API Key
 
 // Recursive function to clean up AI hallucinations (like "null" strings)
 const sanitizePricingData = (obj: any): any => {
@@ -166,4 +168,181 @@ const parsePricingData = async (rawData: string): Promise<PricingData> => {
   }
 };
 
-export { parsePricingData };
+/**
+ * Helper to fetch page content using Firecrawl API with RETRY logic.
+ * Uses the /scrape endpoint to get clean Markdown.
+ */
+const fetchPageContent = async (url: string): Promise<string> => {
+  const MAX_RETRIES = 3;
+  let attempt = 0;
+  
+  while (attempt < MAX_RETRIES) {
+    try {
+      attempt++;
+      console.log(`Fetching attempt ${attempt}/${MAX_RETRIES} for ${url}`);
+      
+      const response = await fetch("https://api.firecrawl.dev/v1/scrape", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${FIRECRAWL_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          url: url,
+          formats: ["markdown"],
+          // Critical for SPAs like Booksy: Wait for hydration
+          waitFor: 3000 
+        })
+      });
+
+      if (!response.ok) {
+         const errText = await response.text();
+         // If server error, throw to retry
+         if (response.status >= 500 || response.status === 429) {
+            throw new Error(`Server Error ${response.status}: ${errText}`);
+         }
+         // If client error (400, 404), do not retry
+         console.error("Firecrawl Client Error:", errText);
+         throw new Error(`Błąd pobierania strony: ${response.status}`);
+      }
+
+      const json = await response.json();
+      
+      if (!json.success || !json.data || !json.data.markdown) {
+         console.warn("Firecrawl output structure unexpected:", json);
+         throw new Error("Nie udało się uzyskać treści (Markdown) z odpowiedzi Firecrawl.");
+      }
+
+      return json.data.markdown;
+
+    } catch (error) {
+      console.error(`Attempt ${attempt} failed:`, error);
+      if (attempt === MAX_RETRIES) {
+        throw new Error("Nie udało się pobrać zawartości strony po 3 próbach. Sprawdź łącze internetowe lub poprawność linku.");
+      }
+      // Exponential backoff: 1s, 2s, 4s...
+      await new Promise(resolve => setTimeout(resolve, 1000 * Math.pow(2, attempt - 1)));
+    }
+  }
+  
+  throw new Error("Unexpected error in fetch loop");
+};
+
+/**
+ * Fetches pricing data from a given URL (using Firecrawl) AND performs a comprehensive Audit.
+ * Includes Caching.
+ */
+const optimizeBooksyContent = async (url: string): Promise<AuditResult> => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) throw new Error("Brak klucza API Gemini.");
+
+  // 1. Check Cache
+  const cacheKey = AUDIT_CACHE_PREFIX + simpleHash(url.trim());
+  const cachedAudit = localStorage.getItem(cacheKey);
+
+  if (cachedAudit) {
+    console.log("Returning cached AUDIT result");
+    try {
+      const parsed = JSON.parse(cachedAudit);
+      // Simple validation to ensure it's not a stale/bad cache
+      if (parsed && parsed.overallScore !== undefined) {
+        return parsed as AuditResult;
+      }
+    } catch (e) {
+      console.warn("Audit cache parse error, proceeding to fetch");
+      localStorage.removeItem(cacheKey);
+    }
+  }
+
+  // 2. Fetch content (Markdown)
+  console.log("Fetching Markdown content for:", url);
+  const markdownContent = await fetchPageContent(url);
+  const truncatedContent = markdownContent.substring(0, 80000);
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+    Jesteś Audytorem Cenników Salonów Beauty z 15-letnim doświadczeniem w marketingu.
+    
+    Twoim zadaniem jest przeanalizowanie surowej treści strony salonu (Markdown) i wykonanie trzech zadań:
+    
+    ZADANIE 1: EKSTRAKCJA (rawCsv)
+    Wyciągnij wszystkie usługi w formacie surowym CSV (Nazwa, Cena, Opis, Czas). Bez żadnych zmian.
+    
+    ZADANIE 2: AUDYT (audit)
+    Oceń cennik pod kątem 5 kluczowych kryteriów:
+    1. Struktura (czy są kategorie?)
+    2. Transparentność (czy wiadomo co zawiera cena?)
+    3. Czas (czy podano czas trwania?)
+    4. Język korzyści (czy opis sprzedaje?)
+    5. Strategia (czy są warianty cenowe/promocje?)
+    
+    ZADANIE 3: OPTYMALIZACJA (optimizedText)
+    Stwórz nową, ulepszoną wersję cennika gotową do wklejenia do generatora.
+    - Dodaj język korzyści do opisów.
+    - Dodaj tagi (Bestseller, Hit) tam gdzie to ma sens.
+    
+    Treść strony:
+    """
+    ${truncatedContent}
+    """
+  `;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            overallScore: { type: Type.NUMBER, description: "Ogólna ocena cennika 0-100" },
+            generalFeedback: { type: Type.STRING, description: "Krótkie podsumowanie audytu" },
+            stats: {
+                type: Type.OBJECT,
+                properties: {
+                    serviceCount: { type: Type.NUMBER },
+                    missingDescriptions: { type: Type.NUMBER },
+                    missingDurations: { type: Type.NUMBER }
+                }
+            },
+            categories: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  score: { type: Type.NUMBER },
+                  status: { type: Type.STRING, enum: ["ok", "warning", "error"] },
+                  message: { type: Type.STRING },
+                  suggestion: { type: Type.STRING },
+                }
+              }
+            },
+            rawCsv: { type: Type.STRING, description: "Surowe dane w formacie CSV z nagłówkami" },
+            optimizedText: { type: Type.STRING, description: "Gotowy tekst do wklejenia: Nazwa [TAB] Cena [TAB] Opis [TAB] Czas [TAB] Tagi" }
+          },
+          required: ["overallScore", "categories", "rawCsv", "optimizedText", "stats"]
+        }
+      },
+    });
+
+    const result = JSON.parse(response.text!) as AuditResult;
+    
+    // 3. Save to Cache on success
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) {
+      console.warn("Could not save audit to cache", e);
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error("Audit error:", error);
+    throw error;
+  }
+};
+
+export { parsePricingData, optimizeBooksyContent };

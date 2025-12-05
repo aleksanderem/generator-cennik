@@ -5,9 +5,10 @@ import { Check, Loader2, TerminalSquare } from 'lucide-react';
 interface TerminalLoaderProps {
   isDataReady: boolean;
   onComplete: () => void;
+  customSteps?: string[]; // Allow overriding steps
 }
 
-const STEPS = [
+const DEFAULT_STEPS = [
   "Inicjalizacja połączenia z Gemini 2.5 AI...",
   "Analiza surowych danych z arkusza...",
   "Wykrywanie struktury kategorii...",
@@ -17,13 +18,15 @@ const STEPS = [
   "Finalizowanie cennika..."
 ];
 
-const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete }) => {
+const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete, customSteps }) => {
+  const stepsToUse = customSteps || DEFAULT_STEPS;
+  
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [typedText, setTypedText] = useState("");
   const [stepStatus, setStepStatus] = useState<'typing' | 'processing' | 'done'>('typing');
   const [finalCountdown, setFinalCountdown] = useState<number | null>(null);
 
-  const TYPING_SPEED = 25; // ms per char
+  const TYPING_SPEED = 20; // ms per char
 
   // Auto-scroll
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,9 +38,9 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
 
   // Typing Effect Logic
   useEffect(() => {
-    if (activeStepIndex >= STEPS.length) return;
+    if (activeStepIndex >= stepsToUse.length) return;
 
-    const currentFullText = STEPS[activeStepIndex];
+    const currentFullText = stepsToUse[activeStepIndex];
 
     if (stepStatus === 'typing') {
       if (typedText.length < currentFullText.length) {
@@ -50,23 +53,23 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
         setStepStatus('processing');
       }
     }
-  }, [typedText, stepStatus, activeStepIndex]);
+  }, [typedText, stepStatus, activeStepIndex, stepsToUse]);
 
   // Processing & Step Transition Logic
   useEffect(() => {
     if (stepStatus !== 'processing') return;
 
-    const isLastStep = activeStepIndex === STEPS.length - 1;
+    const isLastStep = activeStepIndex === stepsToUse.length - 1;
 
     // Logic for transition
     const processStep = async () => {
       // Minimum processing time for effect
-      await new Promise(r => setTimeout(r, 800)); 
+      await new Promise(r => setTimeout(r, 600)); 
 
       if (isLastStep) {
         // FINAL STEP LOGIC
         if (isDataReady) {
-          // If data is ready, start the 3s countdown (updated from 10s)
+          // If data is ready, start the 3s countdown
           if (finalCountdown === null) {
              setFinalCountdown(3);
           }
@@ -75,7 +78,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
       } else {
         // STANDARD STEP LOGIC
         setStepStatus('done');
-        await new Promise(r => setTimeout(r, 400)); // Pause before next line
+        await new Promise(r => setTimeout(r, 300)); // Pause before next line
         setActiveStepIndex(prev => prev + 1);
         setTypedText(""); // Reset for next line
         setStepStatus('typing');
@@ -83,7 +86,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
     };
 
     processStep();
-  }, [stepStatus, activeStepIndex, isDataReady, finalCountdown]);
+  }, [stepStatus, activeStepIndex, isDataReady, finalCountdown, stepsToUse.length]);
 
   // Countdown Logic
   useEffect(() => {
@@ -129,7 +132,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
           </div>
           <div className="flex items-center gap-2 text-xs font-medium text-slate-400">
             <TerminalSquare size={12} />
-            <span>gemini-worker — zsh</span>
+            <span>gemini-worker — audit</span>
           </div>
           <div className="w-8" /> {/* Spacer for centering */}
         </div>
@@ -140,7 +143,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
           className="flex-1 p-6 overflow-y-auto font-mono text-sm space-y-4 scroll-smooth"
         >
           {/* Render Completed Steps */}
-          {STEPS.slice(0, activeStepIndex).map((step, idx) => (
+          {stepsToUse.slice(0, activeStepIndex).map((step, idx) => (
             <div key={idx} className="flex items-start gap-3 text-slate-700">
               <span className="text-emerald-500 font-bold mt-0.5 shrink-0">✓</span>
               <span className="opacity-60">{step}</span>
@@ -148,7 +151,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
           ))}
 
           {/* Render Active Step */}
-          {activeStepIndex < STEPS.length && (
+          {activeStepIndex < stepsToUse.length && (
             <div className="flex items-start gap-3 text-slate-900 font-medium">
                <span className="text-rose-500 font-bold mt-0.5 shrink-0">➜</span>
                <div className="flex flex-col gap-1 w-full">
@@ -179,7 +182,7 @@ const TerminalLoader: React.FC<TerminalLoaderProps> = ({ isDataReady, onComplete
 
         {/* Footer info */}
         <div className="px-4 py-2 bg-slate-50 border-t border-slate-100 text-[10px] text-slate-400 flex justify-between">
-           <span>CPU: Gemini 2.5 Flash</span>
+           <span>CPU: Gemini 2.5 Audit</span>
            <span>RAM: Optimized</span>
         </div>
       </div>

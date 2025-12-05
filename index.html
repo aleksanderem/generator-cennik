@@ -12,6 +12,8 @@
           extend: {
             animation: {
               shine: "shine var(--duration) infinite linear",
+              "spin-slow": "spin 14s linear infinite",
+              "spin-reverse-slow": "spin-reverse 14s linear infinite",
             },
             keyframes: {
               shine: {
@@ -23,6 +25,11 @@
                 },
                 "to": {
                   "background-position": "0% 0%"
+                }
+              },
+              "spin-reverse": {
+                "to": {
+                  transform: "rotate(-360deg)"
                 }
               }
             },

@@ -77,3 +77,28 @@ export const FONT_OPTIONS = {
     { label: 'Lora (Serif)', value: 'Lora' },
   ]
 };
+
+// --- AUDIT INTERFACES ---
+
+export interface AuditCategory {
+  name: string;
+  score: number; // 0-100
+  status: 'ok' | 'warning' | 'error';
+  message: string;
+  suggestion: string;
+}
+
+export interface AuditStats {
+  serviceCount: number;
+  missingDescriptions: number;
+  missingDurations: number;
+}
+
+export interface AuditResult {
+  overallScore: number;
+  categories: AuditCategory[];
+  stats: AuditStats;
+  rawCsv: string; // The raw data extracted
+  optimizedText: string; // The AI improved version
+  generalFeedback: string;
+}

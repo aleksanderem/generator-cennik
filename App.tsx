@@ -7,15 +7,21 @@ import Accordion from './components/Accordion';
 import EmbedCode from './components/EmbedCode';
 import ConfigPanel from './components/ConfigPanel';
 import TerminalLoader from './components/TerminalLoader';
-import { ArrowLeft, Check } from 'lucide-react';
+import { LightRays } from './components/LightRays';
+import BooksyOptimizer from './components/BooksyOptimizer';
+import { ArrowLeft, Check, FileText, Link } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
+type InputMode = 'PASTE' | 'IMPORT';
+
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.INPUT);
+  const [inputMode, setInputMode] = useState<InputMode>('PASTE');
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
+  const [importedText, setImportedText] = useState<string>(''); // For transfer from Optimizer
   
   // New State for Loader Logic
   const [isApiDataReady, setIsApiDataReady] = useState(false);
@@ -71,9 +77,20 @@ const App: React.FC = () => {
     setIsApiDataReady(false);
   };
 
+  // Handler for data coming from BooksyOptimizer (Audit)
+  const handleImportedData = (data: string) => {
+    setImportedText(data);
+    setInputMode('PASTE');
+    // Scroll to input just in case
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   return (
-    <div className="min-h-screen bg-[#FDFDFD] text-slate-800 font-sans selection:bg-rose-200 selection:text-rose-900 flex flex-col">
+    <div className="min-h-screen bg-[#FDFDFD] text-slate-800 font-sans selection:bg-rose-200 selection:text-rose-900 flex flex-col relative overflow-hidden">
       
+      {/* Ambient Background */}
+      <LightRays />
+
       {/* Inject selected fonts dynamically for preview */}
       <style>
         {`
@@ -106,7 +123,7 @@ const App: React.FC = () => {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 flex-grow w-full">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 flex-grow w-full relative z-10">
         
         {/* Error Notification */}
         {errorMsg && (
@@ -119,16 +136,48 @@ const App: React.FC = () => {
         {/* State: INPUT */}
         {appState === AppState.INPUT && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-             <div className="text-center mb-10">
+             <div className="text-center mb-8">
                 <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: themeConfig.fontHeading }}>
-                  Zamień arkusz w cennik <span className="font-handwriting text-3xl text-slate-500">kropka</span>
+                  Zamień arkusz w cennik
                 </h1>
                 <p className="text-lg text-slate-600 max-w-2xl mx-auto" style={{ fontFamily: themeConfig.fontBody }}>
                   Nie trać czasu na ręczne formatowanie HTML.
                   Wklej dane, a AI zrobi resztę.
                 </p>
              </div>
-             <InputSection onProcess={handleProcessData} isLoading={false} />
+
+             {/* Mode Navigation Tabs */}
+             <div className="flex justify-center mb-8">
+                <div className="bg-slate-100 p-1.5 rounded-full inline-flex">
+                   <button 
+                    onClick={() => setInputMode('PASTE')}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${inputMode === 'PASTE' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                   >
+                     <FileText size={16} />
+                     Wklej tekst
+                   </button>
+                   <button 
+                    onClick={() => setInputMode('IMPORT')}
+                    className={`flex items-center gap-2 px-6 py-2 rounded-full text-sm font-medium transition-all duration-300 ${inputMode === 'IMPORT' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                   >
+                     <Link size={16} />
+                     Audyt i Import (Beta)
+                   </button>
+                </div>
+             </div>
+
+             {/* Content based on Mode */}
+             <div className="transition-all duration-300">
+               {inputMode === 'PASTE' ? (
+                 <InputSection 
+                   onProcess={handleProcessData} 
+                   isLoading={false} 
+                   initialValue={importedText}
+                 />
+               ) : (
+                 <BooksyOptimizer onUseData={handleImportedData} />
+               )}
+             </div>
           </div>
         )}
 
@@ -247,7 +296,7 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="py-8 text-center border-t border-slate-100 mt-auto bg-white/50 backdrop-blur-sm">
+      <footer className="py-8 text-center border-t border-slate-100 mt-auto bg-white/50 backdrop-blur-sm relative z-10">
         <p className="text-slate-400 text-sm flex items-center justify-center gap-1 font-medium">
           Best Ideas by Alex Miesak
         </p>
