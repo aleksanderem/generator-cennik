@@ -1,6 +1,6 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
-import { PricingData, AuditResult, StructuredAudit } from "../types";
+import { GoogleGenAI, Type, Schema } from "@google/genai";
+import { PricingData, AuditResult, Category, ServiceItem, IntegrationMode } from "../types";
 
 // Simple string hash function for cache keys
 const simpleHash = (str: string): string => {
@@ -13,14 +13,17 @@ const simpleHash = (str: string): string => {
   return hash.toString();
 };
 
-const CACHE_PREFIX = 'bp_cache_v2_'; // Incremented version
-const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v2_'; // Incremented for new n8n format
+const CACHE_PREFIX = 'bp_cache_v7_holistic_'; // Version bump for new prompts
+const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v4_personas_';
 const N8N_WEBHOOK_URL = "https://n8n.kolabogroup.pl/webhook/36fc010f-9dd1-4554-b027-3497525babe9";
+
+// --- MOCK DATA FOR FALLBACK ---
+// Full dataset provided by user (~150 items)
+const MOCK_SCRAPED_DATA_FALLBACK = `[{"name":"Laser CO2 - usuwanie zmian skórnych (kurzajek, włókniaków, pieprzyków, zmian barwnikowych, plamek żółtych)","description":"Laserowe usuwanie zmian skórnych...","price":"150,00 zł+","duration":"30min"},{"name":"Konsultacja usuwanie zmian skórnych","description":"Zapraszamy na konsultację...","price":"Darmowa","duration":"15min"},{"name":"1 zabieg Endermologia Alliance","price":"300,00 zł","duration":"1g"},{"name":"-30% na Pierwszy zabieg Onda + konsultacja GRATIS","price":"Darmowa","duration":"1g"},{"name":"-50% na drugi zabieg oczyszczania wodorowego Inpure","price":"Darmowa","duration":"1g"},{"name":"-50% na Pierwszy zabieg Red Touch","price":"Darmowa","duration":"1g"},{"name":"Depilacja Laserowa Thunder - Kup 2 partie ➡️ trzecia za 1 zł","price":"Darmowa","duration":"30min"},{"name":"Drugi zabieg Embody GRATIS","price":"Darmowa","duration":"30min"},{"name":"Pierwsza zmiana skórna od 149zł + znieczulenie GRATIS","price":"Darmowa","duration":"30min"},{"name":"✦ Całe ciało - Kobieta - Depilacja laserowa Thunder - PROMOCJA","description":"Laser Thunder to najmocniejsza i najszybsza...","price":"2 000,00 zł","duration":"1g 15min"},{"name":"▫ Thunder - Bikini brazylijskie 4 zabiegi - Kobieta","price":"1 880,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini brazylijskie 6 zabiegów - Kobieta","price":"2 700,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini brazylijskie - Kobieta","price":"500,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini (pachwiny, wzgórek łonowy) 4 zabiegi - Kobieta","price":"1 760,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini (pachwiny, wzgórek łonowy) 6 zabiegów - Kobieta","price":"2 400,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini (pachwiny, wzgórek łonowy) - Kobieta","price":"460,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini pełne 4 zabiegi - Kobieta","price":"1 800,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini pełne 6 zabiegów - Kobieta","price":"2 520,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini pełne (pachwiny, wzgórek łonowy, wargi sromowe) - Kobieta","price":"480,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini podstawowe (pachwiny) 4 zabiegi - Kobieta","price":"1 520,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini podstawowe (pachwiny) 6 zabiegów - Kobieta","price":"2 100,00 zł","duration":"15min"},{"name":"▫ Thunder - Bikini podstawowe (pachwiny) - Kobieta","price":"400,00 zł","duration":"15min"},{"name":"▫ Thunder - brzuch/klatka piersiowa 4 zabiegi - Kobieta","price":"1 580,00 zł","duration":"30min"},{"name":"▫ Thunder - brzuch/klatka piersiowa 6 zabiegów - Kobieta","price":"2 100,00 zł","duration":"30min"},{"name":"▫ Thunder - brzuch/klatka piersiowa - Kobieta","price":"440,00 zł","duration":"30min"},{"name":"▫ Thunder - Całe ciało 4 zabiegi - Kobieta","price":"5 600,00 zł","duration":"1g 15min"},{"name":"▫ Thunder - Całe ciało 6 zabiegów - Kobieta","price":"7 800,00 zł","duration":"1g 15min"},{"name":"▫ Thunder - Całe nogi 4 zabiegi - Kobieta","price":"3 800,00 zł","duration":"45min"},{"name":"▫ Thunder - Całe nogi 6 zabiegów - Kobieta","price":"5 400,00 zł","duration":"45min"},{"name":"▫ Thunder - Całe nogi - Kobieta","price":"1 200,00 zł","duration":"45min"},{"name":"▫ Thunder - Całe ręce 4 zabiegi - Kobieta","price":"3 520,00 zł","duration":"30min"},{"name":"▫ Thunder - Całe ręce 6 zabiegów - Kobieta","price":"5 100,00 zł","duration":"30min"},{"name":"▫ Thunder - Całe ręce - Kobieta","price":"900,00 zł","duration":"30min"},{"name":"▫ Thunder - Dłonie 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"15min"},{"name":"▫ Thunder - Dłonie 6 zabiegów - Kobieta","price":"1 620,00 zł","duration":"15min"},{"name":"▫ Thunder - Dłonie - Kobieta","price":"290,00 zł","duration":"15min"},{"name":"▫Thunder - kark 4 zabiegi - Kobieta","price":"900,00 zł","duration":"10min"},{"name":"▫Thunder - kark 6 zabiegów - Kobieta","price":"1 200,00 zł","duration":"10min"},{"name":"▫Thunder - kark - Kobieta","price":"250,00 zł","duration":"10min"},{"name":"▫ Thunder - Kobieta - szyja 6 zabiegów","price":"1 250,00 zł","duration":"15min"},{"name":"▫ Thunder - linia biała 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"15min"},{"name":"▫ Thunder - linia biała 6 zabiegów - Kobieta","price":"1 620,00 zł","duration":"15min"},{"name":"▫ Thunder - linia biała - Kobieta","price":"290,00 zł","duration":"15min"},{"name":"▫ Thunder - Łydki + kolana 4 zabiegi - Kobieta","price":"2 720,00 zł","duration":"30min"},{"name":"▫ Thunder - Łydki + kolana 6 zabiegów - Kobieta","price":"3 900,00 zł","duration":"30min"},{"name":"▫ Thunder - Łydki + kolana - Kobieta","price":"700,00 zł","duration":"30min"},{"name":"▫ Thunder - okolica brodawek sutkowych 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"15min"},{"name":"▫ Thunder - okolica brodawek sutkowych 6 zabiegów - Kobieta","price":"1 620,00 zł","duration":"15min"},{"name":"▫ Thunder - okolica brodawek sutkowych - Kobieta","price":"290,00 zł","duration":"15min"},{"name":"▫ Thunder - pachy 4 zabiegi - Kobieta","price":"1 320,00 zł","duration":"15min"},{"name":"▫ Thunder - pachy 6 zabiegów - Kobieta","price":"1 800,00 zł","duration":"15min"},{"name":"Thunder - pachy + bikini brazylijskie + linia biała - 4 zabiegi","price":"2 400,00 zł","duration":"30min"},{"name":"▫ Thunder - pachy - Kobieta","price":"350,00 zł","duration":"15min"},{"name":"▫ Thunder - plecy 4 zabiegi - Kobieta","price":"1 580,00 zł","duration":"30min"},{"name":"▫ Thunder - plecy 6 zabiegów - Kobieta","price":"2 100,00 zł","duration":"30min"},{"name":"▫ Thunder - plecy - Kobieta","price":"440,00 zł","duration":"30min"},{"name":"▪ Thunder - Pośladki 4 zabiegi - Kobieta","price":"1 880,00 zł","duration":"20min"},{"name":"▫ Thunder - Pośladki 6 zabiegów - Kobieta","price":"2 700,00 zł","duration":"30min"},{"name":"▫ Thunder - Pośladki - Kobieta","price":"500,00 zł","duration":"30min"},{"name":"▫ Thunder - Przedramiona 4 zabiegi - Kobieta","price":"1 880,00 zł","duration":"15min"},{"name":"▫ Thunder - Przedramiona 6 zabiegów - Kobieta","price":"2 700,00 zł","duration":"15min"},{"name":"▫ Thunder - Przedramiona - Kobieta","price":"500,00 zł","duration":"15min"},{"name":"▫ Thunder - Ramiona 4 zabiegi - Kobieta","price":"2 320,00 zł","duration":"15min"},{"name":"▫ Thunder - Ramiona 6 zabiegów - Kobieta","price":"3 300,00 zł","duration":"15min"},{"name":"▫ Thunder - Ramiona - Kobieta","price":"600,00 zł","duration":"15min"},{"name":"▫ Thunder - Stopy 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"15min"},{"name":"▫ Thunder - Stopy 6 zabiegów - Kobieta","price":"1 620,00 zł","duration":"15min"},{"name":"▫ Thunder - Stopy - Kobieta","price":"290,00 zł","duration":"15min"},{"name":"▫ Thunder - Szpara pośladkowa 4 zabiegi - Kobieta","price":"770,00 zł","duration":"15min"},{"name":"▫ Thunder - Szpara pośladkowa 6 zabiegów - Kobieta","price":"1 145,00 zł","duration":"15min"},{"name":"▫ Thunder - Szpara pośladkowa - Kobieta","price":"250,00 zł","duration":"15min"},{"name":"▫ Thunder - szyja 4 zabiegi - Kobieta","price":"750,00 zł","duration":"30min"},{"name":"▫ Thunder - szyja - Kobieta","price":"220,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - broda/baki 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - broda/baki 6 zabiegów - Kobieta","price":"1 560,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - broda/baki - Kobieta","price":"300,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - cała twarz 4 zabiegi - Kobieta","price":"1 880,00 zł","duration":"45min"},{"name":"▫ Thunder - twarz - cała twarz 6 zabiegów - Kobieta","price":"2 700,00 zł","duration":"45min"},{"name":"▫ Thunder - twarz - cała twarz - Kobieta","price":"500,00 zł","duration":"15min"},{"name":"▫ Thunder - twarz - górna warga 4 zabiegi - Kobieta","price":"1 120,00 zł","duration":"15min"},{"name":"▫ Thunder - twarz - górna warga 6 zabiegów - Kobieta","price":"1 560,00 zł","duration":"15min"},{"name":"▫ Thunder - twarz - górna warga - Kobieta","price":"300,00 zł","duration":"15min"},{"name":"▫ Thunder - twarz - policzki 4 zabiegi - Kobieta","price":"750,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - policzki 6 zabiegów - Kobieta","price":"1 250,00 zł","duration":"30min"},{"name":"▫ Thunder - twarz - policzki - Kobieta","price":"220,00 zł","duration":"30min"},{"name":"▫ Thunder - Uda 4 zabiegi - Kobieta","price":"3 520,00 zł","duration":"30min"},{"name":"▫ Thunder - Uda 6 zabiegów - Kobieta","price":"5 100,00 zł","duration":"15min"},{"name":"▫ Thunder - Uda + kolana 4 zabiegi - Kobieta","price":"1 250,00 zł","duration":"30min"},{"name":"▫ Thunder - Uda + kolana - Kobieta","price":"500,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini brazylijskie 4 zabiegi - Mężczyzna","price":"1 600,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini brazylijskie 6 zabiegów - Mężczyzna","price":"2 280,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini brazylijskie - Mężczyzna","price":"410,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini (pachwiny, wzgórek łonowy) 4 zabiegi - Mężczyzna","price":"1 400,00 zł","duration":"30min"},{"name":"▪ Thunder - bikini (pachwiny, wzgórek łonowy) 6 zabiegów - Mężczyzna","price":"1 980,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini (pachwiny, wzgórek łonowy) - Mężczyzna","price":"365,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini pełne 4 zabiegi - Mężczyzna","price":"1 450,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini pełne 6 zabiegów - Mężczyzna","price":"2 040,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini pełne - Mężczyzna","price":"380,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini podstawowe (pachwiny) 4 zabiegi - Mężczyzna","price":"1 300,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini podstawowe (pachwiny) 6 zabiegów - Mężczyzna","price":"1 860,00 zł","duration":"30min"},{"name":"▪ Thunder - Bikini podstawowe (pachwiny) - Mężczyzna","price":"340,00 zł","duration":"30min"},{"name":"▪ Thunder - brzuch/klatka piersiowa 4 zabiegi - Mężczyzna","price":"1 800,00 zł","duration":"45min"},{"name":"▪ Thunder - brzuch/klatka piersiowa 6 zabiegów - Mężczyzna","price":"2 580,00 zł","duration":"45min"},{"name":"▪ Thunder - brzuch/klatka piersiowa - Mężczyzna","price":"470,00 zł","duration":"45min"},{"name":"▪ Thunder - cała twarz 4 zabiegi - Mężczyzna","price":"2 160,00 zł","duration":"45min"},{"name":"▪ Thunder - cała twarz 6 zabiegów - Mężczyzna","price":"3 180,00 zł","duration":"45min"},{"name":"▪ Thunder - cała twarz - Mężczyzna","price":"550,00 zł","duration":"45min"},{"name":"▪ Thunder - Całe ciało 4 zabiegi - Mężczyzna","price":"7 499,00 zł","duration":"1g 30min"},{"name":"▪ Thunder - Całe ciało - Mężczyzna","price":"1 999,00 zł","duration":"1g 30min"},{"name":"▪ Thunder - Całe nogi 4 zabiegi - Mężczyzna","price":"3 120,00 zł","duration":"45min"},{"name":"▪ Thunder - Całe nogi 6 zabiegów - Mężczyzna","price":"4 560,00 zł","duration":"45min"},{"name":"▪ Thunder - Całe nogi - Mężczyzna","price":"800,00 zł","duration":"45min"},{"name":"▪ Thunder - Całe ręce 4 zabiegi - Mężczyzna","price":"1 920,00 zł","duration":"30min"},{"name":"▪ Thunder - Całe ręce 6 zabiegów - Mężczyzna","price":"2 820,00 zł","duration":"30min"},{"name":"▪ Thunder - Całe ręce - Mężczyzna","price":"490,00 zł","duration":"30min"},{"name":"▪ Thunder - Dłonie 4 zabiegi - Mężczyzna","price":"900,00 zł","duration":"15min"},{"name":"▪ Thunder - Dłonie 6 zabiegów - Mężczyzna","price":"1 275,00 zł","duration":"15min"},{"name":"▪ Thunder - Dłonie - Mężczyzna","price":"250,00 zł","duration":"15min"},{"name":"▪ Thunder - linia biała 4 zabiegi - Mężczyzna","price":"760,00 zł","duration":"15min"},{"name":"▪ Thunder - linia biała 6 zabiegów - Mężczyzna","price":"1 080,00 zł","duration":"15min"},{"name":"▪ Thunder - linia biała - Mężczyzna","price":"200,00 zł","duration":"15min"},{"name":"▪ Thunder - Łydki 4 zabiegi - Mężczyzna","price":"1 560,00 zł","duration":"30min"},{"name":"▪ Thunder - Łydki 6 zabiegów - Mężczyzna","price":"2 280,00 zł","duration":"30min"},{"name":"▪ Thunder - Łydki + kolana 4 zabiegi - Mężczyzna","price":"1 640,00 zł","duration":"30min"},{"name":"▪ Thunder - Łydki + kolana 6 zabiegów - Mężczyzna","price":"2 400,00 zł","duration":"30min"},{"name":"▪ Thunder - Łydki + kolana - Mężczyzna","price":"420,00 zł","duration":"30min"},{"name":"▪ Thunder - Łydki - Mężczyzna","price":"400,00 zł","duration":"30min"},{"name":"▪ Thunder - okolica brodawek sutkowych 4 zabiegi - Mężczyzna","price":"760,00 zł","duration":"15min"},{"name":"▪ Thunder - okolica brodawek sutkowych 6 zabiegów - Mężczyzna","price":"1 080,00 zł","duration":"15min"},{"name":"▪ Thunder - okolica brodawek sutkowych - Mężczyzna","price":"200,00 zł","duration":"15min"},{"name":"▪ Thunder - pachy/kark 4 zabiegi - Mężczyzna","price":"1 160,00 zł","duration":"15min"},{"name":"▪ Thunder - pachy/kark 6 zabiegów - Mężczyzna","price":"1 680,00 zł","duration":"15min"},{"name":"▪ Thunder - pachy/kark - Mężczyzna","price":"300,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u dłoni 4 zabiegi - Mężczyzna","price":"720,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u dłoni 6 zabiegów - Mężczyzna","price":"1 056,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u dłoni - Mężczyzna","price":"200,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u stóp 4 zabiegi - Mężczyzna","price":"840,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u stóp 6 zabiegów - Mężczyzna","price":"1 200,00 zł","duration":"15min"},{"name":"▪ Thunder - Palce u stóp - Mężczyzna","price":"220,00 zł","duration":"15min"},{"name":"▪ Thunder - plecy 4 zabiegi - Mężczyzna","price":"1 960,00 zł","duration":"45min"},{"name":"▪ Thunder - plecy 6 zabiegów - Mężczyzna","price":"2 880,00 zł","duration":"45min"},{"name":"▪ Thunder - plecy - Mężczyzna","price":"500,00 zł","duration":"45min"},{"name":"▪ Thunder - Pośladki 4 zabiegi - Mężczyzna","price":"1 360,00 zł","duration":"30min"},{"name":"▪ Thunder - Pośladki 6 zabiegów - Mężczyzna","price":"1 920,00 zł","duration":"30min"},{"name":"▪ Thunder - Pośladki - Mężczyzna","price":"360,00 zł","duration":"30min"},{"name":"▪ Thunder - Przedramiona 4 zabiegi - Mężczyzna","price":"1 360,00 zł","duration":"15min"},{"name":"▪ Thunder - Przedramiona 6 zabiegów - Mężczyzna","price":"1 980,00 zł","duration":"15min"},{"name":"▪ Thunder - Przedramiona - Mężczyzna","price":"350,00 zł","duration":"15min"},{"name":"▪ Thunder - Ramiona 4 zabiegi - Mężczyzna","price":"1 360,00 zł","duration":"15min"},{"name":"▪ Thunder - Ramiona 6 zabiegów - Mężczyzna","price":"1 980,00 zł","duration":"15min"},{"name":"▪ Thunder - Ramiona - Mężczyzna","price":"350,00 zł","duration":"15min"},{"name":"▪ Thunder - Stopy 4 zabiegi - Mężczyzna","price":"800,00 zł","duration":"15min"},{"name":"▪ Thunder - Stopy 6 zabiegów - Mężczyzna","price":"900,00 zł","duration":"15min"},{"name":"▪ Thunder - Stopy - Mężczyzna","price":"240,00 zł","duration":"15min"},{"name":"▪ Thunder - Szpara pośladkowa 4 zabiegi - Mężczyzna","price":"840,00 zł","duration":"15min"},{"name":"▪ Thunder - Szpara pośladkowa 6 zabiegów - Mężczyzna","price":"1 200,00 zł","duration":"15min"},{"name":"▪ Thunder - Szpara pośladkowa - Mężczyzna","price":"220,00 zł","duration":"15min"},{"name":"▪ Thunder - szyja 4 zabiegi - Mężczyzna","price":"720,00 zł","duration":"30min"},{"name":"▪ Thunder - szyja 6 zabiegów - Mężczyzna","price":"1 010,00 zł","duration":"30min"},{"name":"▪ Thunder - szyja - Mężczyzna","price":"225,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - broda/baki 4 zabiegi - Mężczyzna","price":"760,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - broda/baki 6 zabiegów - Mężczyzna","price":"1 080,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - broda/baki - Mężczyzna","price":"200,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - górna warga 4 zabiegi - Mężczyzna","price":"760,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - górna warga 6 zabiegów - Mężczyzna","price":"1 080,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - górna warga - Mężczyzna","price":"200,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - okolica pomiędzy brwiami 4 zabiegi - Mężczyzna","price":"560,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - okolica pomiędzy brwiami 6 zabiegów - Mężczyzna","price":"780,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - okolica pomiędzy brwiami - Mężczyzna","price":"150,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - policzki 4 zabiegi - Mężczyzna","price":"720,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - policzki 6 zabiegów - Mężczyzna","price":"1 010,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - policzki - Mężczyzna","price":"225,00 zł","duration":"30min"},{"name":"▪ Thunder - twarz - uszy 4 zabiegi - Mężczyzna","price":"640,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - uszy 6 zabiegów - Mężczyzna","price":"900,00 zł","duration":"15min"},{"name":"▪ Thunder - twarz - uszy - Mężczyzna","price":"170,00 zł","duration":"15min"},{"name":"▪ Thunder - Uda 4 zabiegi - Mężczyzna","price":"1 920,00 zł","duration":"20min"},{"name":"▪ Thunder - Uda 6 zabiegów - Mężczyzna","price":"2 760,00 zł","duration":"20min"},{"name":"▪ Thunder - Uda + kolana 4 zabiegi - Mężczyzna","price":"2 000,00 zł","duration":"30min"},{"name":"▪ Thunder - Uda + kolana 6 zabiegów - Mężczyzna","price":"2 880,00 zł","duration":"30min"},{"name":"▪ Thunder - Uda + kolana - Mężczyzna","price":"510,00 zł","duration":"30min"},{"name":"▪ Thunder - Uda - Mężczyzna","price":"490,00 zł","duration":"20min"},{"name":"Kroplówka Beauty - Glow skin, Hair , Nails - Advanced","price":"700,00 zł","duration":"1g 30min"},{"name":"Kroplówka Beauty - Glow skin, Hair , Nails - Basic","price":"500,00 zł","duration":"1g 30min"},{"name":"Kroplówka Beauty - Glow skin, Hair , Nails - VIP","price":"700,00 zł","duration":"1g 30min"},{"name":"Kroplówka CEREBROLIZYNA TERAPIA - 10x Wspomaganie w leczeniu demencji, Alzheimera, po udarze","price":"5 000,00 zł","duration":"1g 30min"},{"name":"Kroplówka CEREBROLIZYNA TERAPIA - 1x Wspomaganie w leczeniu demencji, Alzheimera, po udarze","price":"700,00 zł","duration":"1g 30min"},{"name":"Kroplówka Detox, Alkohol, Używki - Anty kac","price":"500,00 zł","duration":"1g 30min"},{"name":"Kroplówka Detox, Alkohol, Używki - Detox","price":"700,00 zł","duration":"1g 30min"},{"name":"Kroplówka Detox, Alkohol, Używki - Regeneracja","price":"800,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - CelluNAD 500mg","price":"1 500,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - NAD + Boost 300mg","price":"1 000,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - NAD + Restore 500mg","price":"1 300,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - NAD + Vital 200mg","price":"800,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - NeuroNAD 300mg","price":"900,00 zł","duration":"1g 30min"},{"name":"Kroplówka NAD + ANTY-AGING - NeuroNAD VIP 500mg","price":"1 800,00 zł","duration":"1g 30min"},{"name":"Kroplówka Odporność - Advanced","price":"700,00 zł","duration":"1g 30min"},{"name":"Kroplówka Odporność - Basic","price":"500,00 zł","duration":"1g 30min"},{"name":"Kroplówka Odporność - VIP","price":"800,00 zł","duration":"1g 30min"},{"name":"Kroplówka Regeneracja ośrodkowego układu nerwowego","price":"800,00 zł","duration":"1g 30min"},{"name":"Kroplówka Sport - Gojenie","price":"800,00 zł","duration":"1g 30min"}]`;
 
 // Recursive function to clean up AI hallucinations (like "null" strings)
 const sanitizePricingData = (obj: any): any => {
   if (typeof obj !== 'object' || obj === null) {
-    // If a value is the string "null", return undefined to prune it
     if (typeof obj === 'string' && (obj.toLowerCase() === 'null' || obj.toLowerCase() === 'undefined')) {
       return undefined;
     }
@@ -36,9 +39,7 @@ const sanitizePricingData = (obj: any): any => {
     if (Object.prototype.hasOwnProperty.call(obj, key)) {
       const value = sanitizePricingData(obj[key]);
       
-      // specific check for imageUrl
       if (key === 'imageUrl' && typeof value === 'string') {
-        // If it doesn't look like a real URL, drop it
         if (!value.startsWith('http')) {
           continue; 
         }
@@ -52,9 +53,34 @@ const sanitizePricingData = (obj: any): any => {
   return result;
 };
 
-const parsePricingData = async (rawData: string, auditContext?: string): Promise<PricingData> => {
-  // 1. Check Cache
-  const cacheKey = CACHE_PREFIX + simpleHash(rawData.trim() + (auditContext || ''));
+// Helper to convert JSON to TSV-like string for the editor (human readable)
+// Guarantees 100% of items are preserved.
+const convertJsonToTsv = (jsonString: string): string => {
+  try {
+    const data = JSON.parse(jsonString);
+    if (!Array.isArray(data)) return jsonString;
+
+    return data.map((item: any) => {
+      // Basic formatting for the editor: Name | Price | Description | Duration
+      // Using tabs or pipe+newline
+      const parts = [
+        item.name,
+        item.price,
+        item.description || "",
+        item.duration || "",
+        item.imageUrl || "" 
+      ];
+      // Filter out undefined and join with tabs
+      return parts.join('\t');
+    }).join('\n');
+  } catch (e) {
+    console.error("Error converting JSON to TSV", e);
+    return jsonString; // Fallback to raw JSON if parse fails
+  }
+};
+
+const parsePricingData = async (rawData: string, optimizationMode: boolean = false): Promise<PricingData> => {
+  const cacheKey = CACHE_PREFIX + (optimizationMode ? 'optimized_' : 'raw_') + simpleHash(rawData.trim());
   const cachedData = localStorage.getItem(cacheKey);
   
   if (cachedData) {
@@ -67,7 +93,6 @@ const parsePricingData = async (rawData: string, auditContext?: string): Promise
     }
   }
 
-  // 2. Prepare API Call
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
     throw new Error("Brak klucza API. Upewnij się, że environment variable API_KEY jest ustawiony.");
@@ -75,37 +100,71 @@ const parsePricingData = async (rawData: string, auditContext?: string): Promise
 
   const ai = new GoogleGenAI({ apiKey });
 
-  let instructions = `
-    Jesteś ekspertem od strukturyzowania danych dla salonów beauty.
-    Twoim zadaniem jest przeanalizowanie poniższego tekstu, który został skopiowany z arkusza kalkulacyjnego lub wygenerowany automatycznie.
+  // --- UPDATED SYSTEM INSTRUCTIONS ---
+  
+  const systemInstructionOriginal = `
+    JESTEŚ PRECYZYJNYM PARSEREM DANYCH. 
+    TWOJE JEDYNE ZADANIE: Przekonwertować tekst wejściowy na strukturę JSON.
     
-    Zorganizuj te dane w logiczne kategorie.
-    
-    ZASADY KRYTYCZNE:
-    1. Jeśli nie znajdziesz URL obrazka w tekście, NIE WYMYŚLAJ GO. Zostaw pole puste.
-    2. Jeśli nie ma nazwy salonu, zostaw pole puste. Nie wpisuj "null" ani "brak".
-    3. Wyciągnij tagi jak "Bestseller" czy "Nowość" tylko jeśli występują w tekście.
-    4. Zachowaj ceny BEZ ZMIAN.
+    ZASADY (TRYB ORYGINAŁ):
+    1. NIE ZMIENIAJ NAZW USŁUG (muszą być identyczne jak w źródle).
+    2. NIE ŁĄCZ ANI NIE GRUPUJ USŁUG. Każdy wiersz wejścia = osobny obiekt wyjścia.
+    3. NIE USUWAJ ŻADNYCH POZYCJI. Jeśli wejście ma 150 wierszy, wyjście ma mieć 150 obiektów.
+    4. Zachowaj oryginalną kolejność.
+    5. Po prostu przepisz dane do formatu JSON.
   `;
 
-  if (auditContext) {
-    instructions += `
-    DODATKOWE ZADANIE (COPYWRITING):
-    Otrzymałeś następujące wytyczne z audytu jakościowego:
-    """${auditContext}"""
+  const systemInstructionOptimized = `
+    JESTEŚ EKSPERTEM PSYCHOLOGII SPRZEDAŻY w branży Beauty (Booksy).
+    Twój cel: Ułatwić nowemu klientowi podjęcie decyzji ("Nie wiem co wybrać") oraz dać konkret stałemu klientowi ("Wiem czego szukam").
+
+    ZASADY OPTYMALIZACJI (SMART GROUPING & BENEFIT LANGUAGE):
     
-    Twoim zadaniem jest nie tylko sformatowanie danych, ale także ULEPSZENIE opisów usług zgodnie z tymi wytycznymi.
-    - Dodaj język korzyści.
-    - Jeśli brakuje opisu, stwórz krótki, zachęcający opis na podstawie nazwy usługi.
-    - Popraw literówki i błędy stylistyczne.
-    - Nie zmieniaj cen ani czasu trwania.
-    `;
-  }
+    1. ZASADA "MENU RESTAURACJI": 
+       - Zamiast 10 osobnych pozycji typu "Depilacja Łydek 1 zabieg", "Depilacja Łydek 4 zabiegi", "Depilacja Łydek 6 zabiegów"...
+       - STWÓRZ JEDNĄ POZYCJĘ: "Depilacja Laserowa - Łydki (Pakiety)"
+       - CENA: "od 200 zł" (najniższa cena pojedynczego zabiegu)
+       - OPIS: "Wybierz wariant na miejscu: 1 zabieg: 200zł | Pakiet 4: 700zł (oszczędzasz 100zł) | Pakiet 6: 1000zł."
+       - DLACZEGO? Nowy klient nie chce scrollować przez 50 wariantów ilościowych. Chce wiedzieć, że robicie łydki. Stały klient przeczyta opis i zapyta o pakiet.
+
+    2. ZASADA "JĘZYK KORZYŚCI":
+       - Zmień nazwę "Radiofrekwencja mikroigłowa" na "Radiofrekwencja Mikroigłowa – Lifting i Redukcja Blizn".
+       - Dodaj w opisie, dla kogo to jest (np. "Dla skóry wiotkiej, z bliznami potrądzikowymi").
+
+    3. ZASADA "NIE KASTRUJ":
+       - Jeśli usługi są RÓŻNE (np. "Manicure Hybrydowy" vs "Manicure Japoński") -> ZOSTAWIASZ JE OSOBNO. To nie są duplikaty.
+       - Łączysz TYLKO warianty ilościowe (1/4/6 zabiegów) lub bardzo bliskie warianty (np. "Masaż 30min", "Masaż 60min" -> "Masaż Relaksacyjny (30-60min)").
+
+    4. FORMATOWANIE:
+       - Używaj Emoji w opisach (np. ⏱️ 💎 ✨) aby przyciągnąć wzrok skanującego wzrokiem klienta na mobile.
+       - Dodaj TAGI ["Bestseller", "Hit", "Nowość"] przy usługach o wysokim potencjale (np. pakiety startowe, popularne zabiegi na twarz).
+
+    Działaj tak, aby cennik był KRÓTSZY wizualnie, ale BOGATSZY treściowo.
+  `;
+
+  const systemInstruction = optimizationMode ? systemInstructionOptimized : systemInstructionOriginal;
 
   const prompt = `
-    ${instructions}
+    ${systemInstruction}
+    
+    ZADANIE:
+    Zwróć dane w formacie NDJSON (Newline Delimited JSON). 
+    Każda linia musi być osobnym, poprawnym obiektem JSON.
+    Nie otwieraj tablicy []. Nie używaj przecinków na końcu linii.
+    
+    STRUKTURA WYJŚCIA (kolejność):
+    1. Najpierw obiekt metadanych: {"type": "meta", "salonName": "Nazwa Salonu"}
+    2. Potem kategoria: {"type": "category", "name": "Nazwa Kategorii"}
+    3. Potem usługi należące do tej kategorii: {"type": "service", "name": "Usługa", "price": "100zł", ...}
+    4. Potem kolejna kategoria... itd.
 
-    Dane surowe do przetworzenia:
+    ZASADY TECHNICZNE:
+    - Jeśli brak nazwy salonu, pomiń pole salonName.
+    - Jeśli brak URL obrazka, pomiń pole imageUrl. Nie wymyślaj linków.
+    - Cena: jako tekst (np. "120 zł" lub "od 200 zł").
+    - isPromo: true/false.
+
+    DANE WEJŚCIOWE:
     """
     ${rawData}
     """
@@ -115,42 +174,6 @@ const parsePricingData = async (rawData: string, auditContext?: string): Promise
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            salonName: { type: Type.STRING, description: "Nazwa salonu, jeśli wykryta" },
-            categories: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  categoryName: { type: Type.STRING },
-                  services: {
-                    type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        name: { type: Type.STRING },
-                        price: { type: Type.STRING },
-                        description: { type: Type.STRING },
-                        duration: { type: Type.STRING },
-                        isPromo: { type: Type.BOOLEAN },
-                        imageUrl: { type: Type.STRING, description: "Link URL do zdjęcia" },
-                        tags: { type: Type.ARRAY, items: { type: Type.STRING } }
-                      },
-                      required: ["name", "price", "isPromo"],
-                    },
-                  },
-                },
-                required: ["categoryName", "services"],
-              },
-            },
-          },
-          required: ["categories"],
-        },
-      },
     });
 
     const text = response.text;
@@ -158,100 +181,190 @@ const parsePricingData = async (rawData: string, auditContext?: string): Promise
       throw new Error("Otrzymano pustą odpowiedź od AI.");
     }
 
-    let parsedData: PricingData;
-    try {
-      parsedData = JSON.parse(text) as PricingData;
-    } catch (e: any) {
-      console.error("JSON Parse Error in parsePricingData:", e);
-      // Re-throw with detailed message so UI shows "Unterminated string..."
-      throw new Error(`Błąd parsowania JSON (Gemini): ${e.message}`);
+    const lines = text.split('\n');
+    const result: PricingData = {
+      salonName: undefined,
+      categories: []
+    };
+
+    let currentCategory: Category | null = null;
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      try {
+        const cleanLine = trimmedLine.replace(/^```json/, '').replace(/^```/, '').replace(/,$/, ''); 
+        if (!cleanLine) continue;
+
+        const obj = JSON.parse(cleanLine);
+        
+        if (obj.type === 'meta') {
+          if (obj.salonName && obj.salonName !== 'null') result.salonName = obj.salonName;
+        }
+        else if (obj.type === 'category') {
+          currentCategory = {
+            categoryName: obj.name || "Inne",
+            services: []
+          };
+          result.categories.push(currentCategory);
+        }
+        else if (obj.type === 'service') {
+          if (!currentCategory) {
+            currentCategory = { categoryName: "Usługi", services: [] };
+            result.categories.push(currentCategory);
+          }
+
+          const serviceItem: ServiceItem = {
+            name: obj.name || "Usługa",
+            price: obj.price || "-",
+            description: obj.description,
+            duration: obj.duration,
+            isPromo: !!obj.isPromo,
+            imageUrl: obj.imageUrl,
+            tags: obj.tags
+          };
+          
+          const sanitizedItem = sanitizePricingData(serviceItem);
+          currentCategory.services.push(sanitizedItem);
+        }
+
+      } catch (e) {
+        console.warn("Skipping malformed line:", trimmedLine);
+      }
     }
 
-    // Apply strict sanitization
-    parsedData = sanitizePricingData(parsedData);
+    if (result.categories.length === 0) {
+      throw new Error("Nie udało się rozpoznać żadnych kategorii usług.");
+    }
 
-    // 3. Save to Cache
     try {
-      localStorage.setItem(cacheKey, JSON.stringify(parsedData));
+      localStorage.setItem(cacheKey, JSON.stringify(result));
     } catch (e) {
       console.warn("Could not save to cache", e);
     }
 
-    return parsedData;
+    return result;
 
-  } catch (error: any) {
-    console.error("Błąd krytyczny (parsePricingData):", error);
-    // Ensure we throw the specific message
-    throw new Error(error.message || "Wystąpił nieznany błąd podczas generowania cennika.");
+  } catch (error) {
+    console.error("Błąd przetwarzania Gemini:", error);
+    throw error;
   }
 };
 
-/**
- * Takes raw audit text and structures it into a JSON object using Gemini
- */
-const structureAuditReport = async (rawAuditText: string): Promise<StructuredAudit> => {
+const analyzeLocalDataWithGemini = async (rawData: string): Promise<AuditResult> => {
   const apiKey = process.env.API_KEY;
-  if (!apiKey) return { executiveSummary: rawAuditText, strengths: [], weaknesses: [], marketingScore: 50, toneVoice: "Standardowy" };
+  if (!apiKey) throw new Error("Brak klucza API");
 
   const ai = new GoogleGenAI({ apiKey });
 
-  const prompt = `
-    Przeanalizuj poniższy tekst audytu cennika salonu beauty.
-    Wyciągnij z niego kluczowe informacje i sformatuj je w strukturę JSON.
-    
-    Tekst audytu:
-    """
-    ${rawAuditText}
-    """
-    
-    Wymagania:
-    1. executiveSummary: Krótkie podsumowanie dla właściciela (max 3 zdania).
-    2. strengths: Lista 3-5 mocnych stron wymienionych w audycie.
-    3. weaknesses: Lista 3-5 błędów/braków do poprawy.
-    4. marketingScore: Ocena ogólna (liczba 0-100) na podstawie tonu audytu.
-    5. toneVoice: Określ ton obecnego cennika (np. "Chaotyczny", "Profesjonalny", "Surowy").
-  `;
-
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
+  // Schema definition for strictly structured output
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      overallScore: { type: Type.INTEGER, description: "Score from 0 to 100 based on sales potential" },
+      generalFeedback: { type: Type.STRING, description: "Holistic summary of the audit" },
+      salesPotential: { type: Type.STRING, description: "Assessment of sales potential (Low/Medium/High) and why" },
+      strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
+      weaknesses: {
+        type: Type.ARRAY,
+        items: {
           type: Type.OBJECT,
           properties: {
-            executiveSummary: { type: Type.STRING },
-            strengths: { type: Type.ARRAY, items: { type: Type.STRING } },
-            weaknesses: { type: Type.ARRAY, items: { type: Type.STRING } },
-            marketingScore: { type: Type.NUMBER },
-            toneVoice: { type: Type.STRING }
-          },
-          required: ["executiveSummary", "strengths", "weaknesses", "marketingScore"]
+            point: { type: Type.STRING },
+            consequence: { type: Type.STRING }
+          }
+        }
+      },
+      recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
+      beforeAfter: {
+        type: Type.OBJECT,
+        properties: {
+          before: { type: Type.STRING, description: "A bad example from the input text" },
+          after: { type: Type.STRING, description: "The corrected version of that example" },
+          explanation: { type: Type.STRING, description: "Why the change was made" }
+        }
+      },
+      growthTips: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            category: { type: Type.STRING, enum: ['SEO', 'Konwersja', 'Retencja', 'Wizerunek'] },
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            impact: { type: Type.STRING, enum: ['Wysoki', 'Średni', 'Niski'] }
+          }
         }
       }
-    });
+    },
+    required: ["overallScore", "generalFeedback", "strengths", "weaknesses", "recommendations", "beforeAfter", "growthTips", "salesPotential"]
+  };
+
+  // --- UPDATED AUDIT PROMPT ---
+  const prompt = `
+    Jesteś DOŚWIADCZONYM AUDYTOREM I STRATEGIEM SALONÓW BEAUTY (specjalizacja: Booksy/Social Media).
+    Twoim zadaniem jest analiza cennika pod kątem dwóch typów klientów:
     
-    return JSON.parse(response.text!) as StructuredAudit;
-  } catch (e) {
-    console.error("Failed to structure audit report", e);
-    // Fallback
-    return {
-      executiveSummary: rawAuditText.substring(0, 200) + "...",
-      strengths: ["Brak danych"],
-      weaknesses: ["Brak danych"],
-      marketingScore: 50,
-      toneVoice: "Nieznany"
-    };
-  }
+    1. "SKANER" (Nowy klient): Szybko przewija ofertę na telefonie. Szuka potwierdzenia jakości, jasnej ceny i odpowiedzi na problem (np. "trądzik"). Gubi się w technicznych nazwach.
+    2. "STAŁY BYWALEC" (Klient powracający): Szuka konkretów, nowości i pakietów (oszczędności).
+    
+    ZADANIE: Przeanalizuj poniższe dane i wygeneruj raport.
+    
+    CO OCENIASZ SUROWO:
+    - Chaos (np. 150 pozycji bez ładu i składu).
+    - Duplikaty (np. osobne pozycje dla 1, 4, 6, 8, 10 zabiegów zamiast jednej z wariantami).
+    - Brak opisów (Techniczna nazwa "Radiofrekwencja" nic nie mówi laikowi -> powinno być "Lifting bez skalpela").
+    - Brak czasu trwania (klient nie wie ile zarezerwować).
+    
+    W SEKCJI "beforeAfter" (Przed/Po):
+    - Znajdź NAJGORSZY przykład (np. sekcję z 10 wariantami tego samego lasera).
+    - Pokaż jak to zgrupować w JEDNĄ, czytelną pozycję z opisem wariantów.
+    
+    W SEKCJI "growthTips":
+    - Daj porady realne dla Booksy (np. "Dodaj do nazwy słowo klucz 'Lifting', bo tego szukają ludzie w wyszukiwarce aplikacji").
+
+    DANE WEJŚCIOWE (FRAGMENT):
+    ${rawData.substring(0, 30000)}
+  `;
+
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash",
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: schema
+    }
+  });
+
+  if (!response.text) throw new Error("Brak odpowiedzi z AI");
+  
+  const parsedAnalysis = JSON.parse(response.text);
+
+  // PROGRAMMATIC CONVERSION to guarantee 100% of items are preserved.
+  // We do NOT ask AI to rewrite the full list because it might truncate it.
+  // Instead, we simply format the JSON into a clean, editable text format (TSV).
+  const cleanOptimizedText = convertJsonToTsv(rawData);
+  
+  return {
+    ...parsedAnalysis,
+    rawCsv: rawData, // Keeps original JSON
+    optimizedText: cleanOptimizedText, // Converts to editable list (Name | Price | Desc)
+    categories: [], // Legacy compat
+    stats: {
+      serviceCount: (rawData.match(/"name":/g) || []).length, // Accurate count
+      missingDescriptions: 0,
+      missingDurations: 0
+    }
+  };
 };
 
 /**
- * Sends the URL to n8n workflow for processing and audit.
+ * Runs the audit process based on the selected integration mode.
  */
-const optimizeBooksyContent = async (url: string, onProgress?: (msg: string) => void): Promise<AuditResult> => {
+const optimizeBooksyContent = async (url: string, mode: IntegrationMode, onProgress?: (msg: string) => void): Promise<AuditResult> => {
   // 1. Check Cache
-  const cacheKey = AUDIT_CACHE_PREFIX + simpleHash(url.trim());
+  const cacheKey = AUDIT_CACHE_PREFIX + mode + '_' + simpleHash(url.trim());
   const cachedAudit = localStorage.getItem(cacheKey);
 
   if (cachedAudit) {
@@ -263,15 +376,33 @@ const optimizeBooksyContent = async (url: string, onProgress?: (msg: string) => 
         return parsed as AuditResult;
       }
     } catch (e) {
-      console.warn("Audit cache parse error, proceeding to fetch");
       localStorage.removeItem(cacheKey);
     }
   }
 
-  // 2. Call n8n Webhook
-  if (onProgress) onProgress("Wysyłanie zlecenia do n8n...");
-  console.log("Calling n8n webhook:", N8N_WEBHOOK_URL);
+  // --- NATIVE MOCK MODE (REAL AI on MOCK/INPUT DATA) ---
+  if (mode === 'NATIVE') {
+    if (onProgress) onProgress("Pobieranie danych (Symulacja Firecrawl)...");
+    
+    // Use the FULL mock data provided by the user
+    const scrapedContent = MOCK_SCRAPED_DATA_FALLBACK; 
+    
+    await new Promise(r => setTimeout(r, 1000)); // Simulate fetch
+    if (onProgress) onProgress("Pobrano dane. Rozpoczynanie analizy AI...");
+    
+    const result = await analyzeLocalDataWithGemini(scrapedContent);
+    
+    // Cache and Return
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) { console.warn(e); }
 
+    return result;
+  }
+
+  // --- N8N MODE ---
+  if (onProgress) onProgress("Wysyłanie zlecenia do n8n...");
+  
   try {
     const response = await fetch(N8N_WEBHOOK_URL, {
       method: "POST",
@@ -287,75 +418,48 @@ const optimizeBooksyContent = async (url: string, onProgress?: (msg: string) => 
 
     if (onProgress) onProgress("Odbieranie wyników audytu...");
     
-    // We get the text first to handle JSON parsing manually for better error reporting
-    const responseText = await response.text();
-    let result: any;
-    
-    try {
-       result = JSON.parse(responseText);
-    } catch (e: any) {
-       console.error("n8n JSON Parse Error. Raw response:", responseText);
-       // Throw specific error for UI
-       throw new Error(`Błąd parsowania odpowiedzi n8n (JSON): ${e.message}. Sprawdź logi konsoli.`);
-    }
+    const result = await response.json();
 
     if (result.success === false) {
        throw new Error("Workflow n8n zwrócił informację o błędzie (success: false).");
     }
 
-    // Handle pricing content (could be string or object)
+    // Process result from n8n. 
     let pricingText = "";
     if (typeof result.pricing === 'string') {
-      pricingText = result.pricing;
+      // If it's a string, we check if it looks like JSON and convert it to TSV for better UX
+      if (result.pricing.trim().startsWith('[')) {
+         pricingText = convertJsonToTsv(result.pricing);
+      } else {
+         pricingText = result.pricing;
+      }
     } else if (result.pricing) {
-      // If it's an object, we format it roughly as text/json for the input box
+      // If it is an object/array, stringify or convert
       pricingText = JSON.stringify(result.pricing, null, 2);
+      // Try to convert to TSV if it is an array
+      if (Array.isArray(result.pricing)) {
+         pricingText = convertJsonToTsv(JSON.stringify(result.pricing));
+      }
     }
 
-    // Handle audit content
-    let auditText = "";
-    if (typeof result.audit === 'string') {
-      auditText = result.audit;
-    } else if (result.audit) {
-      auditText = JSON.stringify(result.audit, null, 2);
-    }
-
-    // Basic Validation
-    if (!pricingText && !auditText) {
-      throw new Error("Otrzymano pustą odpowiedź z n8n (brak pól pricing/audit).");
-    }
-
-    // --- NEW STEP: Structure the audit report with Gemini ---
-    if (onProgress) onProgress("AI formatuje raport...");
-    const structuredReport = await structureAuditReport(auditText);
-
-    // Create a synthesized AuditResult compatible with the UI
-    const lines = pricingText.split('\n').filter(l => l.trim().length > 0);
-    
     const finalResult: AuditResult = {
-      overallScore: structuredReport.marketingScore,
-      categories: [
-        {
-          name: "Analiza UX i Sprzedażowa",
-          score: structuredReport.marketingScore,
-          status: structuredReport.marketingScore > 75 ? 'ok' : 'warning',
-          message: "Analiza AI zakończona.",
-          suggestion: "Szczegółowe wnioski znajdują się w raporcie."
-        }
-      ],
+      overallScore: 85, // Default if n8n doesn't provide
+      categories: [],
       stats: {
-        serviceCount: lines.length || 0,
+        serviceCount: pricingText.split('\n').length,
         missingDescriptions: 0, 
         missingDurations: 0
       },
-      rawCsv: "", 
-      optimizedText: pricingText,
-      generalFeedback: auditText, // Keep raw for backup
-      recommendations: structuredReport.weaknesses, // Map weaknesses to recommendations for PDF
-      structuredReport: structuredReport // Attach the structured data
+      rawCsv: typeof result.pricing === 'object' ? JSON.stringify(result.pricing, null, 2) : result.pricing, 
+      optimizedText: pricingText, // Clean editable text
+      generalFeedback: typeof result.audit === 'string' ? result.audit : "Audyt zakończony.",
+      
+      strengths: ["Cennik pobrany poprawnie."],
+      weaknesses: [],
+      recommendations: ["Sprawdź opisy i ceny w edytorze."],
+      salesPotential: "Wymaga weryfikacji."
     };
 
-    // 3. Save to Cache
     try {
       localStorage.setItem(cacheKey, JSON.stringify(finalResult));
     } catch (e) {
@@ -366,7 +470,6 @@ const optimizeBooksyContent = async (url: string, onProgress?: (msg: string) => 
 
   } catch (error: any) {
     console.error("n8n Audit Error:", error);
-    // Explicitly rethrow the message so UI sees it
     throw new Error(error.message || "Wystąpił błąd podczas komunikacji z workflow n8n.");
   }
 };

@@ -65,7 +65,7 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
             {category.services.map((service, index) => (
               <div 
                 key={index} 
-                className={`flex flex-col sm:flex-row gap-4 p-3 rounded-lg border transition-all`}
+                className={`flex flex-col sm:flex-row gap-4 p-3 rounded-lg border transition-all items-start text-left`}
                 style={{
                   backgroundColor: service.isPromo ? theme.promoBgColor : theme.boxBgColor,
                   borderColor: service.isPromo ? theme.promoColor + '40' : theme.boxBorderColor, 
@@ -83,7 +83,7 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
                   </div>
                 )}
 
-                <div className="flex-1 flex flex-col justify-center">
+                <div className="flex-1 flex flex-col justify-center items-start text-left">
                   <div className="flex flex-wrap items-center gap-2 mb-1">
                     <h4 
                       className="font-medium text-lg leading-tight"
@@ -138,7 +138,7 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
                   )}
                 </div>
 
-                <div className="mt-2 sm:mt-0 sm:ml-4 flex items-start sm:items-center justify-end">
+                <div className="mt-2 sm:mt-0 sm:ml-4 flex items-start sm:items-center justify-end w-full sm:w-auto">
                   <span 
                     className="text-lg font-semibold whitespace-nowrap"
                     style={{ color: service.isPromo ? theme.promoColor : theme.primaryColor }}

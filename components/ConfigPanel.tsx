@@ -1,6 +1,7 @@
+
 import React, { useState } from 'react';
-import { Settings, RefreshCw, Palette, Type, Save, Download, Cloud, CheckCircle2 } from 'lucide-react';
-import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../types';
+import { Settings, RefreshCw, Palette, Type, Save, Download, Cloud, CheckCircle2, Workflow, Zap } from 'lucide-react';
+import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS, IntegrationMode } from '../types';
 import { storageService } from '../services/storageService';
 
 interface ConfigPanelProps {
@@ -30,7 +31,7 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState<{type: 'success'|'error', text: string} | null>(null);
 
-  const updateConfig = (key: keyof ThemeConfig, value: string) => {
+  const updateConfig = (key: keyof ThemeConfig, value: string | IntegrationMode) => {
     onChange({ ...config, [key]: value });
   };
 
@@ -135,6 +136,30 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({ config, onChange }) => {
                </div>
              )}
           </div>
+        </div>
+
+        {/* Integration Mode */}
+        <div>
+          <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+            <Zap size={14} /> Integracje (Audyt)
+          </h3>
+          <div className="bg-slate-50 p-1 rounded-lg border border-slate-200 flex">
+             <button 
+               onClick={() => updateConfig('integrationMode', 'N8N')}
+               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-medium transition-all ${config.integrationMode === 'N8N' ? 'bg-white text-indigo-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+             >
+               <Workflow size={14} /> n8n Workflow
+             </button>
+             <button 
+               onClick={() => updateConfig('integrationMode', 'NATIVE')}
+               className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-medium transition-all ${config.integrationMode === 'NATIVE' ? 'bg-white text-rose-600 shadow-sm border border-slate-100' : 'text-slate-500 hover:text-slate-700'}`}
+             >
+               <Zap size={14} /> Native (Mock)
+             </button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-2 px-1">
+             {config.integrationMode === 'N8N' ? 'Używa zewnętrznego silnika n8n do scrapowania i analizy.' : 'Symuluje działanie lokalne na podstawie przykładowych danych (Firecrawl + Gemini).'}
+          </p>
         </div>
 
         {/* Colors */}

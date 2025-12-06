@@ -9,22 +9,31 @@ import ConfigPanel from './components/ConfigPanel';
 import TerminalLoader from './components/TerminalLoader';
 import { LightRays } from './components/LightRays';
 import BooksyOptimizer from './components/BooksyOptimizer';
-import { ArrowLeft, Check, FileText, Link, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2 } from 'lucide-react';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
 type InputMode = 'PASTE' | 'IMPORT';
+type ViewMode = 'ORIGINAL' | 'OPTIMIZED' | 'SPLIT';
 
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>(AppState.INPUT);
   const [inputMode, setInputMode] = useState<InputMode>('PASTE');
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
+  const [optimizedPricingData, setOptimizedPricingData] = useState<PricingData | null>(null);
+  
+  // Replaced boolean isOptimizedView with tri-state viewMode
+  const [viewMode, setViewMode] = useState<ViewMode>('ORIGINAL');
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
   const [importedText, setImportedText] = useState<string>(''); // For transfer from Optimizer
+  const [rawInputData, setRawInputData] = useState<string>(''); // Store for optimization re-fetch
   
   // New State for Loader Logic
   const [isApiDataReady, setIsApiDataReady] = useState(false);
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
 
   // Load last session from local storage immediately for better UX
   useEffect(() => {
@@ -44,23 +53,57 @@ const App: React.FC = () => {
   const handleProcessData = async (rawData: string) => {
     if (!rawData.trim()) return;
 
+    setRawInputData(rawData); // Save for optimization later
     setAppState(AppState.PROCESSING);
     setIsApiDataReady(false);
     setErrorMsg(null);
+    setOptimizedPricingData(null); // Reset optimized
+    setViewMode('ORIGINAL'); // Reset view
 
     try {
       // 1. Start fetching in "background" while loader plays
-      const data = await parsePricingData(rawData);
+      const data = await parsePricingData(rawData, false);
       
       // 2. Data is ready, notify loader
       setPricingData(data);
       setIsApiDataReady(true);
       
-    } catch (err: any) {
+    } catch (err) {
       console.error(err);
-      // Display specific error message for debugging/user info
-      setErrorMsg(err.message || "Wystąpił nieoczekiwany błąd.");
+      setErrorMsg("Wystąpił błąd podczas przetwarzania danych. Spróbuj ponownie lub sprawdź format danych.");
       setAppState(AppState.INPUT);
+    }
+  };
+
+  const handleViewChange = async (mode: ViewMode) => {
+    // Immediate view switch for better UX
+    setViewMode(mode);
+
+    if (mode === 'ORIGINAL') return;
+
+    // If we already have data, no need to fetch
+    if (optimizedPricingData) return;
+
+    // Fallback: If rawInputData is somehow missing, reconstruct it from current pricingData
+    const dataToOptimize = rawInputData || JSON.stringify(pricingData);
+
+    if (!dataToOptimize) {
+        console.error("No data available to optimize");
+        setErrorMsg("Błąd danych. Nie można wygenerować optymalizacji.");
+        return;
+    }
+
+    setIsOptimizing(true);
+    try {
+      // Call Gemini with optimization mode = true
+      const optimized = await parsePricingData(dataToOptimize, true);
+      setOptimizedPricingData(optimized);
+    } catch (err) {
+      console.error("Optimization failed", err);
+      setErrorMsg("Nie udało się wygenerować wersji zoptymalizowanej. Sprawdź połączenie.");
+      setViewMode('ORIGINAL'); // Revert on error
+    } finally {
+      setIsOptimizing(false);
     }
   };
 
@@ -74,21 +117,23 @@ const App: React.FC = () => {
   const resetApp = () => {
     setAppState(AppState.INPUT);
     setPricingData(null);
+    setOptimizedPricingData(null);
+    setViewMode('ORIGINAL');
     setErrorMsg(null);
     setIsApiDataReady(false);
   };
 
-  // Updated Handler for data coming from BooksyOptimizer (Audit)
-  const handleAuditProceed = async (data: string) => {
+  // Handler for data coming from BooksyOptimizer (Audit)
+  const handleImportedData = (data: string) => {
     setImportedText(data);
-    
-    // Switch to Paste mode internally just to keep state clean
     setInputMode('PASTE');
-    
-    // "Background Process": Immediately trigger the processing flow
-    // This skips the manual "Click Generate" step
-    await handleProcessData(data);
+    // Scroll to input just in case
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const currentDisplayData = (viewMode === 'OPTIMIZED' || viewMode === 'SPLIT') && optimizedPricingData 
+    ? optimizedPricingData 
+    : (pricingData || { categories: [] });
 
   return (
     <div className="min-h-screen bg-[#FDFDFD] text-slate-800 font-sans selection:bg-rose-200 selection:text-rose-900 flex flex-col relative overflow-hidden">
@@ -119,10 +164,19 @@ const App: React.FC = () => {
                 </span>
               </div>
             </div>
-            <div className="hidden md:flex items-center space-x-4">
-              <span className="text-xs font-medium px-2 py-1 bg-primary-100 text-green-700 rounded-md border border-green-200">
-                Gemini Ai
-              </span>
+            <div className="flex items-center space-x-3 md:space-x-4">
+              <button
+                onClick={() => setIsConfigOpen(true)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-200"
+                title="Ustawienia"
+              >
+                <Settings size={20} />
+              </button>
+              <div className="hidden md:flex">
+                <span className="text-xs font-medium px-2 py-1 bg-green-50 text-green-700 rounded-md border border-green-200">
+                  Gemini Ai
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -132,13 +186,9 @@ const App: React.FC = () => {
         
         {/* Error Notification */}
         {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-start gap-3 shadow-sm animate-in fade-in slide-in-from-top-2">
-            <AlertCircle className="shrink-0 mt-0.5" size={20} />
-            <div className="flex-1">
-              <h4 className="font-bold text-sm mb-1">Wystąpił błąd</h4>
-              <p className="text-sm opacity-90 font-mono text-xs">{errorMsg}</p>
-            </div>
-            <button onClick={() => setErrorMsg(null)} className="font-bold text-red-400 hover:text-red-700">&times;</button>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-between">
+            <span>{errorMsg}</span>
+            <button onClick={() => setErrorMsg(null)} className="font-bold">&times;</button>
           </div>
         )}
 
@@ -184,7 +234,10 @@ const App: React.FC = () => {
                    initialValue={importedText}
                  />
                ) : (
-                 <BooksyOptimizer onUseData={handleAuditProceed} />
+                 <BooksyOptimizer 
+                   onUseData={handleImportedData} 
+                   integrationMode={themeConfig.integrationMode} 
+                 />
                )}
              </div>
           </div>
@@ -210,7 +263,7 @@ const App: React.FC = () => {
 
         {/* State: PREVIEW */}
         {appState === AppState.PREVIEW && pricingData && (
-          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
+          <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 pb-20">
             <button 
               onClick={resetApp}
               className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition-colors"
@@ -220,76 +273,157 @@ const App: React.FC = () => {
             </button>
 
             <div className="grid lg:grid-cols-12 gap-8 items-start">
-              {/* Left Column: Preview (Larger) */}
-              <div className="lg:col-span-7">
+              
+              {/* Main Preview Area: Expands to full width in Split Mode */}
+              <div className={viewMode === 'SPLIT' ? "lg:col-span-12" : "lg:col-span-7"}>
                  <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2" style={{ fontFamily: themeConfig.fontHeading }}>
                        Podgląd na żywo
                     </h2>
-                    <span className="text-xs uppercase tracking-widest text-slate-400">Preview</span>
+                    
+                    {/* View Mode Toggle - ADDED Z-INDEX */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-lg relative z-20">
+                       <button
+                         onClick={() => handleViewChange('ORIGINAL')}
+                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${viewMode === 'ORIGINAL' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+                       >
+                         <LayoutList size={14} /> Oryginał
+                       </button>
+                       <button
+                         onClick={() => handleViewChange('OPTIMIZED')}
+                         disabled={isOptimizing && viewMode === 'OPTIMIZED'}
+                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${viewMode === 'OPTIMIZED' ? 'bg-indigo-600 shadow-sm text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                       >
+                         {isOptimizing && viewMode === 'OPTIMIZED' ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />} 
+                         {isOptimizing && viewMode === 'OPTIMIZED' ? 'Gen...' : 'AI Optymalizacja'}
+                       </button>
+                       <button
+                         onClick={() => handleViewChange('SPLIT')}
+                         disabled={isOptimizing && viewMode === 'SPLIT'}
+                         className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-all ${viewMode === 'SPLIT' ? 'bg-indigo-600 shadow-sm text-white' : 'text-slate-500 hover:text-slate-700'}`}
+                       >
+                         {isOptimizing && viewMode === 'SPLIT' ? <Loader2 size={14} className="animate-spin"/> : <Columns2 size={14} />}
+                         Porównaj
+                       </button>
+                    </div>
                  </div>
                  
-                 <div 
-                  className="p-6 md:p-8 rounded-2xl shadow-xl border relative overflow-hidden transition-all"
-                  style={{ 
-                    backgroundColor: themeConfig.boxBgColor,
-                    borderColor: themeConfig.boxBorderColor,
-                    boxShadow: `0 20px 25px -5px ${themeConfig.primaryColor}15`
-                  }}
-                 >
-                    {/* Decorative header element */}
-                    <div 
-                      className="absolute top-0 left-0 w-full h-1.5"
-                      style={{ background: `linear-gradient(to right, ${themeConfig.secondaryColor}, ${themeConfig.primaryColor})` }}
-                    ></div>
-                    
-                    <div className="text-center mb-8">
-                       <h3 
-                        className="text-2xl font-bold" 
-                        style={{ 
-                          fontFamily: themeConfig.fontHeading,
-                          color: themeConfig.textColor 
-                        }}
-                       >
-                         {(pricingData.salonName) ? pricingData.salonName : "Cennik Usług"}
-                       </h3>
-                       <div 
-                        className="w-12 h-1 mx-auto mt-4 rounded-full"
-                        style={{ backgroundColor: themeConfig.secondaryColor }}
-                       ></div>
-                    </div>
+                 {viewMode === 'SPLIT' ? (
+                   // SIDE-BY-SIDE COMPARISON
+                   <div className="grid md:grid-cols-2 gap-6 animate-in fade-in">
+                      {/* Left: Original */}
+                      <div 
+                        className="p-6 rounded-xl shadow-sm border border-slate-200 bg-white relative overflow-hidden"
+                        style={{ borderTop: `4px solid ${themeConfig.mutedColor}` }}
+                      >
+                         <div className="mb-6 text-left">
+                            <h3 className="font-bold text-lg text-slate-700 font-serif">Wersja Oryginalna</h3>
+                            <p className="text-xs text-slate-400">Bez zmian</p>
+                         </div>
+                         <div className="space-y-2">
+                            {pricingData.categories.map((category, idx) => (
+                              <Accordion key={idx} category={category} defaultOpen={false} theme={themeConfig} />
+                            ))}
+                         </div>
+                      </div>
 
-                    <div className="space-y-2">
-                      {pricingData.categories.map((category, idx) => (
-                        <Accordion 
-                          key={idx} 
-                          category={category} 
-                          defaultOpen={idx === 0}
-                          theme={themeConfig}
-                        />
-                      ))}
-                    </div>
-                 </div>
+                      {/* Right: Optimized */}
+                      <div 
+                        className="p-6 rounded-xl shadow-lg border border-indigo-100 bg-white relative overflow-hidden"
+                        style={{ borderTop: `4px solid ${themeConfig.primaryColor}` }}
+                      >
+                         <div className="absolute top-0 right-0 bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded-bl-lg">AI</div>
+                         <div className="mb-6 text-left">
+                            <h3 className="font-bold text-lg font-serif" style={{ color: themeConfig.primaryColor }}>Wersja Zoptymalizowana</h3>
+                            <p className="text-xs text-slate-400">Po audycie i poprawkach</p>
+                         </div>
+                         <div className="space-y-2 relative min-h-[200px]">
+                            {isOptimizing || !optimizedPricingData ? (
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10 backdrop-blur-sm animate-in fade-in">
+                                 <Loader2 size={32} className="text-indigo-500 animate-spin mb-3" />
+                                 <p className="text-sm font-medium text-indigo-800 animate-pulse">Sztuczna inteligencja przebudowuje ofertę...</p>
+                              </div>
+                            ) : (
+                              optimizedPricingData?.categories.map((category, idx) => (
+                                <Accordion key={idx} category={category} defaultOpen={false} theme={themeConfig} />
+                              ))
+                            )}
+                         </div>
+                      </div>
+                   </div>
+                 ) : (
+                   // SINGLE VIEW (Original or Optimized)
+                   <div 
+                    className="p-6 md:p-8 rounded-2xl shadow-xl border relative overflow-hidden transition-all"
+                    style={{ 
+                      backgroundColor: themeConfig.boxBgColor,
+                      borderColor: themeConfig.boxBorderColor,
+                      boxShadow: `0 20px 25px -5px ${themeConfig.primaryColor}15`
+                    }}
+                   >
+                      <div 
+                        className="absolute top-0 left-0 w-full h-1.5"
+                        style={{ background: `linear-gradient(to right, ${themeConfig.secondaryColor}, ${themeConfig.primaryColor})` }}
+                      ></div>
+                      
+                      <div className="text-center mb-8">
+                         <h3 
+                          className="text-2xl font-bold" 
+                          style={{ 
+                            fontFamily: themeConfig.fontHeading,
+                            color: themeConfig.textColor 
+                          }}
+                         >
+                           {currentDisplayData.salonName || "Cennik Usług"}
+                         </h3>
+                         <div 
+                          className="w-12 h-1 mx-auto mt-4 rounded-full"
+                          style={{ backgroundColor: themeConfig.secondaryColor }}
+                         ></div>
+                      </div>
+
+                      <div className="space-y-2 relative min-h-[200px]">
+                        {viewMode === 'OPTIMIZED' && !optimizedPricingData && isOptimizing && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 z-10 backdrop-blur-sm">
+                             <Loader2 size={32} className="text-indigo-500 animate-spin mb-3" />
+                             <p className="text-sm font-medium text-indigo-800">Sztuczna inteligencja przebudowuje ofertę...</p>
+                          </div>
+                        )}
+
+                        {/* Render Current View Data */}
+                        {currentDisplayData.categories.map((category, idx) => (
+                          <Accordion 
+                            key={idx} 
+                            category={category} 
+                            defaultOpen={idx === 0}
+                            theme={themeConfig}
+                          />
+                        ))}
+                      </div>
+                   </div>
+                 )}
               </div>
 
-              {/* Right Column: Config & Code */}
-              <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
+              {/* Right Column: Config & Code - Moves below if Split View */}
+              <div className={viewMode === 'SPLIT' ? "lg:col-span-12 grid md:grid-cols-2 gap-8" : "lg:col-span-5 space-y-6 lg:sticky lg:top-24"}>
                  
                  {/* Configuration Panel */}
-                 <ConfigPanel config={themeConfig} onChange={handleThemeChange} />
+                 <div className={viewMode === 'SPLIT' ? "" : "hidden lg:block"}>
+                    <ConfigPanel config={themeConfig} onChange={handleThemeChange} />
+                 </div>
 
-                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-100">
+                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-100 h-fit">
                     <h2 className="text-xl font-bold text-slate-800 mb-4" style={{ fontFamily: themeConfig.fontHeading }}>
                        Gotowe!
                     </h2>
                     <p className="text-slate-600 mb-6 text-sm" style={{ fontFamily: themeConfig.fontBody }}>
-                       Twój cennik jest gotowy. Kod zawiera wszystkie Twoje ustawienia kolorystyczne.
+                       Twój cennik jest gotowy. Wygenerowany kod dotyczy <strong>{viewMode === 'ORIGINAL' ? 'Wersji Oryginalnej' : 'Wersji Zoptymalizowanej'}</strong>.
                     </p>
                     
                     <ul className="space-y-2 mb-6">
                        <li className="flex items-start gap-3 text-sm text-slate-600">
                           <Check className="mt-0.5 shrink-0" size={16} style={{ color: themeConfig.primaryColor }} />
-                          <span>Podział na {pricingData.categories.length} kategorii</span>
+                          <span>Podział na {currentDisplayData.categories.length} kategorii</span>
                        </li>
                        <li className="flex items-start gap-3 text-sm text-slate-600">
                           <Check className="mt-0.5 shrink-0" size={16} style={{ color: themeConfig.primaryColor }} />
@@ -297,7 +431,11 @@ const App: React.FC = () => {
                        </li>
                     </ul>
 
-                    <EmbedCode data={pricingData} theme={themeConfig} />
+                    {/* Embed Code always reflects currently visible data (or optimized if split) */}
+                    <EmbedCode 
+                      data={currentDisplayData} 
+                      theme={themeConfig} 
+                    />
                  </div>
               </div>
             </div>
@@ -310,6 +448,25 @@ const App: React.FC = () => {
           Best Ideas by Alex Miesak
         </p>
       </footer>
+
+      {/* Configuration Modal */}
+      {isConfigOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div 
+            className="absolute inset-0" 
+            onClick={() => setIsConfigOpen(false)} 
+          />
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto relative z-10 animate-in zoom-in-95 duration-200 scrollbar-hide">
+            <button 
+              onClick={() => setIsConfigOpen(false)}
+              className="absolute top-4 right-4 p-2 bg-white/80 hover:bg-white text-slate-400 hover:text-slate-600 rounded-full z-20 transition-colors shadow-sm"
+            >
+              <X size={20} />
+            </button>
+            <ConfigPanel config={themeConfig} onChange={handleThemeChange} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

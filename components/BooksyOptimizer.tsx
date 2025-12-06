@@ -1,14 +1,15 @@
 
 import React, { useState } from 'react';
-import { Search, Wand2, Link as LinkIcon, Info, CheckCircle, ChevronDown, ChevronUp, AlertOctagon } from 'lucide-react';
+import { Search, Wand2, Link as LinkIcon, Info, CheckCircle, ChevronDown, ChevronUp, Zap, Workflow } from 'lucide-react';
 import { optimizeBooksyContent } from '../services/geminiService';
 import { ShineBorder } from './ShineBorder';
 import TerminalLoader from './TerminalLoader';
 import AuditResults from './AuditResults';
-import { AuditResult } from '../types';
+import { AuditResult, IntegrationMode } from '../types';
 
 interface BooksyOptimizerProps {
   onUseData: (data: string) => void;
+  integrationMode: IntegrationMode;
 }
 
 const N8N_AUDIT_STEPS = [
@@ -20,7 +21,15 @@ const N8N_AUDIT_STEPS = [
   "Pobieranie raportu końcowego..."
 ];
 
-const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
+const NATIVE_AUDIT_STEPS = [
+  "Inicjalizacja Firecrawl & Gemini...",
+  "Scrapowanie struktury (Symulacja)...",
+  "Pobieranie surowych danych...",
+  "Analiza marketingowa AI...",
+  "Przygotowanie raportu..."
+];
+
+const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData, integrationMode }) => {
   const [url, setUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isDataReady, setIsDataReady] = useState(false);
@@ -30,8 +39,6 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
   const [customSteps, setCustomSteps] = useState<string[]>(N8N_AUDIT_STEPS);
 
   const handleProgress = (msg: string) => {
-    // Optional: if n8n supported streaming progress, we'd use this. 
-    // For now we just stick to the predefined steps mostly.
     // console.log(msg);
   };
 
@@ -48,18 +55,16 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
     setIsDataReady(false);
     setError(null);
     setResult(null);
-    setCustomSteps(N8N_AUDIT_STEPS);
+    setCustomSteps(integrationMode === 'N8N' ? N8N_AUDIT_STEPS : NATIVE_AUDIT_STEPS);
 
     try {
-      // 1. Fetch data from n8n
-      const auditResult = await optimizeBooksyContent(url, handleProgress);
+      // Pass integration mode to service
+      const auditResult = await optimizeBooksyContent(url, integrationMode, handleProgress);
       
-      // 2. Set ready flag for loader
       setResult(auditResult);
       setIsDataReady(true);
       
     } catch (e: any) {
-      // Use specific error message
       setError(e.message || "Nie udało się pobrać danych. Sprawdź link lub spróbuj ponownie.");
       console.error(e);
       setIsLoading(false);
@@ -68,7 +73,6 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
 
   const handleLoaderComplete = () => {
     setIsLoading(false);
-    // At this point, 'result' is populated, so the view will switch to AuditResults
   };
 
   if (result && !isLoading) {
@@ -126,7 +130,7 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
             customSteps={customSteps}
           />
           <p className="mt-8 text-slate-500 animate-pulse font-medium">
-            Workflow n8n przetwarza dane...
+            {integrationMode === 'N8N' ? 'Workflow n8n przetwarza dane...' : 'Native Mock AI analizuje dane...'}
           </p>
         </div>
       ) : (
@@ -146,8 +150,15 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
             <h2 className="text-2xl font-serif font-semibold text-slate-800 mb-2">
               Importuj i Audytuj
             </h2>
+            <div className="flex items-center justify-center gap-2 mb-2">
+               <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded border ${integrationMode === 'N8N' ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-rose-50 text-rose-600 border-rose-200'}`}>
+                 Tryb: {integrationMode === 'N8N' ? 'n8n Workflow' : 'Native Mock'}
+               </span>
+            </div>
             <p className="text-slate-500 max-w-lg mx-auto">
-              Wklej link do profilu Booksy lub strony salonu. Uruchomimy zewnętrzny <strong>workflow n8n</strong>, który przeprowadzi audyt i zwróci zoptymalizowaną treść.
+              {integrationMode === 'N8N' 
+                ? 'Wklej link do profilu Booksy lub strony salonu. Uruchomimy zewnętrzny workflow n8n.' 
+                : 'Użyj natywnej integracji (symulacja) do szybkiego sprawdzenia audytu na przykładowych danych.'}
             </p>
           </div>
 
@@ -175,12 +186,8 @@ const BooksyOptimizer: React.FC<BooksyOptimizerProps> = ({ onUseData }) => {
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 text-red-700 text-sm rounded-xl border border-red-200 flex items-start gap-3">
-                <AlertOctagon className="shrink-0 mt-0.5" size={18} />
-                <div className="flex-1">
-                  <p className="font-bold mb-1">Błąd Audytu</p>
-                  <p className="font-mono text-xs opacity-90">{error}</p>
-                </div>
+              <div className="p-3 bg-red-50 text-red-600 text-sm rounded-lg border border-red-100">
+                {error}
               </div>
             )}
           </div>

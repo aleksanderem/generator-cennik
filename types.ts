@@ -26,6 +26,8 @@ export enum AppState {
   ERROR = 'ERROR'
 }
 
+export type IntegrationMode = 'N8N' | 'NATIVE';
+
 export interface ThemeConfig {
   // Brand
   primaryColor: string; // Main brand color (prices, icons)
@@ -44,6 +46,9 @@ export interface ThemeConfig {
   // Promo Specific
   promoColor: string; // Text/Icon color for promo
   promoBgColor: string; // Background for promo box
+  
+  // Settings
+  integrationMode: IntegrationMode;
 }
 
 export const DEFAULT_THEME: ThemeConfig = {
@@ -60,6 +65,8 @@ export const DEFAULT_THEME: ThemeConfig = {
 
   promoColor: '#d97706', // Amber-600
   promoBgColor: '#fffbeb', // Amber-50
+  
+  integrationMode: 'N8N',
 };
 
 export const FONT_OPTIONS = {
@@ -80,14 +87,6 @@ export const FONT_OPTIONS = {
 
 // --- AUDIT INTERFACES ---
 
-export interface StructuredAudit {
-  executiveSummary: string; // Short paragraph
-  strengths: string[]; // Bullet points of what is good
-  weaknesses: string[]; // Bullet points of what is bad
-  marketingScore: number; // 0-100 score calculated by AI
-  toneVoice: string; // e.g. "Formalny", "Chaotyczny"
-}
-
 export interface AuditCategory {
   name: string;
   score: number; // 0-100
@@ -102,13 +101,30 @@ export interface AuditStats {
   missingDurations: number;
 }
 
+export interface GrowthTip {
+  category: 'SEO' | 'Konwersja' | 'Retencja' | 'Wizerunek';
+  title: string;
+  description: string;
+  impact: 'Wysoki' | 'Średni' | 'Niski';
+}
+
 export interface AuditResult {
+  id?: string; // For saving
+  date?: string; // For saving
   overallScore: number;
-  categories: AuditCategory[];
+  categories: AuditCategory[]; // Kept for backward compatibility / summary
   stats: AuditStats;
   rawCsv: string; // The raw data extracted
   optimizedText: string; // The AI improved version
   generalFeedback: string;
-  recommendations?: string[]; // New list for specific bullet points in PDF
-  structuredReport?: StructuredAudit; // New AI-processed report structure
+  
+  // New Detailed Report Fields
+  strengths?: string[];
+  weaknesses?: { point: string; consequence: string }[];
+  recommendations?: string[];
+  beforeAfter?: { before: string; after: string; explanation: string };
+  salesPotential?: string;
+  
+  // Holistic Growth Strategy
+  growthTips?: GrowthTip[];
 }
