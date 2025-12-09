@@ -1,6 +1,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
+import { ClerkProvider, useAuth } from '@clerk/clerk-react';
+import { ConvexProviderWithClerk } from 'convex/react-clerk';
+import { ConvexReactClient } from 'convex/react';
 import App from './App';
+
+// Inicjalizacja Convex
+const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+
+// Clerk publishable key
+const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -8,8 +17,26 @@ if (!rootElement) {
 }
 
 const root = ReactDOM.createRoot(rootElement);
-root.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+
+// Sprawdź czy klucze są skonfigurowane
+if (!clerkPubKey || clerkPubKey === 'pk_test_TWOJ_KLUCZ_CLERK') {
+  console.warn('⚠️ Clerk key not configured. Auth will be disabled.');
+
+  // Renderuj bez auth (development mode)
+  root.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>
+  );
+} else {
+  // Pełna wersja z auth
+  root.render(
+    <React.StrictMode>
+      <ClerkProvider publishableKey={clerkPubKey}>
+        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+          <App />
+        </ConvexProviderWithClerk>
+      </ClerkProvider>
+    </React.StrictMode>
+  );
+}

@@ -9,7 +9,12 @@ import ConfigPanel from './components/ConfigPanel';
 import TerminalLoader from './components/TerminalLoader';
 import { LightRays } from './components/LightRays';
 import BooksyOptimizer from './components/BooksyOptimizer';
+import Header from './components/layout/Header';
+import PaywallModal from './components/shared/PaywallModal';
+import LandingPage from './components/pages/LandingPage';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2 } from 'lucide-react';
+
+type Page = 'home' | 'generator' | 'audit' | 'settings';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -17,23 +22,36 @@ type InputMode = 'PASTE' | 'IMPORT';
 type ViewMode = 'ORIGINAL' | 'OPTIMIZED' | 'SPLIT';
 
 const App: React.FC = () => {
+  // Page navigation state
+  const [currentPage, setCurrentPage] = useState<Page>('home');
+  const [isPaywallOpen, setIsPaywallOpen] = useState(false);
+
   const [appState, setAppState] = useState<AppState>(AppState.INPUT);
   const [inputMode, setInputMode] = useState<InputMode>('PASTE');
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [optimizedPricingData, setOptimizedPricingData] = useState<PricingData | null>(null);
-  
+
   // Replaced boolean isOptimizedView with tri-state viewMode
   const [viewMode, setViewMode] = useState<ViewMode>('ORIGINAL');
   const [isOptimizing, setIsOptimizing] = useState(false);
-  
+
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
   const [importedText, setImportedText] = useState<string>(''); // For transfer from Optimizer
   const [rawInputData, setRawInputData] = useState<string>(''); // Store for optimization re-fetch
-  
+
   // New State for Loader Logic
   const [isApiDataReady, setIsApiDataReady] = useState(false);
   const [isConfigOpen, setIsConfigOpen] = useState(false);
+
+  // Navigation handler
+  const handleNavigate = (page: Page) => {
+    setCurrentPage(page);
+    // Reset app state when navigating to generator
+    if (page === 'generator' && appState !== AppState.INPUT) {
+      // Keep current state if user is in preview
+    }
+  };
 
   // Load last session from local storage immediately for better UX
   useEffect(() => {
@@ -150,50 +168,40 @@ const App: React.FC = () => {
         `}
       </style>
 
-      {/* Navbar */}
-      <nav className="border-b border-rose-100 bg-white/80 backdrop-blur-md sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-2">
-              <div className="flex flex-col">
-                <span className="font-serif text-xl font-bold leading-none transition-colors" style={{ fontFamily: themeConfig.fontHeading, color: themeConfig.primaryColor }}>
-                Generator Cennika
-                </span>
-                <span className="font-handwriting text-3xl text-slate-500 -mt-2 ml-auto transform -rotate-2 origin-center" style={{ color: themeConfig.mutedColor }}>
-                by Alex M.
-                </span>
-              </div>
-            </div>
-            <div className="flex items-center space-x-3 md:space-x-4">
-              <button
-                onClick={() => setIsConfigOpen(true)}
-                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-200"
-                title="Ustawienia"
-              >
-                <Settings size={20} />
-              </button>
-              <div className="hidden md:flex">
-                <span className="text-xs font-medium px-2 py-1 bg-green-50 text-green-700 rounded-md border border-green-200">
-                  Gemini Ai
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </nav>
+      {/* Header with Navigation */}
+      <Header
+        currentPage={currentPage}
+        onNavigate={handleNavigate}
+        onOpenPaywall={() => setIsPaywallOpen(true)}
+      />
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        isOpen={isPaywallOpen}
+        onClose={() => setIsPaywallOpen(false)}
+        defaultProduct="audit"
+      />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-10 flex-grow w-full relative z-10">
-        
+
         {/* Error Notification */}
         {errorMsg && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-between">
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-xl flex items-center justify-center gap-3">
             <span>{errorMsg}</span>
             <button onClick={() => setErrorMsg(null)} className="font-bold">&times;</button>
           </div>
         )}
 
-        {/* State: INPUT */}
-        {appState === AppState.INPUT && (
+        {/* Page: HOME (Landing) */}
+        {currentPage === 'home' && (
+          <LandingPage
+            onNavigate={handleNavigate}
+            onOpenPaywall={() => setIsPaywallOpen(true)}
+          />
+        )}
+
+        {/* Page: GENERATOR */}
+        {currentPage === 'generator' && appState === AppState.INPUT && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
              <div className="text-center mb-8">
                 <h1 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4" style={{ fontFamily: themeConfig.fontHeading }}>
@@ -243,8 +251,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* State: PROCESSING */}
-        {appState === AppState.PROCESSING && (
+        {/* Page: GENERATOR - State: PROCESSING */}
+        {currentPage === 'generator' && appState === AppState.PROCESSING && (
           <div className="flex flex-col items-center justify-center py-10 lg:py-20 animate-in fade-in duration-500">
             
             <TerminalLoader 
@@ -261,8 +269,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* State: PREVIEW */}
-        {appState === AppState.PREVIEW && pricingData && (
+        {/* Page: GENERATOR - State: PREVIEW */}
+        {currentPage === 'generator' && appState === AppState.PREVIEW && pricingData && (
           <div className="animate-in fade-in slide-in-from-bottom-8 duration-700 pb-20">
             <button 
               onClick={resetApp}
@@ -438,6 +446,45 @@ const App: React.FC = () => {
                     />
                  </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Page: AUDIT (Premium) */}
+        {currentPage === 'audit' && (
+          <div className="animate-in fade-in duration-500 py-12 text-center">
+            <div className="max-w-md mx-auto">
+              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-[#B76E79]/20 to-[#D4AF37]/20 rounded-full flex items-center justify-center">
+                <Sparkles size={36} className="text-[#D4AF37]" />
+              </div>
+              <h1 className="text-3xl font-serif font-bold text-slate-900 mb-4">
+                Audyt AI cennika
+              </h1>
+              <p className="text-slate-600 mb-8">
+                Pełna analiza Twojego cennika z Booksy z eksperckimi rekomendacjami AI.
+                Dowiedz się, co poprawić, żeby przyciągnąć więcej klientów.
+              </p>
+              <button
+                onClick={() => setIsPaywallOpen(true)}
+                className="px-8 py-4 bg-gradient-to-r from-[#722F37] to-[#B76E79] text-white font-bold rounded-xl hover:shadow-lg transition-all"
+              >
+                Kup audyt za 49 zł
+              </button>
+              <p className="text-sm text-slate-400 mt-4">
+                Jednorazowa płatność. Bez subskrypcji.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Page: SETTINGS */}
+        {currentPage === 'settings' && (
+          <div className="animate-in fade-in duration-500 py-8">
+            <h1 className="text-2xl font-serif font-bold text-slate-900 mb-6">
+              Ustawienia
+            </h1>
+            <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+              <ConfigPanel config={themeConfig} onChange={handleThemeChange} />
             </div>
           </div>
         )}
