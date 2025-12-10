@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { ChevronDown, Sparkles, Tag, Star } from 'lucide-react';
+import { ChevronDown, Clock, Sparkles, Tag } from 'lucide-react';
 import { Category, ThemeConfig } from '../types';
 
 interface AccordionProps {
@@ -13,142 +13,132 @@ const Accordion: React.FC<AccordionProps> = ({ category, defaultOpen = false, th
   const [isOpen, setIsOpen] = useState(defaultOpen);
 
   return (
-    <div 
-      className="mb-4 rounded-xl overflow-hidden shadow-sm transition-all"
-      style={{ 
-        backgroundColor: theme.boxBgColor,
-        border: `1px solid ${theme.boxBorderColor}`
-      }}
+    <div
+      className="border-b last:border-b-0"
+      style={{ borderColor: theme.boxBorderColor }}
     >
+      {/* Category Header */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-5 transition-colors duration-200"
-        style={{ 
-          backgroundColor: isOpen ? theme.secondaryColor + '40' : theme.boxBgColor,
-        }}
+        className="w-full flex items-center justify-between py-4 text-left transition-colors hover:bg-slate-50/50"
       >
-        <h3 
-          className="text-xl font-medium flex items-center gap-2"
-          style={{ 
-            fontFamily: theme.fontHeading,
-            color: theme.textColor
-          }}
-        >
-          {category.categoryName}
-          <span 
-            className="text-xs font-sans font-normal px-2 py-0.5 rounded-full border"
-            style={{ 
-              color: theme.primaryColor,
-              backgroundColor: theme.secondaryColor,
-              borderColor: theme.secondaryColor,
-              fontFamily: theme.fontBody
+        <div className="flex items-center gap-3">
+          <h3
+            className="text-base font-semibold"
+            style={{
+              fontFamily: theme.fontHeading,
+              color: theme.textColor
             }}
           >
-            {category.services.length} usług
+            {category.categoryName}
+          </h3>
+          <span
+            className="text-xs px-2 py-0.5 rounded-full"
+            style={{
+              color: theme.mutedColor,
+              backgroundColor: `${theme.mutedColor}10`
+            }}
+          >
+            {category.services.length}
           </span>
-        </h3>
-        <div 
-          className={`transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
-          style={{ color: theme.primaryColor }}
-        >
-          <ChevronDown size={24} />
         </div>
+
+        <ChevronDown
+          size={18}
+          className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+          style={{ color: theme.mutedColor }}
+        />
       </button>
 
+      {/* Services List */}
       <div
-        className={`transition-all duration-300 ease-in-out overflow-hidden ${
-          isOpen ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'
+        className={`overflow-hidden transition-all duration-200 ${
+          isOpen ? 'max-h-[2000px] pb-4' : 'max-h-0'
         }`}
       >
-        <div className="p-5 pt-0">
-          <div className="space-y-4" style={{ fontFamily: theme.fontBody }}>
-            {category.services.map((service, index) => (
-              <div 
-                key={index} 
-                className={`flex flex-col sm:flex-row gap-4 p-3 rounded-lg border transition-all items-start text-left`}
-                style={{
-                  backgroundColor: service.isPromo ? theme.promoBgColor : theme.boxBgColor,
-                  borderColor: service.isPromo ? theme.promoColor + '40' : theme.boxBorderColor, 
-                }}
-              >
-                {/* Image Section - displayed if imageUrl exists */}
-                {service.imageUrl && (
-                  <div className="flex-shrink-0">
-                    <img 
-                      src={service.imageUrl} 
-                      alt={service.name} 
-                      className="w-16 h-16 sm:w-20 sm:h-20 object-cover rounded-md border"
-                      style={{ borderColor: theme.boxBorderColor }}
-                    />
-                  </div>
+        <div className="space-y-2 pl-0" style={{ fontFamily: theme.fontBody }}>
+          {category.services.map((service, index) => (
+            <div
+              key={index}
+              className="flex items-start gap-4 p-3 rounded-lg transition-colors hover:bg-slate-50/80"
+              style={{
+                backgroundColor: service.isPromo ? `${theme.promoColor}08` : 'transparent',
+              }}
+            >
+              {/* Image */}
+              {service.imageUrl && (
+                <img
+                  src={service.imageUrl}
+                  alt={service.name}
+                  className="w-14 h-14 object-cover rounded-md flex-shrink-0"
+                />
+              )}
+
+              {/* Content */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4
+                    className="font-medium text-sm"
+                    style={{ color: theme.textColor }}
+                  >
+                    {service.name}
+                  </h4>
+
+                  {service.isPromo && (
+                    <span
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                      style={{
+                        color: theme.promoColor,
+                        backgroundColor: `${theme.promoColor}15`
+                      }}
+                    >
+                      Promocja
+                    </span>
+                  )}
+
+                  {service.tags?.map((tag, tIdx) => (
+                    <span
+                      key={tIdx}
+                      className="text-[10px] px-1.5 py-0.5 rounded"
+                      style={{
+                        color: theme.primaryColor,
+                        backgroundColor: `${theme.primaryColor}10`
+                      }}
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+
+                {service.description && (
+                  <p
+                    className="text-xs mt-1 line-clamp-2"
+                    style={{ color: theme.mutedColor }}
+                  >
+                    {service.description}
+                  </p>
                 )}
 
-                <div className="flex-1 flex flex-col justify-center items-start text-left">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    <h4 
-                      className="font-medium text-lg leading-tight"
-                      style={{ color: theme.textColor }}
-                    >
-                      {service.name}
-                    </h4>
-                    
-                    {/* Tags */}
-                    {service.isPromo && (
-                      <span 
-                        className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full"
-                        style={{
-                          color: theme.promoColor,
-                          backgroundColor: theme.promoBgColor,
-                          border: `1px solid ${theme.promoColor}40`
-                        }}
-                      >
-                        <Sparkles size={10} /> Promocja
-                      </span>
-                    )}
-                    
-                    {service.tags && service.tags.map((tag, tIdx) => (
-                      <span 
-                        key={tIdx}
-                        className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold px-2 py-0.5 rounded-full"
-                        style={{
-                          color: theme.primaryColor,
-                          backgroundColor: theme.secondaryColor,
-                        }}
-                      >
-                         <Star size={10} /> {tag}
-                      </span>
-                    ))}
-                  </div>
-
-                  {service.description && (
-                    <p 
-                      className="text-sm"
-                      style={{ color: theme.mutedColor }}
-                    >
-                      {service.description}
-                    </p>
-                  )}
-                  {service.duration && (
-                    <p 
-                      className="text-xs mt-1 flex items-center gap-1 opacity-70"
-                      style={{ color: theme.mutedColor }}
-                    >
-                      ⏱ {service.duration}
-                    </p>
-                  )}
-                </div>
-
-                <div className="mt-2 sm:mt-0 sm:ml-4 flex items-start sm:items-center justify-end w-full sm:w-auto">
-                  <span 
-                    className="text-lg font-semibold whitespace-nowrap"
-                    style={{ color: service.isPromo ? theme.promoColor : theme.primaryColor }}
+                {service.duration && (
+                  <span
+                    className="text-[11px] mt-1 inline-flex items-center gap-1"
+                    style={{ color: theme.mutedColor }}
                   >
-                    {service.price}
+                    <Clock size={10} />
+                    {service.duration}
                   </span>
-                </div>
+                )}
               </div>
-            ))}
-          </div>
+
+              {/* Price */}
+              <div
+                className="font-semibold text-sm flex-shrink-0"
+                style={{ color: service.isPromo ? theme.promoColor : theme.primaryColor }}
+              >
+                {service.price}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

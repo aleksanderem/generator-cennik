@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { ClipboardList, Wand2 } from 'lucide-react';
+import { ClipboardList, Wand2, Sparkles, FileSpreadsheet, Image, Tag } from 'lucide-react';
 import { ShineBorder } from './ShineBorder';
 
 interface InputSectionProps {
@@ -30,49 +30,66 @@ Masaż Relaksacyjny	200 zł	Pełny masaż ciała olejkami eterycznymi.	60 min	Hi
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-10 rounded-2xl shadow-xl shadow-rose-100/50 relative overflow-hidden">
-      
-      {/* Shine Border Effect */}
-      <ShineBorder 
-        shineColor={["#fb7185", "#fda4af", "#e11d48"]} 
-        duration={10} 
+    <div className="w-full max-w-3xl mx-auto bg-white p-6 md:p-10 rounded-3xl shadow-2xl shadow-[#722F37]/10 relative overflow-hidden border border-slate-100">
+
+      {/* Shine Border Effect - Premium Colors */}
+      <ShineBorder
+        shineColor={["#722F37", "#B76E79", "#D4AF37"]}
+        duration={12}
         borderWidth={2}
-        className="opacity-80"
+        className="opacity-60"
       />
 
+
       <div className="text-center mb-8 relative z-20">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-rose-100 text-rose-600 mb-4">
-          <ClipboardList size={24} />
+        <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-to-br from-[#722F37]/10 to-[#B76E79]/10 text-[#722F37] mb-5 border border-[#B76E79]/20">
+          <ClipboardList size={26} />
         </div>
-        <h2 className="text-2xl font-serif font-semibold text-slate-800 mb-2">
-          Krok 1: Wprowadź dane
+        <h2 className="text-2xl md:text-3xl font-serif font-bold text-slate-800 mb-3">
+          Krok 1: <span className="text-[#722F37]">Wprowadź dane</span>
         </h2>
-        <p className="text-slate-500 max-w-md mx-auto">
-          Skopiuj komórki ze swojego arkusza Google Sheets lub Excela i wklej je poniżej. 
-          AI automatycznie rozpozna strukturę, zdjęcia (linki URL) oraz oznaczenia takie jak "Bestseller" czy "Nowość".
+        <p className="text-slate-500 max-w-lg mx-auto leading-relaxed">
+          Skopiuj komórki ze swojego arkusza Google Sheets lub Excela i wklej je poniżej.
         </p>
+
+        {/* Feature hints */}
+        <div className="flex flex-wrap items-center justify-center gap-3 mt-4">
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full text-xs text-slate-500 border border-slate-100">
+            <FileSpreadsheet size={12} className="text-[#722F37]" />
+            Excel / Sheets
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full text-xs text-slate-500 border border-slate-100">
+            <Image size={12} className="text-[#B76E79]" />
+            Zdjęcia URL
+          </div>
+          <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-50 rounded-full text-xs text-slate-500 border border-slate-100">
+            <Tag size={12} className="text-[#D4AF37]" />
+            Tagi (Bestseller, Nowość)
+          </div>
+        </div>
       </div>
 
       <textarea
-        className="w-full h-64 p-4 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-rose-400 focus:ring-4 focus:ring-rose-100 transition-all outline-none resize-none font-mono text-sm relative z-20"
+        className="w-full h-64 p-5 rounded-2xl border-2 border-slate-200 bg-slate-50/50 focus:bg-white focus:border-[#B76E79] focus:ring-4 focus:ring-[#B76E79]/10 transition-all outline-none resize-none font-mono text-sm relative z-20 placeholder:text-slate-400"
         placeholder="Wklej tutaj dane (np. Nazwa usługi, Cena, Opis, URL zdjęcia, Tagi)..."
         value={inputText}
         onChange={(e) => setInputText(e.target.value)}
         disabled={isLoading}
       />
 
-      <div className="mt-4 flex justify-between items-center relative z-20">
+      <div className="mt-6 flex flex-col sm:flex-row justify-between items-center gap-4 relative z-20">
         <button
           onClick={handleExample}
-          className="text-sm text-slate-400 hover:text-rose-500 underline underline-offset-2 transition-colors"
+          className="text-sm text-slate-400 hover:text-[#722F37] transition-colors flex items-center gap-1.5 group"
           disabled={isLoading}
         >
+          <Sparkles size={14} className="group-hover:text-[#D4AF37] transition-colors" />
           Załaduj przykładowe dane
         </button>
         <button
           onClick={() => onProcess(inputText)}
           disabled={!inputText.trim() || isLoading}
-          className="group relative inline-flex items-center gap-2 px-8 py-3 bg-rose-600 text-white rounded-full font-medium shadow-lg shadow-rose-200 hover:bg-rose-700 hover:shadow-rose-300 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+          className="group relative inline-flex items-center gap-2.5 px-8 py-3.5 bg-gradient-to-r from-[#722F37] to-[#B76E79] text-white rounded-xl font-semibold shadow-lg shadow-[#722F37]/20 hover:shadow-xl hover:shadow-[#722F37]/30 hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
         >
           {isLoading ? (
             <>

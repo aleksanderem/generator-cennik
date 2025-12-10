@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   SignInButton,
   SignUpButton,
@@ -26,6 +27,7 @@ interface HeaderProps {
 }
 
 const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall }) => {
+  const navigate = useNavigate();
   const { isSignedIn, isLoaded } = useUser();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
@@ -43,18 +45,18 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
       onOpenPaywall?.();
       return;
     }
-    onNavigate(item.id);
+    navigate(`/${item.id}`);
     setMobileMenuOpen(false);
   };
 
   return (
-    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100">
+    <header className="sticky top-0 z-50 bg-white border-b border-slate-100">
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
 
           {/* Logo */}
-          <button
-            onClick={() => onNavigate('home')}
+          <Link
+            to="/"
             className="flex items-center gap-2 group"
           >
             <div className="flex flex-col">
@@ -65,7 +67,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                 by Alex M.
               </span>
             </div>
-          </button>
+          </Link>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center gap-1">
@@ -90,8 +92,8 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
             ))}
 
             {isSignedIn && (
-              <button
-                onClick={() => onNavigate('settings')}
+              <Link
+                to="/settings"
                 className={`
                   flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
                   ${currentPage === 'settings'
@@ -102,7 +104,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
               >
                 <Settings size={18} />
                 Ustawienia
-              </button>
+              </Link>
             )}
           </div>
 
@@ -183,11 +185,9 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
               ))}
 
               {isSignedIn && (
-                <button
-                  onClick={() => {
-                    onNavigate('settings');
-                    setMobileMenuOpen(false);
-                  }}
+                <Link
+                  to="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
                   className={`
                     w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
                     ${currentPage === 'settings'
@@ -198,7 +198,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                 >
                   <Settings size={20} />
                   <span className="font-medium">Ustawienia</span>
-                </button>
+                </Link>
               )}
 
               {!isSignedIn && isLoaded && (

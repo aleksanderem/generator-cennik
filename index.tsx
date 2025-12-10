@@ -3,7 +3,9 @@ import ReactDOM from 'react-dom/client';
 import { ClerkProvider, useAuth } from '@clerk/clerk-react';
 import { ConvexProviderWithClerk } from 'convex/react-clerk';
 import { ConvexReactClient } from 'convex/react';
+import { BrowserRouter } from 'react-router-dom';
 import App from './App';
+import './src/index.css';
 
 // Inicjalizacja Convex
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
@@ -25,7 +27,9 @@ if (!clerkPubKey || clerkPubKey === 'pk_test_TWOJ_KLUCZ_CLERK') {
   // Renderuj bez auth (development mode)
   root.render(
     <React.StrictMode>
-      <App />
+      <BrowserRouter>
+        <App />
+      </BrowserRouter>
     </React.StrictMode>
   );
 } else {
@@ -34,7 +38,9 @@ if (!clerkPubKey || clerkPubKey === 'pk_test_TWOJ_KLUCZ_CLERK') {
     <React.StrictMode>
       <ClerkProvider publishableKey={clerkPubKey}>
         <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-          <App />
+          <BrowserRouter>
+            <App />
+          </BrowserRouter>
         </ConvexProviderWithClerk>
       </ClerkProvider>
     </React.StrictMode>
