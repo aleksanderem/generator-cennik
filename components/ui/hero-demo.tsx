@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "../../lib/utils";
 import { AnimatedList } from "./animated-list";
+import { ShineBorder } from "./shine-border";
 
 // ========================================
 // DATA
@@ -29,41 +30,36 @@ regenracja kerat - 180,-`;
 const generatedServices = [
   {
     id: 1,
-    icon: "✂️",
+    category: "Strzyżenie",
     name: "Strzyżenie damskie",
-    description: "Precyzyjne cięcie dopasowane do kształtu twarzy",
     time: "45 min",
     price: "80 zł",
   },
   {
     id: 2,
-    icon: "🎨",
+    category: "Koloryzacja",
     name: "Koloryzacja profesjonalna",
-    description: "Intensywny, trwały kolor z pielęgnacją włosa",
     time: "90 min",
     price: "od 150 zł",
   },
   {
     id: 3,
-    icon: "✨",
+    category: "Koloryzacja",
     name: "Baleyage / Sombre",
-    description: "Naturalny efekt sun-kissed, delikatne przejścia",
     time: "180 min",
     price: "od 350 zł",
   },
   {
     id: 4,
-    icon: "💫",
+    category: "Stylizacja",
     name: "Modelowanie",
-    description: "Stylizacja i wykończenie fryzury",
     time: "30 min",
     price: "50 zł",
   },
   {
     id: 5,
-    icon: "👑",
+    category: "Stylizacja",
     name: "Upięcie okolicznościowe",
-    description: "Elegancka fryzura na specjalne okazje",
     time: "60 min",
     price: "od 120 zł",
   },
@@ -128,7 +124,7 @@ const AnimatedCursor = ({
     >
       <path
         d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.45 0 .67-.53.35-.85L6.35 2.86a.5.5 0 0 0-.85.35Z"
-        fill="#722F37"
+        fill="#171717"
         stroke="white"
         strokeWidth="2.5"
       />
@@ -139,7 +135,7 @@ const AnimatedCursor = ({
         initial={{ scale: 0.5, opacity: 1 }}
         animate={{ scale: 2.5, opacity: 0 }}
         transition={{ duration: 0.5 }}
-        className="absolute top-1 left-1 w-6 h-6 rounded-full bg-[#722F37]/40"
+        className="absolute top-1 left-1 w-6 h-6 rounded-full bg-[#171717]/40"
       />
     )}
     {/* Dragging indicator */}
@@ -186,7 +182,7 @@ const SelectionBox = ({
         className="absolute top-0 left-0 rounded-sm"
         style={{
           backgroundColor: "rgba(212, 175, 55, 0.25)",
-          border: "2px solid #722F37",
+          border: "2px solid #171717",
           boxShadow: "0 0 0 1px rgba(114, 47, 55, 0.3)"
         }}
         initial={{ width: 0, height: 0 }}
@@ -203,22 +199,19 @@ const SelectionBox = ({
   );
 };
 
-// Service Item for AnimatedList
+// Service Item for AnimatedList - clean categorized items without icons
 const ServiceItem = ({ service }: { service: typeof generatedServices[0] }) => (
-  <div className="flex items-start gap-3 p-3 bg-white rounded-xl border border-slate-100 shadow-sm">
-    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#722F37]/10 to-[#D4AF37]/10 flex items-center justify-center text-lg flex-shrink-0">
-      {service.icon}
-    </div>
+  <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-slate-100">
     <div className="flex-1 min-w-0">
-      <div className="flex items-center justify-between gap-2">
-        <h4 className="font-semibold text-slate-800 text-sm truncate">{service.name}</h4>
-        <span className="text-[#722F37] font-bold text-sm whitespace-nowrap">{service.price}</span>
+      <div className="flex items-center gap-2 mb-0.5">
+        <span className="text-[10px] font-medium text-[#171717] bg-[#171717]/10 px-1.5 py-0.5 rounded">
+          {service.category}
+        </span>
       </div>
-      <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">{service.description}</p>
-      <div className="flex items-center gap-1 mt-1">
-        <span className="text-[10px] text-slate-400">⏱ {service.time}</span>
-      </div>
+      <h4 className="font-medium text-slate-800 text-sm">{service.name}</h4>
+      <span className="text-[10px] text-slate-400">{service.time}</span>
     </div>
+    <span className="text-[#171717] font-bold text-sm whitespace-nowrap ml-3">{service.price}</span>
   </div>
 );
 
@@ -422,7 +415,7 @@ export const HeroDemo = ({ className }: { className?: string }) => {
               className={cn(
                 "flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all cursor-pointer",
                 slide === s
-                  ? "bg-[#722F37] text-white shadow-lg shadow-[#722F37]/20"
+                  ? "bg-[#171717] text-white shadow-lg shadow-[#171717]/20"
                   : "bg-slate-100 text-slate-500 hover:bg-slate-200"
               )}
               animate={{ scale: slide === s ? 1.05 : 1 }}
@@ -441,31 +434,35 @@ export const HeroDemo = ({ className }: { className?: string }) => {
             {idx < 2 && (
               <div className={cn(
                 "w-8 h-0.5 rounded-full transition-colors",
-                (slide === 'paste' && idx === 0) || slide === 'generate' ? "bg-[#722F37]" : "bg-slate-200"
+                (slide === 'paste' && idx === 0) || slide === 'generate' ? "bg-[#171717]" : "bg-slate-200"
               )} />
             )}
           </React.Fragment>
         ))}
       </div>
 
-      {/* Demo container */}
-      <div className="relative rounded-2xl overflow-hidden border border-slate-200 bg-white shadow-2xl shadow-slate-200/50">
+      {/* Demo container - larger browser mockup with shine border */}
+      <div className="relative rounded-2xl bg-white shadow-2xl shadow-slate-200/50">
+        <ShineBorder shineColor={["#D4A574", "#E8C4A0", "#C9956C"]} borderWidth={2} duration={10} />
         {/* Browser mockup header */}
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-100 bg-slate-50">
-          <div className="flex gap-1.5">
-            <div className="w-3 h-3 rounded-full bg-red-400" />
-            <div className="w-3 h-3 rounded-full bg-yellow-400" />
-            <div className="w-3 h-3 rounded-full bg-green-400" />
+        <div className="flex items-center gap-2 px-5 py-3.5 border-b border-slate-100 bg-slate-50">
+          <div className="flex gap-2">
+            <div className="w-3.5 h-3.5 rounded-full bg-red-400" />
+            <div className="w-3.5 h-3.5 rounded-full bg-yellow-400" />
+            <div className="w-3.5 h-3.5 rounded-full bg-green-400" />
           </div>
           <div className="flex-1 flex justify-center">
-            <div className="px-4 py-1 bg-white rounded-md text-xs text-slate-500 border border-slate-200">
+            <div className="px-5 py-1.5 bg-white rounded-lg text-sm text-slate-500 border border-slate-200">
               {slide === 'excel' ? 'cennik.xlsx - Excel' : 'beautyaudit.pl/generator'}
             </div>
           </div>
         </div>
 
-        {/* Content area */}
-        <div className="p-4 min-h-[380px] relative bg-gradient-to-b from-white to-slate-50/50 overflow-hidden">
+        {/* Content area - slight inset to not overlap shine border */}
+        <div
+          className="p-6 min-h-[420px] relative bg-gradient-to-b from-white to-slate-50/50"
+          style={{ width: 'calc(100% - 4px)', marginLeft: '2px' }}
+        >
           <AnimatePresence mode="wait">
 
             {/* ========================================
@@ -581,7 +578,7 @@ export const HeroDemo = ({ className }: { className?: string }) => {
               >
                 {/* App header */}
                 <div className="flex items-center gap-2 mb-4">
-                  <div className="w-8 h-8 bg-[#722F37] rounded-lg flex items-center justify-center">
+                  <div className="w-8 h-8 bg-[#171717] rounded-lg flex items-center justify-center">
                     <span className="text-white text-lg">✨</span>
                   </div>
                   <span className="text-sm font-medium text-slate-600">Beauty Audit - Generator</span>
@@ -593,11 +590,11 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                     "rounded-xl p-4 min-h-[180px] relative transition-all duration-200",
                     "bg-white border-2",
                     textareaFocused
-                      ? "border-[#722F37] ring-2 ring-[#722F37]/20"
+                      ? "border-[#171717] ring-2 ring-[#171717]/20"
                       : "border-slate-200"
                   )}
                   animate={{
-                    borderColor: textareaFocused ? "#722F37" : "#e2e8f0"
+                    borderColor: textareaFocused ? "#171717" : "#e2e8f0"
                   }}
                 >
                   {showPastedText ? (
@@ -615,7 +612,7 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                       {/* Blinking text cursor */}
                       {showTextCursor && (
                         <motion.span
-                          className="inline-block w-0.5 h-5 bg-[#722F37] ml-0.5"
+                          className="inline-block w-0.5 h-5 bg-[#171717] ml-0.5"
                           animate={{ opacity: [1, 0] }}
                           transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
                         />
@@ -624,30 +621,29 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                   )}
                 </motion.div>
 
-                {/* Generate button */}
+                {/* Generate button - subtle, not dominant */}
                 <motion.button
                   animate={{
-                    scale: isCursorClicking && buttonHovered ? 0.95 : buttonHovered ? 1.02 : 1,
-                    backgroundColor: isProcessing ? "#5a252c" : buttonHovered ? "#8B3A42" : "#722F37",
-                    boxShadow: buttonHovered ? "0 10px 40px rgba(114, 47, 55, 0.4)" : "0 10px 30px rgba(114, 47, 55, 0.2)"
+                    scale: isCursorClicking && buttonHovered ? 0.97 : buttonHovered ? 1.01 : 1,
+                    backgroundColor: isProcessing ? "#171717" : buttonHovered ? "#faf5f5" : "#ffffff",
+                    borderColor: buttonHovered ? "#171717" : "#e2e8f0"
                   }}
                   transition={{ duration: 0.15 }}
-                  className="mt-4 w-full py-3 bg-[#722F37] text-white rounded-xl font-medium flex items-center justify-center gap-2"
+                  className="mt-4 w-full py-2.5 bg-white border border-slate-200 text-slate-700 rounded-lg text-sm font-medium flex items-center justify-center gap-2"
                 >
                   {isProcessing ? (
                     <>
                       <motion.div
                         animate={{ rotate: 360 }}
                         transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                        className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                        className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full"
                       />
-                      <span>Przetwarzanie...</span>
+                      <span className="text-white">Przetwarzanie...</span>
                     </>
                   ) : (
-                    <>
-                      <span className="text-lg">✨</span>
-                      Generuj cennik AI
-                    </>
+                    <span className={buttonHovered ? "text-[#171717]" : "text-slate-600"}>
+                      Generuj cennik
+                    </span>
                   )}
                 </motion.button>
 
@@ -681,7 +677,7 @@ export const HeroDemo = ({ className }: { className?: string }) => {
             )}
 
             {/* ========================================
-                SLIDE 3: AnimatedList generation
+                SLIDE 3: AnimatedList generation - auto-categorization
                 ======================================== */}
             {slide === 'generate' && (
               <motion.div
@@ -691,17 +687,10 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                 exit={{ opacity: 0, y: -20 }}
                 transition={{ duration: 0.4 }}
               >
-                {/* Header */}
+                {/* Header - simple, no spinning icon */}
                 <div className="flex items-center justify-between mb-4">
                   <div className="flex items-center gap-2">
-                    <motion.div
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                      className="w-8 h-8 bg-gradient-to-r from-[#722F37] to-[#D4AF37] rounded-lg flex items-center justify-center"
-                    >
-                      <span className="text-white text-sm">⚡</span>
-                    </motion.div>
-                    <span className="text-sm font-medium text-slate-600">AI generuje cennik...</span>
+                    <span className="text-sm font-medium text-slate-600">Automatyczna kategoryzacja</span>
                   </div>
                   <motion.span
                     initial={{ opacity: 0 }}
@@ -713,9 +702,9 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                   </motion.span>
                 </div>
 
-                {/* AnimatedList of services */}
-                <div className="overflow-hidden max-h-[300px]">
-                  <AnimatedList delay={1500} className="gap-3">
+                {/* AnimatedList of services - clean categorized items */}
+                <div className="overflow-hidden max-h-[340px]">
+                  <AnimatedList delay={1200} className="gap-2">
                     {generatedServices.map((service) => (
                       <ServiceItem key={service.id} service={service} />
                     ))}

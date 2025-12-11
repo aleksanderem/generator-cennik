@@ -12,7 +12,9 @@ import BooksyOptimizer from './components/BooksyOptimizer';
 import Header from './components/layout/Header';
 import PaywallModal from './components/shared/PaywallModal';
 import LandingPage from './components/pages/LandingPage';
+import { StickyBanner } from './components/ui/sticky-banner';
 import { useUser, SignInButton } from '@clerk/clerk-react';
+import { ChevronRight } from 'lucide-react';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2, Code2, Palette, Copy, CheckCircle, PanelRightOpen, PanelRightClose, LogIn } from 'lucide-react';
 
 type Page = 'home' | 'generator' | 'audit' | 'settings';
@@ -178,6 +180,24 @@ const App: React.FC = () => {
           body { font-family: '${themeConfig.fontBody}', sans-serif; }
         `}
       </style>
+
+      {/* Sticky Banner - at the very top */}
+      <StickyBanner>
+        <span className="text-[#D4A574]">✨</span>
+        <p className="text-white/90">
+          Zrób audyt swojego profilu w{' '}
+          <span className="font-semibold text-[#D4A574]">Booksy.pl</span>
+          {' '}i zyskaj nawet{' '}
+          <span className="font-bold text-white">50% więcej klientów!</span>
+        </p>
+        <a
+          href="/audit"
+          className="ml-2 inline-flex items-center gap-1 text-[#D4A574] font-medium hover:text-[#E8C4A0] transition-colors"
+        >
+          Dowiedz się więcej
+          <ChevronRight className="w-4 h-4" />
+        </a>
+      </StickyBanner>
 
       {/* Header with Navigation */}
       <Header
