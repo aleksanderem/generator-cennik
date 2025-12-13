@@ -22,17 +22,12 @@ const PRODUCTS = {
   audit: {
     priceId: process.env.STRIPE_PRICE_AUDIT!,
     credits: 1,
-    amount: 4900, // 49 zł w groszach
+    amount: 7990, // 79,90 zł w groszach
   },
-  optimize: {
-    priceId: process.env.STRIPE_PRICE_OPTIMIZE!,
-    credits: 1,
-    amount: 2900, // 29 zł w groszach
-  },
-  combo: {
-    priceId: process.env.STRIPE_PRICE_COMBO!,
-    credits: 2, // 1 audyt + 1 optymalizacja
-    amount: 6900, // 69 zł w groszach
+  audit_consultation: {
+    priceId: process.env.STRIPE_PRICE_AUDIT_CONSULTATION!,
+    credits: 1, // 1 audyt (konsultacja to osobna usługa)
+    amount: 24000, // 240 zł w groszach
   },
 } as const;
 
@@ -43,8 +38,7 @@ export const createCheckoutSession = action({
   args: {
     product: v.union(
       v.literal("audit"),
-      v.literal("optimize"),
-      v.literal("combo")
+      v.literal("audit_consultation")
     ),
     successUrl: v.string(),
     cancelUrl: v.string(),
@@ -59,20 +53,35 @@ export const createCheckoutSession = action({
       throw new Error("Musisz być zalogowany aby dokonać zakupu");
     }
 
-    // Pobierz użytkownika z bazy
-    const user: { _id: Id<"users"> } | null = await ctx.runQuery(internal.users.getUserByClerkId, {
+    // Pobierz lub utwórz użytkownika
+    let user: {
+      _id: Id<"users">;
+      stripeCustomerId?: string;
+      companyName?: string;
+      companyNip?: string;
+      companyAddress?: string;
+      companyCity?: string;
+      companyPostalCode?: string;
+    } | null = await ctx.runQuery(internal.users.getUserByClerkId, {
       clerkId: identity.subject,
     });
 
     if (!user) {
-      throw new Error("Użytkownik nie znaleziony");
+      // Auto-utwórz użytkownika jeśli nie istnieje
+      const userId = await ctx.runMutation(internal.users.upsertUser, {
+        clerkId: identity.subject,
+        email: identity.email || "",
+        name: identity.name,
+        avatarUrl: identity.pictureUrl,
+      });
+      user = { _id: userId };
     }
 
     const productConfig = PRODUCTS[args.product];
-
-    // Stwórz sesję Stripe Checkout
     const stripe = getStripe();
-    const session: Stripe.Checkout.Session = await stripe.checkout.sessions.create({
+
+    // Konfiguracja checkout session
+    const checkoutConfig: Stripe.Checkout.SessionCreateParams = {
       payment_method_types: ["card", "p24", "blik"],
       line_items: [
         {
@@ -84,14 +93,54 @@ export const createCheckoutSession = action({
       success_url: `${args.successUrl}?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: args.cancelUrl,
       client_reference_id: identity.subject, // clerkId
-      customer_email: identity.email || undefined,
       metadata: {
         product: args.product,
         userId: user._id,
         clerkId: identity.subject,
       },
       locale: "pl",
-    });
+      // Zbierz dane do faktury podczas checkout
+      billing_address_collection: "required",
+      // Dodatkowe pola - NIP i nazwa firmy
+      custom_fields: [
+        {
+          key: "company_name",
+          label: { type: "custom" as const, custom: "Nazwa firmy (opcjonalnie, do faktury)" },
+          type: "text" as const,
+          optional: true,
+        },
+        {
+          key: "nip",
+          label: { type: "custom" as const, custom: "NIP (opcjonalnie, do faktury)" },
+          type: "text" as const,
+          optional: true,
+        },
+      ],
+      // Włącz automatyczne faktury
+      invoice_creation: {
+        enabled: true,
+        invoice_data: {
+          description: args.product === "audit"
+            ? "Audyt AI profilu Booksy"
+            : "Audyt AI + Konsultacja eksperta",
+        },
+      },
+    };
+
+    // Jeśli użytkownik ma już stripeCustomerId, użyj go
+    if (user.stripeCustomerId) {
+      checkoutConfig.customer = user.stripeCustomerId;
+      checkoutConfig.customer_update = {
+        address: "auto",
+        name: "auto",
+      };
+    } else {
+      // Dla nowego klienta - pozwól Stripe utworzyć go automatycznie
+      checkoutConfig.customer_email = identity.email || undefined;
+      checkoutConfig.customer_creation = "always";
+    }
+
+    const session = await stripe.checkout.sessions.create(checkoutConfig);
 
     // Zapisz pending purchase
     await ctx.runMutation(internal.purchases.createPendingPurchase, {
@@ -114,7 +163,7 @@ export const verifySession = action({
   returns: v.object({
     success: v.boolean(),
     product: v.optional(
-      v.union(v.literal("audit"), v.literal("optimize"), v.literal("combo"))
+      v.union(v.literal("audit"), v.literal("audit_consultation"))
     ),
   }),
   handler: async (ctx, args) => {
@@ -134,6 +183,147 @@ export const verifySession = action({
       console.error("Error verifying session:", error);
       return { success: false };
     }
+  },
+});
+
+// Tworzenie sesji Stripe Customer Portal (do faktur i historii płatności)
+export const createCustomerPortalSession = action({
+  args: {
+    returnUrl: v.string(),
+  },
+  returns: v.object({
+    url: v.union(v.string(), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Musisz być zalogowany");
+    }
+
+    // Pobierz użytkownika
+    const user = await ctx.runQuery(internal.users.getUserByClerkId, {
+      clerkId: identity.subject,
+    });
+
+    if (!user || !user.stripeCustomerId) {
+      // Brak klienta Stripe - nie było jeszcze płatności
+      return { url: null };
+    }
+
+    const stripe = getStripe();
+    const session = await stripe.billingPortal.sessions.create({
+      customer: user.stripeCustomerId,
+      return_url: args.returnUrl,
+    });
+
+    return { url: session.url };
+  },
+});
+
+// Pobierz faktury użytkownika ze Stripe
+export const getInvoices = action({
+  args: {},
+  returns: v.array(
+    v.object({
+      id: v.string(),
+      number: v.union(v.string(), v.null()),
+      status: v.string(),
+      amount: v.number(),
+      currency: v.string(),
+      created: v.number(),
+      pdfUrl: v.union(v.string(), v.null()),
+      hostedUrl: v.union(v.string(), v.null()),
+      description: v.union(v.string(), v.null()),
+    })
+  ),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+
+    const user = await ctx.runQuery(internal.users.getUserByClerkId, {
+      clerkId: identity.subject,
+    });
+
+    if (!user || !user.stripeCustomerId) {
+      return [];
+    }
+
+    const stripe = getStripe();
+
+    try {
+      const invoices = await stripe.invoices.list({
+        customer: user.stripeCustomerId,
+        limit: 50,
+      });
+
+      return invoices.data.map((inv) => ({
+        id: inv.id,
+        number: inv.number,
+        status: inv.status || "unknown",
+        amount: inv.amount_paid || inv.total || 0,
+        currency: inv.currency,
+        created: inv.created,
+        pdfUrl: inv.invoice_pdf,
+        hostedUrl: inv.hosted_invoice_url,
+        description: inv.description,
+      }));
+    } catch (error) {
+      console.error("Error fetching invoices:", error);
+      return [];
+    }
+  },
+});
+
+// Synchronizuj stripeCustomerId z Stripe (znajdź klienta po emailu)
+export const syncStripeCustomer = action({
+  args: {},
+  returns: v.object({
+    success: v.boolean(),
+    customerId: v.optional(v.string()),
+    message: v.optional(v.string()),
+  }),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return { success: false, message: "Musisz być zalogowany" };
+    }
+
+    const user = await ctx.runQuery(internal.users.getUserByClerkId, {
+      clerkId: identity.subject,
+    });
+
+    if (!user) {
+      return { success: false, message: "Użytkownik nie znaleziony" };
+    }
+
+    // Jeśli już ma stripeCustomerId, zwróć sukces
+    if (user.stripeCustomerId) {
+      return { success: true, customerId: user.stripeCustomerId, message: "Już zsynchronizowany" };
+    }
+
+    const stripe = getStripe();
+
+    // Szukaj klienta po emailu
+    const customers = await stripe.customers.list({
+      email: identity.email || user.email,
+      limit: 1,
+    });
+
+    if (customers.data.length === 0) {
+      return { success: false, message: "Nie znaleziono klienta w Stripe" };
+    }
+
+    const customerId = customers.data[0].id;
+
+    // Zapisz stripeCustomerId
+    await ctx.runMutation(internal.users.setStripeCustomerId, {
+      userId: user._id,
+      stripeCustomerId: customerId,
+    });
+
+    return { success: true, customerId, message: "Zsynchronizowano pomyślnie" };
   },
 });
 
@@ -191,23 +381,113 @@ export const handleWebhook = internalAction({
               });
 
             if (purchase) {
-              // Mapowanie produktu na kredyty
-              const creditsMap: Record<ProductType, number> = {
-                audit: 1,
-                optimize: 1,
-                combo: 2,
-              };
-
-              const creditsToAdd = creditsMap[purchase.product] || 1;
-
-              // Dodaj kredyty użytkownikowi
-              await ctx.runMutation(internal.users.addCredits, {
+              // Utwórz audyt w statusie pending
+              await ctx.runMutation(internal.audits.createPendingAudit, {
                 userId: purchase.userId,
-                amount: creditsToAdd,
+                purchaseId: purchaseId,
               });
 
+              // Pobierz dane z custom_fields (NIP i nazwa firmy)
+              let customCompanyName: string | undefined;
+              let customNip: string | undefined;
+
+              if (session.custom_fields) {
+                for (const field of session.custom_fields) {
+                  if (field.key === "company_name" && field.text?.value) {
+                    customCompanyName = field.text.value;
+                  }
+                  if (field.key === "nip" && field.text?.value) {
+                    // Wyczyść NIP z myślników i spacji
+                    customNip = field.text.value.replace(/[-\s]/g, "");
+                  }
+                }
+              }
+
+              // Pobierz dane klienta ze Stripe i zsynchronizuj do bazy
+              if (session.customer) {
+                const customerId = typeof session.customer === "string"
+                  ? session.customer
+                  : session.customer.id;
+
+                // Zapisz stripeCustomerId jeśli jeszcze nie mamy
+                await ctx.runMutation(internal.users.setStripeCustomerId, {
+                  userId: purchase.userId,
+                  stripeCustomerId: customerId,
+                });
+
+                try {
+                  const customer = await stripe.customers.retrieve(customerId, {
+                    expand: ["tax_ids"],
+                  });
+
+                  if (customer && !customer.deleted) {
+                    // Wyciągnij NIP z tax_ids (jeśli nie ma z custom field)
+                    let companyNip = customNip;
+                    if (!companyNip && "tax_ids" in customer && customer.tax_ids?.data) {
+                      const euVat = customer.tax_ids.data.find(
+                        (t) => t.type === "eu_vat" && t.value?.startsWith("PL")
+                      );
+                      if (euVat?.value) {
+                        companyNip = euVat.value.replace(/^PL/, "");
+                      }
+                    }
+
+                    // Synchronizuj dane do bazy
+                    await ctx.runMutation(internal.users.syncCompanyDataFromStripe, {
+                      userId: purchase.userId,
+                      companyName: customCompanyName || customer.name || undefined,
+                      companyNip,
+                      companyAddress: customer.address?.line1 || undefined,
+                      companyCity: customer.address?.city || undefined,
+                      companyPostalCode: customer.address?.postal_code || undefined,
+                    });
+
+                    // Zaktualizuj klienta w Stripe jeśli mamy NIP z custom field
+                    if (customNip || customCompanyName) {
+                      try {
+                        const updateData: Stripe.CustomerUpdateParams = {
+                          metadata: {},
+                        };
+                        if (customCompanyName) {
+                          updateData.name = customCompanyName;
+                        }
+                        if (customNip) {
+                          updateData.metadata = { nip: customNip };
+                        }
+                        await stripe.customers.update(customerId, updateData);
+
+                        // Dodaj tax_id jeśli mamy NIP i jeszcze nie ma
+                        if (customNip) {
+                          const existingTaxIds = "tax_ids" in customer ? customer.tax_ids?.data : [];
+                          const hasPolishVat = existingTaxIds?.some(
+                            (t) => t.type === "eu_vat" && t.value?.startsWith("PL")
+                          );
+                          if (!hasPolishVat) {
+                            await stripe.customers.createTaxId(customerId, {
+                              type: "eu_vat",
+                              value: `PL${customNip}`,
+                            });
+                          }
+                        }
+                      } catch (updateErr) {
+                        console.error("Error updating customer with NIP:", updateErr);
+                      }
+                    }
+                  }
+                } catch (err) {
+                  console.error("Error fetching customer data:", err);
+                }
+              } else if (customNip || customCompanyName) {
+                // Jeśli nie ma customera, ale mamy dane z custom_fields
+                await ctx.runMutation(internal.users.syncCompanyDataFromStripe, {
+                  userId: purchase.userId,
+                  companyName: customCompanyName,
+                  companyNip: customNip,
+                });
+              }
+
               console.log(
-                `Added ${creditsToAdd} credits to user ${purchase.userId}`
+                `Created pending audit for user ${purchase.userId}`
               );
             }
           }

@@ -581,7 +581,7 @@ export const HeroDemo = ({ className }: { className?: string }) => {
                   <div className="w-8 h-8 bg-[#171717] rounded-lg flex items-center justify-center">
                     <span className="text-white text-lg">✨</span>
                   </div>
-                  <span className="text-sm font-medium text-slate-600">Beauty Audit - Generator</span>
+                  <span className="text-sm font-medium text-slate-600">BooksyAudit.pl - Generator</span>
                 </div>
 
                 {/* Textarea - looks like real textarea */}

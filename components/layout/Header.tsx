@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   SignInButton,
   SignUpButton,
@@ -15,10 +15,13 @@ import {
   Sparkles,
   Menu,
   Crown,
-  X
+  X,
+  Play,
+  Loader2,
+  User
 } from 'lucide-react';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'profile';
 
 interface HeaderProps {
   currentPage: Page;
@@ -34,6 +37,11 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
   // Pobierz dane użytkownika z Convex (kredyty)
   const user = useQuery(api.users.getCurrentUser);
   const credits = user?.credits ?? 0;
+
+  // Pobierz aktywny audyt (pending lub processing)
+  const activeAudit = useQuery(api.audits.getActiveAudit);
+  const hasProcessing = activeAudit?.status === 'processing';
+  const hasPending = activeAudit?.status === 'pending';
 
   const navItems = [
     { id: 'generator' as Page, label: 'Generator', icon: FileText, premium: false },
@@ -61,7 +69,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
           >
             <div className="flex flex-col">
               <span className="font-serif text-xl font-bold text-[#722F37] leading-none group-hover:text-[#B76E79] transition-colors">
-                Beauty Audit
+                BooksyAudit.pl
               </span>
               <span className="font-handwriting text-lg text-[#B76E79] -mt-1 ml-auto transform -rotate-2">
                 by Alex M.
@@ -111,6 +119,44 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
           {/* Right side - Auth & Credits */}
           <div className="flex items-center gap-3">
 
+            {/* Audyt w trakcie - mrugająca lampka */}
+            {isSignedIn && hasProcessing && (
+              <Link
+                to="/profile"
+                className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-amber-50 rounded-full border border-amber-200 hover:bg-amber-100 transition-colors"
+              >
+                <span className="relative flex h-2.5 w-2.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                </span>
+                <span className="text-sm font-medium text-amber-700">
+                  Audyt w trakcie
+                </span>
+              </Link>
+            )}
+
+            {/* Rozpocznij audyt - dla użytkowników z pending audytem */}
+            {isSignedIn && hasPending && (
+              <Link
+                to="/start-audit"
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-lg hover:shadow-lg hover:shadow-[#D4A574]/25 transition-all text-sm font-medium"
+              >
+                <Play size={14} />
+                Rozpocznij audyt
+              </Link>
+            )}
+
+            {/* Rozpocznij audyt - dla użytkowników z kredytami (bez aktywnego audytu) */}
+            {isSignedIn && credits > 0 && !activeAudit && (
+              <Link
+                to="/start-audit"
+                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-lg hover:shadow-lg hover:shadow-[#D4A574]/25 transition-all text-sm font-medium"
+              >
+                <Play size={14} />
+                Rozpocznij audyt
+              </Link>
+            )}
+
             {/* Credits Badge */}
             {isSignedIn && credits > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-[#B76E79]/10 to-[#D4AF37]/10 rounded-full border border-[#D4AF37]/30">
@@ -119,6 +165,17 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                   {credits} {credits === 1 ? 'kredyt' : 'kredyty'}
                 </span>
               </div>
+            )}
+
+            {/* Profile Link */}
+            {isSignedIn && (
+              <Link
+                to="/profile"
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-slate-600 hover:text-[#722F37] transition-colors"
+              >
+                <User size={16} />
+                Profil
+              </Link>
             )}
 
             {/* Auth Buttons */}
@@ -185,20 +242,36 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
               ))}
 
               {isSignedIn && (
-                <Link
-                  to="/settings"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
-                    ${currentPage === 'settings'
-                      ? 'bg-[#722F37]/10 text-[#722F37]'
-                      : 'text-slate-600 hover:bg-slate-50'
-                    }
-                  `}
-                >
-                  <Settings size={20} />
-                  <span className="font-medium">Ustawienia</span>
-                </Link>
+                <>
+                  <Link
+                    to="/profile"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
+                      ${currentPage === 'profile'
+                        ? 'bg-[#722F37]/10 text-[#722F37]'
+                        : 'text-slate-600 hover:bg-slate-50'
+                      }
+                    `}
+                  >
+                    <User size={20} />
+                    <span className="font-medium">Profil</span>
+                  </Link>
+                  <Link
+                    to="/settings"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`
+                      w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
+                      ${currentPage === 'settings'
+                        ? 'bg-[#722F37]/10 text-[#722F37]'
+                        : 'text-slate-600 hover:bg-slate-50'
+                      }
+                    `}
+                  >
+                    <Settings size={20} />
+                    <span className="font-medium">Ustawienia</span>
+                  </Link>
+                </>
               )}
 
               {!isSignedIn && isLoaded && (
@@ -223,6 +296,35 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                     {credits} {credits === 1 ? 'kredyt' : 'kredyty'}
                   </span>
                 </div>
+              )}
+
+              {/* Mobile: Audyt w trakcie */}
+              {isSignedIn && hasProcessing && (
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center gap-2 px-4 py-3 mt-2 bg-amber-50 rounded-lg border border-amber-200"
+                >
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                  </span>
+                  <span className="text-sm font-medium text-amber-700">
+                    Audyt w trakcie
+                  </span>
+                </Link>
+              )}
+
+              {/* Mobile: Rozpocznij audyt */}
+              {isSignedIn && (hasPending || (credits > 0 && !activeAudit)) && (
+                <Link
+                  to="/start-audit"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-center gap-2 px-4 py-3 mt-2 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-lg font-medium"
+                >
+                  <Play size={16} />
+                  Rozpocznij audyt
+                </Link>
               )}
             </div>
           </div>

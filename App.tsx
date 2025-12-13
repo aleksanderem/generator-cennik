@@ -12,12 +12,17 @@ import BooksyOptimizer from './components/BooksyOptimizer';
 import Header from './components/layout/Header';
 import PaywallModal from './components/shared/PaywallModal';
 import LandingPage from './components/pages/LandingPage';
+import GeneratorPage from './components/pages/GeneratorPage';
+import SuccessPage from './components/pages/SuccessPage';
+import ProfilePage from './components/pages/ProfilePage';
+import StartAuditPage from './components/pages/StartAuditPage';
+import DevMenu from './components/dev/DevMenu';
 import { StickyBanner } from './components/ui/sticky-banner';
 import { useUser, SignInButton } from '@clerk/clerk-react';
 import { ChevronRight } from 'lucide-react';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2, Code2, Palette, Copy, CheckCircle, PanelRightOpen, PanelRightClose, LogIn } from 'lucide-react';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -35,6 +40,9 @@ const App: React.FC = () => {
     if (path === '/generator') return 'generator';
     if (path === '/audit') return 'audit';
     if (path === '/settings') return 'settings';
+    if (path === '/success') return 'success';
+    if (path === '/profile') return 'profile';
+    if (path === '/start-audit') return 'start-audit';
     return 'home';
   };
 
@@ -181,30 +189,34 @@ const App: React.FC = () => {
         `}
       </style>
 
-      {/* Sticky Banner - at the very top */}
-      <StickyBanner>
-        <span className="text-[#D4A574]">✨</span>
-        <p className="text-white/90">
-          Zrób audyt swojego profilu w{' '}
-          <span className="font-semibold text-[#D4A574]">Booksy.pl</span>
-          {' '}i zyskaj nawet{' '}
-          <span className="font-bold text-white">50% więcej klientów!</span>
-        </p>
-        <a
-          href="/audit"
-          className="ml-2 inline-flex items-center gap-1 text-[#D4A574] font-medium hover:text-[#E8C4A0] transition-colors"
-        >
-          Dowiedz się więcej
-          <ChevronRight className="w-4 h-4" />
-        </a>
-      </StickyBanner>
+      {/* Sticky Banner - at the very top (hidden on success/start-audit pages) */}
+      {currentPage !== 'success' && currentPage !== 'start-audit' && (
+        <StickyBanner>
+          <span className="text-[#D4A574]">✨</span>
+          <p className="text-white/90">
+            Zrób audyt swojego profilu w{' '}
+            <span className="font-semibold text-[#D4A574]">Booksy.pl</span>
+            {' '}i zyskaj nawet{' '}
+            <span className="font-bold text-white">50% więcej klientów!</span>
+          </p>
+          <a
+            href="/audit"
+            className="ml-2 inline-flex items-center gap-1 text-[#D4A574] font-medium hover:text-[#E8C4A0] transition-colors"
+          >
+            Dowiedz się więcej
+            <ChevronRight className="w-4 h-4" />
+          </a>
+        </StickyBanner>
+      )}
 
-      {/* Header with Navigation */}
-      <Header
-        currentPage={currentPage}
-        onNavigate={handleNavigate}
-        onOpenPaywall={() => setIsPaywallOpen(true)}
-      />
+      {/* Header with Navigation (hidden on success/start-audit pages) */}
+      {currentPage !== 'success' && currentPage !== 'start-audit' && (
+        <Header
+          currentPage={currentPage}
+          onNavigate={handleNavigate}
+          onOpenPaywall={() => setIsPaywallOpen(true)}
+        />
+      )}
 
       {/* Paywall Modal */}
       <PaywallModal
@@ -223,6 +235,16 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Page: SUCCESS - Full screen without header */}
+        {currentPage === 'success' && (
+          <SuccessPage />
+        )}
+
+        {/* Page: START-AUDIT - Full screen for users with credits */}
+        {currentPage === 'start-audit' && (
+          <StartAuditPage />
+        )}
+
         {/* Page: HOME (Landing) - Full width */}
         {currentPage === 'home' && (
           <LandingPage
@@ -231,351 +253,16 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Pages with constrained width (not landing) */}
-        {currentPage !== 'home' && (
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-
-        {/* Page: GENERATOR */}
-        {currentPage === 'generator' && appState === AppState.INPUT && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-             {/* Premium Header with gradient accent */}
-             <div className="text-center mb-12 relative">
-
-                <div className="relative">
-                  {/* Badge */}
-                  <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-gradient-to-r from-[#722F37]/10 to-[#B76E79]/10 rounded-full text-sm font-medium text-[#722F37] mb-6 border border-[#B76E79]/20">
-                    <Sparkles size={14} className="text-[#D4AF37]" />
-                    Generator Cenników AI
-                  </div>
-
-                  <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-slate-900 mb-5 tracking-tight" style={{ fontFamily: themeConfig.fontHeading }}>
-                    Zamień <span className="text-[#722F37]">arkusz</span> w <span className="bg-gradient-to-r from-[#722F37] to-[#B76E79] bg-clip-text text-transparent">elegancki cennik</span>
-                  </h1>
-                  <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed" style={{ fontFamily: themeConfig.fontBody }}>
-                    Nie trać czasu na ręczne formatowanie HTML.
-                    <br className="hidden sm:block" />
-                    <span className="text-[#722F37] font-medium">Wklej dane, a AI zrobi resztę.</span>
-                  </p>
-                </div>
-             </div>
-
-             {/* Mode Navigation Tabs - Premium Style */}
-             <div className="flex justify-center mb-10">
-                <div className="bg-white p-1.5 rounded-2xl inline-flex shadow-lg shadow-slate-200/50 border border-slate-200/50">
-                   <button
-                    onClick={() => setInputMode('PASTE')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${inputMode === 'PASTE' ? 'bg-gradient-to-r from-[#722F37] to-[#B76E79] text-white shadow-lg shadow-[#722F37]/20' : 'text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5'}`}
-                   >
-                     <FileText size={16} />
-                     Wklej tekst
-                   </button>
-                   <button
-                    onClick={() => setInputMode('IMPORT')}
-                    className={`flex items-center gap-2 px-6 py-3 rounded-xl text-sm font-semibold transition-all duration-300 ${inputMode === 'IMPORT' ? 'bg-gradient-to-r from-[#722F37] to-[#B76E79] text-white shadow-lg shadow-[#722F37]/20' : 'text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5'}`}
-                   >
-                     <Link size={16} />
-                     Audyt i Import
-                     <span className="text-[10px] bg-[#D4AF37] text-white px-1.5 py-0.5 rounded-full font-bold">BETA</span>
-                   </button>
-                </div>
-             </div>
-
-             {/* Content based on Mode */}
-             <div className="transition-all duration-300">
-               {inputMode === 'PASTE' ? (
-                 <InputSection
-                   onProcess={handleProcessData}
-                   isLoading={false}
-                   initialValue={importedText}
-                 />
-               ) : (
-                 <BooksyOptimizer
-                   onUseData={handleImportedData}
-                   integrationMode={themeConfig.integrationMode}
-                 />
-               )}
-             </div>
-          </div>
+        {/* Page: GENERATOR - Hero Section (full width) */}
+        {currentPage === 'generator' && (
+          <GeneratorPage
+            onOpenPaywall={() => setIsPaywallOpen(true)}
+          />
         )}
 
-        {/* Page: GENERATOR - State: PROCESSING */}
-        {currentPage === 'generator' && appState === AppState.PROCESSING && (
-          <div className="flex flex-col items-center justify-center py-16 lg:py-24 animate-in fade-in duration-500 relative">
-
-            <TerminalLoader
-              isDataReady={isApiDataReady}
-              onComplete={handleLoaderComplete}
-            />
-
-            <h2 className="mt-12 text-2xl md:text-3xl font-serif font-bold text-slate-800" style={{ fontFamily: themeConfig.fontHeading }}>
-              <span className="bg-gradient-to-r from-[#722F37] to-[#B76E79] bg-clip-text text-transparent">AI</span> przetwarza dane...
-            </h2>
-            <p className="mt-3 text-slate-500 text-center max-w-md mx-auto leading-relaxed" style={{ fontFamily: themeConfig.fontBody }}>
-              Proszę czekać, sztuczna inteligencja analizuje i kategoryzuje Twoje usługi.
-            </p>
-
-            {/* Progress indicators */}
-            <div className="flex items-center gap-6 mt-8">
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <div className="w-2 h-2 bg-[#722F37] rounded-full animate-pulse" />
-                Analiza struktury
-              </div>
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <div className="w-2 h-2 bg-[#B76E79] rounded-full animate-pulse animation-delay-300" />
-                Kategoryzacja
-              </div>
-              <div className="flex items-center gap-2 text-sm text-slate-400">
-                <div className="w-2 h-2 bg-[#D4AF37] rounded-full animate-pulse animation-delay-600" />
-                Formatowanie
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Page: GENERATOR - State: PREVIEW */}
-        {currentPage === 'generator' && appState === AppState.PREVIEW && pricingData && (
-          <div className="animate-in fade-in duration-300 pb-16 max-w-none">
-            {/* Clean Header */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={resetApp}
-                  className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                >
-                  <ArrowLeft size={18} />
-                </button>
-                <h2 className="text-xl font-semibold text-slate-800" style={{ fontFamily: themeConfig.fontHeading }}>
-                  Podgląd cennika
-                </h2>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* View Mode Toggle - Clean Style */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-lg relative z-20">
-                   <button
-                     onClick={() => handleViewChange('ORIGINAL')}
-                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'ORIGINAL' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                     <LayoutList size={14} /> Oryginał
-                   </button>
-                   <button
-                     onClick={() => handleViewChange('OPTIMIZED')}
-                     disabled={isOptimizing && viewMode === 'OPTIMIZED'}
-                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'OPTIMIZED' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                     {isOptimizing && viewMode === 'OPTIMIZED' ? <Loader2 size={14} className="animate-spin"/> : <Sparkles size={14} />}
-                     AI
-                   </button>
-                   <button
-                     onClick={() => handleViewChange('SPLIT')}
-                     disabled={isOptimizing && viewMode === 'SPLIT'}
-                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'SPLIT' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                   >
-                     {isOptimizing && viewMode === 'SPLIT' ? <Loader2 size={14} className="animate-spin"/> : <Columns2 size={14} />}
-                     Porównaj
-                   </button>
-                </div>
-
-                {/* Config Panel Toggle Button */}
-                <button
-                  onClick={() => setIsConfigOpen(!isConfigOpen)}
-                  className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-[#722F37] text-white' : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'}`}
-                  title="Personalizacja"
-                >
-                  {isConfigOpen ? <PanelRightClose size={18} /> : <Palette size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <div className="grid lg:grid-cols-12 gap-6 items-start">
-
-              {/* Main Preview Area */}
-              <div className={viewMode === 'SPLIT' ? "lg:col-span-12" : "lg:col-span-8"}>
-                 
-                 {viewMode === 'SPLIT' ? (
-                   // SIDE-BY-SIDE COMPARISON
-                   <div className="grid md:grid-cols-2 gap-6 animate-in fade-in">
-                      {/* Left: Original */}
-                      <div 
-                        className="p-6 rounded-xl shadow-sm border border-slate-200 bg-white relative overflow-hidden"
-                        style={{ borderTop: `4px solid ${themeConfig.mutedColor}` }}
-                      >
-                         <div className="mb-6 text-left">
-                            <h3 className="font-bold text-lg text-slate-700 font-serif">Wersja Oryginalna</h3>
-                            <p className="text-xs text-slate-400">Bez zmian</p>
-                         </div>
-                         <div className="space-y-2">
-                            {pricingData.categories.map((category, idx) => (
-                              <Accordion key={idx} category={category} defaultOpen={false} theme={themeConfig} />
-                            ))}
-                         </div>
-                      </div>
-
-                      {/* Right: Optimized */}
-                      <div 
-                        className="p-6 rounded-xl shadow-lg border border-indigo-100 bg-white relative overflow-hidden"
-                        style={{ borderTop: `4px solid ${themeConfig.primaryColor}` }}
-                      >
-                         <div className="absolute top-0 right-0 bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-1 rounded-bl-lg">AI</div>
-                         <div className="mb-6 text-left">
-                            <h3 className="font-bold text-lg font-serif" style={{ color: themeConfig.primaryColor }}>Wersja Zoptymalizowana</h3>
-                            <p className="text-xs text-slate-400">Po audycie i poprawkach</p>
-                         </div>
-                         <div className="space-y-2 relative min-h-[200px]">
-                            {isOptimizing || !optimizedPricingData ? (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white z-10 animate-in fade-in">
-                                 <Loader2 size={32} className="text-indigo-500 animate-spin mb-3" />
-                                 <p className="text-sm font-medium text-indigo-800 animate-pulse">Sztuczna inteligencja przebudowuje ofertę...</p>
-                              </div>
-                            ) : (
-                              optimizedPricingData?.categories.map((category, idx) => (
-                                <Accordion key={idx} category={category} defaultOpen={false} theme={themeConfig} />
-                              ))
-                            )}
-                         </div>
-                      </div>
-                   </div>
-                 ) : (
-                   // SINGLE VIEW (Original or Optimized) - Clean Design
-                   <div
-                     className="p-6 rounded-xl border bg-white"
-                     style={{
-                       borderColor: themeConfig.boxBorderColor,
-                     }}
-                   >
-                      {/* Simple header */}
-                      <div className="mb-6 pb-4 border-b" style={{ borderColor: themeConfig.boxBorderColor }}>
-                        <h3
-                          className="text-lg font-semibold"
-                          style={{
-                            fontFamily: themeConfig.fontHeading,
-                            color: themeConfig.textColor
-                          }}
-                        >
-                          {currentDisplayData.salonName || "Cennik usług"}
-                        </h3>
-                        {viewMode === 'OPTIMIZED' && (
-                          <span className="text-xs text-slate-500 mt-1 inline-flex items-center gap-1">
-                            <Sparkles size={10} /> Wersja zoptymalizowana
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Services list */}
-                      <div className="relative min-h-[200px]">
-                        {viewMode === 'OPTIMIZED' && !optimizedPricingData && isOptimizing && (
-                          <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/90 z-10">
-                             <Loader2 size={24} className="text-slate-400 animate-spin mb-2" />
-                             <p className="text-sm text-slate-500">Optymalizowanie...</p>
-                          </div>
-                        )}
-
-                        {currentDisplayData.categories.map((category, idx) => (
-                          <Accordion
-                            key={idx}
-                            category={category}
-                            defaultOpen={idx === 0}
-                            theme={themeConfig}
-                          />
-                        ))}
-                      </div>
-                   </div>
-                 )}
-              </div>
-
-              {/* Right Column: Export Card Only */}
-              <div className={viewMode === 'SPLIT' ? "lg:col-span-12" : "lg:col-span-4 lg:sticky lg:top-24"}>
-                 {/* Export Card - Clean Style */}
-                 <div className="bg-white rounded-xl border border-slate-200 overflow-hidden h-fit">
-                    {/* Card Header */}
-                    <div className="p-5 border-b border-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center">
-                          <CheckCircle size={20} className="text-[#722F37]" />
-                        </div>
-                        <div>
-                          <h2 className="text-lg font-semibold text-slate-800" style={{ fontFamily: themeConfig.fontHeading }}>
-                            Cennik gotowy
-                          </h2>
-                          <p className="text-sm text-slate-500">Pobierz kod HTML</p>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Card Body */}
-                    <div className="p-5">
-                      {/* Stats - simplified */}
-                      <div className="flex items-center gap-4 mb-5 pb-5 border-b border-slate-100">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl font-semibold text-slate-800">{currentDisplayData.categories.length}</span>
-                          <span className="text-sm text-slate-500">kategorii</span>
-                        </div>
-                        <div className="w-px h-4 bg-slate-200" />
-                        <div className="flex items-center gap-2">
-                          <span className="text-xl font-semibold text-slate-800">
-                            {currentDisplayData.categories.reduce((acc, cat) => acc + cat.services.length, 0)}
-                          </span>
-                          <span className="text-sm text-slate-500">usług</span>
-                        </div>
-                      </div>
-
-                      {/* Version info */}
-                      <div className="flex items-center gap-2 mb-5">
-                        <div className={`w-2 h-2 rounded-full ${viewMode === 'OPTIMIZED' ? 'bg-[#D4AF37]' : 'bg-[#722F37]'}`} />
-                        <span className="text-sm text-slate-600">
-                          Wersja: <span className="font-medium">{viewMode === 'ORIGINAL' ? 'Oryginalna' : 'Zoptymalizowana AI'}</span>
-                        </span>
-                      </div>
-
-                      {/* Checklist - simplified */}
-                      <div className="space-y-1.5 mb-5">
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                          <Check size={14} className="text-green-600" />
-                          <span>Responsywny design</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                          <Check size={14} className="text-green-600" />
-                          <span>Gotowy do wklejenia w Booksy</span>
-                        </div>
-                      </div>
-
-                      {/* Embed Code */}
-                      <EmbedCode
-                        data={currentDisplayData}
-                        theme={themeConfig}
-                      />
-                    </div>
-                 </div>
-              </div>
-            </div>
-
-            {/* Slide-over Config Panel Drawer */}
-            {isConfigOpen && (
-              <>
-                {/* Backdrop */}
-                <div
-                  className="fixed inset-0 bg-black/20 z-40 animate-in fade-in duration-200"
-                  onClick={() => setIsConfigOpen(false)}
-                />
-                {/* Drawer */}
-                <div className="fixed top-0 right-0 h-full w-full max-w-md bg-white shadow-xl z-50 animate-in slide-in-from-right duration-300 overflow-y-auto">
-                  <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between z-10">
-                    <h2 className="text-lg font-semibold text-slate-800">Personalizacja</h2>
-                    <button
-                      onClick={() => setIsConfigOpen(false)}
-                      className="p-2 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
-                    >
-                      <X size={20} />
-                    </button>
-                  </div>
-                  <div className="p-5">
-                    <ConfigPanel config={themeConfig} onChange={handleThemeChange} />
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {/* Pages with constrained width (not landing/generator/success/start-audit) */}
+        {currentPage !== 'home' && currentPage !== 'generator' && currentPage !== 'success' && currentPage !== 'start-audit' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         {/* Page: AUDIT (Premium) */}
         {currentPage === 'audit' && (
@@ -644,8 +331,11 @@ const App: React.FC = () => {
                     Jednorazowa analiza z pełnym raportem PDF i rekomendacjami do wdrożenia.
                   </p>
 
+                  <div className="flex items-baseline justify-center gap-2 mb-2">
+                    <span className="text-white/40 line-through text-lg">149,99 zł</span>
+                  </div>
                   <div className="flex items-baseline justify-center gap-2 mb-6">
-                    <span className="text-4xl font-serif font-bold">49 zł</span>
+                    <span className="text-4xl font-serif font-bold">79,90 zł</span>
                     <span className="text-white/60 text-sm">jednorazowo</span>
                   </div>
 
@@ -670,7 +360,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check size={14} className="text-green-500" />
-                  Raport w 5 minut
+                  Raport do 90 min
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Check size={14} className="text-green-500" />
@@ -704,18 +394,26 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* Page: PROFILE */}
+        {currentPage === 'profile' && (
+          <ProfilePage />
+        )}
+
           </div>
         )}
       </main>
 
-      {/* Footer only for non-landing pages (Landing has its own) */}
-      {currentPage !== 'home' && (
+      {/* Footer only for non-landing/success/start-audit pages (Landing has its own) */}
+      {currentPage !== 'home' && currentPage !== 'success' && currentPage !== 'start-audit' && (
         <footer className="py-8 text-center border-t border-slate-100 mt-auto bg-white relative z-10">
           <p className="text-slate-400 text-sm flex items-center justify-center gap-1 font-medium">
             Best Ideas by Alex Miesak
           </p>
         </footer>
       )}
+
+      {/* Dev Menu - only in development */}
+      <DevMenu />
 
     </div>
   );

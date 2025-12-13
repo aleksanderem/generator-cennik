@@ -16,6 +16,7 @@ export default {
         "border-beam": "border-beam calc(var(--duration)*1s) infinite linear",
         "meteor": "meteor 5s linear infinite",
         "scroll": "scroll var(--animation-duration, 40s) var(--animation-direction, forwards) linear infinite",
+        "orbit": "orbit var(--orbit-duration, 20s) linear infinite",
       },
       keyframes: {
         shine: {
@@ -51,10 +52,19 @@ export default {
         scroll: {
           to: { transform: "translate(calc(-50% - 0.5rem))" },
         },
+        orbit: {
+          "0%": {
+            transform: "rotate(var(--initial-position, 0deg)) translateY(var(--translate-position, 100px)) rotate(calc(-1 * var(--initial-position, 0deg)))",
+          },
+          "100%": {
+            transform: "rotate(calc(var(--initial-position, 0deg) + 360deg)) translateY(var(--translate-position, 100px)) rotate(calc(-1 * (var(--initial-position, 0deg) + 360deg)))",
+          },
+        },
       },
       fontFamily: {
         sans: ['Inter', 'sans-serif'],
-        serif: ['Playfair Display', 'serif'],
+        serif: ['Outfit', 'sans-serif'],
+        heading: ['Outfit', 'sans-serif'],
         handwriting: ['Birthstone', 'cursive'],
       },
       colors: {

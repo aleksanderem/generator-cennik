@@ -43,7 +43,7 @@ export function NavbarMega() {
           <div className="flex w-full items-center justify-between gap-3 md:w-auto">
             <a href="#" className="flex items-center gap-2">
               <span className="text-xl">✨</span>
-              <span className="font-semibold text-[#171717]">Beauty Audit</span>
+              <span className="font-semibold text-[#171717]">BooksyAudit.pl</span>
             </a>
             <motion.button
               aria-label="Toggle menu"

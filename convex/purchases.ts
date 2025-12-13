@@ -13,8 +13,7 @@ export const getUserPurchases = query({
       stripeSessionId: v.optional(v.string()),
       product: v.union(
         v.literal("audit"),
-        v.literal("optimize"),
-        v.literal("combo")
+        v.literal("audit_consultation")
       ),
       amount: v.number(),
       currency: v.string(),
@@ -60,8 +59,7 @@ export const createPendingPurchase = internalMutation({
     stripeSessionId: v.string(),
     product: v.union(
       v.literal("audit"),
-      v.literal("optimize"),
-      v.literal("combo")
+      v.literal("audit_consultation")
     ),
     amount: v.number(),
     currency: v.string(),
@@ -123,8 +121,7 @@ export const getPurchaseBySessionId = internalQuery({
       stripeSessionId: v.optional(v.string()),
       product: v.union(
         v.literal("audit"),
-        v.literal("optimize"),
-        v.literal("combo")
+        v.literal("audit_consultation")
       ),
       amount: v.number(),
       currency: v.string(),
