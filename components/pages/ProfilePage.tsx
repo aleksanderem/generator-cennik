@@ -36,6 +36,7 @@ import {
   IconCode,
   IconEye,
   IconPlus,
+  IconX,
 } from '@tabler/icons-react';
 
 type Tab = 'pricelists' | 'audits' | 'payments' | 'invoices' | 'company' | 'salon';
@@ -69,6 +70,7 @@ const ProfilePage: React.FC = () => {
 
   const [openingPortal, setOpeningPortal] = useState(false);
   const [syncingStripe, setSyncingStripe] = useState(false);
+  const [pendingAuditDismissed, setPendingAuditDismissed] = useState(false);
   const [stripeSyncError, setStripeSyncError] = useState<string | null>(null);
   const [invoices, setInvoices] = useState<Array<{
     id: string;
@@ -494,36 +496,46 @@ const ProfilePage: React.FC = () => {
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors"
               >
                 <IconSettings size={18} className="text-slate-400" />
-                Ustawienia konta
-              </button>
-
-              {/* Divider */}
-              <div className="my-2 border-t border-slate-100"></div>
-
-              <button
-                onClick={() => signOut()}
-                className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-              >
-                <IconLogout size={18} />
-                Wyloguj się
+                Ustawienia logowania
               </button>
             </div>
           </div>
 
-          {/* Quick action */}
-          {(activeAudit?.status === 'pending' || (convexUser.credits > 0 && !activeAudit)) && (
-            <Link
-              to="/start-audit"
-              className="mt-4 flex items-center justify-center gap-2 w-full px-4 py-3 bg-[#722F37] text-white rounded-xl text-sm font-medium hover:bg-[#5a252c] transition-colors"
-            >
-              <IconPlayerPlay size={16} />
-              {activeAudit?.status === 'pending' ? 'Dokończ rozpoczęcie audytu' : 'Rozpocznij nowy audyt'}
-            </Link>
-          )}
+          {/* Logout button - outside menu */}
+          <button
+            onClick={() => signOut()}
+            className="mt-3 w-full flex items-center gap-3 px-5 py-2 text-sm text-red-600 hover:text-red-700 transition-colors"
+          >
+            <IconLogout size={18} />
+            Wyloguj się
+          </button>
         </div>
 
         {/* Main content */}
         <div className="lg:col-span-9">
+          {/* Pending audit banner */}
+          {activeAudit?.status === 'pending' && !pendingAuditDismissed && (
+            <div className="mb-4 p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center flex-shrink-0">
+                  <IconPlayerPlay size={16} className="text-amber-600" />
+                </div>
+                <p className="text-sm text-amber-800">
+                  Masz nierozpoczęty audyt profilu Booksy.{' '}
+                  <Link to="/start-audit" className="font-medium text-[#722F37] hover:underline">
+                    Kliknij tutaj aby rozpocząć
+                  </Link>
+                </p>
+              </div>
+              <button
+                onClick={() => setPendingAuditDismissed(true)}
+                className="p-1 text-amber-500 hover:text-amber-700 transition-colors flex-shrink-0"
+              >
+                <IconX size={18} />
+              </button>
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-slate-200">
             {/* Content Header */}
             <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
@@ -1093,7 +1105,7 @@ const ProfilePage: React.FC = () => {
                 </div>
 
                 <div className={cn("p-5", salonSubTab === 'identity' && "p-0")}>
-                  <div className={cn(salonSubTab === 'data' && "max-w-lg")}>
+                  <div>
                     {/* Sub-tab: Dane (Salon Data) */}
                     {salonSubTab === 'data' && (
                       <>

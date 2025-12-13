@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   SignInButton,
@@ -11,17 +11,34 @@ import { api } from '../../convex/_generated/api';
 import {
   FileText,
   Search,
-  Settings,
-  Sparkles,
   Menu,
   Crown,
   X,
   Play,
-  Loader2,
-  User
+  User,
+  Wand2,
+  ChevronDown,
 } from 'lucide-react';
+import { AuroraText } from '../ui/aurora-text';
+import { PulsatingButton } from '../ui/pulsating-button';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings' | 'profile';
+type Page = 'home' | 'generator' | 'audit' | 'optimization' | 'campaigns-meta' | 'campaigns-google' | 'agency' | 'profile';
+
+interface NavSubItem {
+  id: Page | string;
+  label: string;
+  premium?: boolean;
+  comingSoon?: boolean;
+  href?: string;
+}
+
+interface NavItem {
+  id: string;
+  label: string;
+  premium?: boolean;
+  href?: Page;
+  children?: NavSubItem[];
+}
 
 interface HeaderProps {
   currentPage: Page;
@@ -32,7 +49,9 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall }) => {
   const navigate = useNavigate();
   const { isSignedIn, isLoaded } = useUser();
-  const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const [mobileExpandedMenu, setMobileExpandedMenu] = useState<string | null>(null);
 
   // Pobierz dane użytkownika z Convex (kredyty)
   const user = useQuery(api.users.getCurrentUser);
@@ -43,18 +62,42 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
   const hasProcessing = activeAudit?.status === 'processing';
   const hasPending = activeAudit?.status === 'pending';
 
-  const navItems = [
-    { id: 'generator' as Page, label: 'Generator', icon: FileText, premium: false },
-    { id: 'audit' as Page, label: 'Audyt AI', icon: Search, premium: true },
+  const navItems: NavItem[] = [
+    { id: 'audit', label: 'Audyt Booksy', premium: true, href: 'audit' },
+    {
+      id: 'cennik',
+      label: 'Cennik',
+      children: [
+        { id: 'generator', label: 'Generator cennika' },
+        { id: 'optimization', label: 'Optymalizacja cennika', premium: true, comingSoon: true },
+      ],
+    },
+    {
+      id: 'kampanie',
+      label: 'Kampanie',
+      children: [
+        { id: 'campaigns-meta', label: 'Kampanie reklamowe Meta', comingSoon: true },
+        { id: 'campaigns-google', label: 'Kampanie reklamowe Google Ads', comingSoon: true },
+        { id: 'agency', label: 'Obsługa agencji 360', comingSoon: true },
+      ],
+    },
   ];
 
-  const handleNavClick = (item: typeof navItems[0]) => {
-    if (item.premium && !isSignedIn) {
+  const handleItemClick = (item: NavSubItem | NavItem, e?: React.MouseEvent) => {
+    const subItem = item as NavSubItem;
+
+    if (subItem.comingSoon) {
+      return;
+    }
+    if (subItem.premium && !isSignedIn) {
       onOpenPaywall?.();
       return;
     }
-    navigate(`/${item.id}`);
+
+    const targetId = (item as NavItem).href || item.id;
+    navigate(`/${targetId}`);
     setMobileMenuOpen(false);
+    setOpenDropdown(null);
   };
 
   return (
@@ -68,52 +111,104 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
             className="flex items-center gap-2 group"
           >
             <div className="flex flex-col">
-              <span className="font-serif text-xl font-bold text-[#722F37] leading-none group-hover:text-[#B76E79] transition-colors">
+              <AuroraText
+                className="font-serif text-xl font-bold leading-none"
+                colors={["#722F37", "#B76E79", "#8B4049", "#D4A574"]}
+                speed={0.5}
+              >
                 BooksyAudit.pl
-              </span>
-              <span className="font-handwriting text-lg text-[#B76E79] -mt-1 ml-auto transform -rotate-2">
-                by Alex M.
-              </span>
+              </AuroraText>
+              <div className="flex items-center gap-1 ml-auto -mt-0.5">
+                <span className="text-xs text-slate-400">by</span>
+                <img src="/kolabo.svg" alt="KolaboIT" className="h-4 opacity-50" />
+              </div>
             </div>
           </Link>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center gap-1">
+          <div className="hidden lg:flex items-center gap-1">
             {navItems.map((item) => (
-              <button
+              <div
                 key={item.id}
-                onClick={() => handleNavClick(item)}
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                  ${currentPage === item.id
-                    ? 'bg-[#722F37]/10 text-[#722F37]'
-                    : 'text-slate-600 hover:text-[#722F37] hover:bg-slate-50'
-                  }
-                `}
+                className="relative"
+                onMouseEnter={() => item.children && setOpenDropdown(item.id)}
+                onMouseLeave={() => setOpenDropdown(null)}
               >
-                <item.icon size={18} />
-                {item.label}
-                {item.premium && (
-                  <Sparkles size={14} className="text-[#D4AF37]" />
+                {item.children ? (
+                  // Dropdown trigger
+                  <button
+                    className={`
+                      flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                      ${openDropdown === item.id
+                        ? 'bg-slate-50 text-[#722F37]'
+                        : 'text-slate-600 hover:text-[#722F37] hover:bg-slate-50'
+                      }
+                    `}
+                  >
+                    {item.label}
+                    <ChevronDown
+                      size={14}
+                      className={`transition-transform ${openDropdown === item.id ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                ) : (
+                  // Direct link
+                  <button
+                    onClick={() => handleItemClick(item)}
+                    className={`
+                      flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all
+                      ${currentPage === item.href
+                        ? 'bg-[#722F37]/10 text-[#722F37]'
+                        : 'text-slate-600 hover:text-[#722F37] hover:bg-slate-50'
+                      }
+                    `}
+                  >
+                    {item.label}
+                    {item.premium && (
+                      <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded">
+                        PRO
+                      </span>
+                    )}
+                  </button>
                 )}
-              </button>
-            ))}
 
-            {isSignedIn && (
-              <Link
-                to="/settings"
-                className={`
-                  flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-                  ${currentPage === 'settings'
-                    ? 'bg-[#722F37]/10 text-[#722F37]'
-                    : 'text-slate-600 hover:text-[#722F37] hover:bg-slate-50'
-                  }
-                `}
-              >
-                <Settings size={18} />
-                Ustawienia
-              </Link>
-            )}
+                {/* Dropdown menu */}
+                {item.children && openDropdown === item.id && (
+                  <div className="absolute top-[calc(100%-4px)] left-0 py-2 bg-white rounded-xl shadow-lg border border-slate-200 min-w-[220px] before:absolute before:-top-3 before:left-0 before:right-0 before:h-4 before:bg-transparent">
+                    {item.children.map((child) => (
+                      <button
+                        key={child.id}
+                        onClick={() => handleItemClick(child)}
+                        disabled={child.comingSoon}
+                        className={`
+                          w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-left transition-colors
+                          ${child.comingSoon
+                            ? 'text-slate-400 cursor-not-allowed'
+                            : currentPage === child.id
+                              ? 'bg-[#722F37]/5 text-[#722F37]'
+                              : 'text-slate-600 hover:bg-slate-50 hover:text-[#722F37]'
+                          }
+                        `}
+                      >
+                        <span>{child.label}</span>
+                        <span className="flex items-center gap-1.5">
+                          {child.premium && (
+                            <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded">
+                              PRO
+                            </span>
+                          )}
+                          {child.comingSoon && (
+                            <span className="text-[9px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                              soon
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* Right side - Auth & Credits */}
@@ -135,25 +230,18 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
               </Link>
             )}
 
-            {/* Rozpocznij audyt - dla użytkowników z pending audytem */}
-            {isSignedIn && hasPending && (
-              <Link
-                to="/start-audit"
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-lg hover:shadow-lg hover:shadow-[#D4A574]/25 transition-all text-sm font-medium"
-              >
-                <Play size={14} />
-                Rozpocznij audyt
-              </Link>
-            )}
-
-            {/* Rozpocznij audyt - dla użytkowników z kredytami (bez aktywnego audytu) */}
-            {isSignedIn && credits > 0 && !activeAudit && (
-              <Link
-                to="/start-audit"
-                className="hidden sm:flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-lg hover:shadow-lg hover:shadow-[#D4A574]/25 transition-all text-sm font-medium"
-              >
-                <Play size={14} />
-                Rozpocznij audyt
+            {/* Rozpocznij audyt - dla użytkowników z pending audytem lub kredytami */}
+            {isSignedIn && (hasPending || (credits > 0 && !activeAudit)) && (
+              <Link to="/start-audit" className="hidden sm:block">
+                <PulsatingButton
+                  pulseColor="#D4A574"
+                  className="bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white text-sm"
+                >
+                  <span className="flex items-center gap-2">
+                    <Play size={14} />
+                    Rozpocznij audyt
+                  </span>
+                </PulsatingButton>
               </Link>
             )}
 
@@ -210,7 +298,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
             {/* Mobile menu button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-slate-600 hover:text-[#722F37] rounded-lg"
+              className="lg:hidden p-2 text-slate-600 hover:text-[#722F37] rounded-lg"
             >
               {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
             </button>
@@ -219,59 +307,104 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden py-4 border-t border-slate-100 animate-in slide-in-from-top-2">
+          <div className="lg:hidden py-4 border-t border-slate-100 animate-in slide-in-from-top-2">
             <div className="space-y-1">
               {navItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleNavClick(item)}
+                <div key={item.id}>
+                  {item.children ? (
+                    // Expandable menu item
+                    <>
+                      <button
+                        onClick={() => setMobileExpandedMenu(mobileExpandedMenu === item.id ? null : item.id)}
+                        className={`
+                          w-full flex items-center justify-between px-4 py-3 rounded-lg text-left
+                          ${mobileExpandedMenu === item.id
+                            ? 'bg-slate-50 text-[#722F37]'
+                            : 'text-slate-600'
+                          }
+                        `}
+                      >
+                        <span className="font-medium">{item.label}</span>
+                        <ChevronDown
+                          size={18}
+                          className={`transition-transform ${mobileExpandedMenu === item.id ? 'rotate-180' : ''}`}
+                        />
+                      </button>
+
+                      {/* Mobile submenu */}
+                      {mobileExpandedMenu === item.id && (
+                        <div className="ml-4 pl-4 border-l-2 border-slate-100 space-y-1 mt-1">
+                          {item.children.map((child) => (
+                            <button
+                              key={child.id}
+                              onClick={() => handleItemClick(child)}
+                              disabled={child.comingSoon}
+                              className={`
+                                w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm text-left
+                                ${child.comingSoon
+                                  ? 'text-slate-400 cursor-not-allowed'
+                                  : currentPage === child.id
+                                    ? 'bg-[#722F37]/5 text-[#722F37]'
+                                    : 'text-slate-600 hover:bg-slate-50'
+                                }
+                              `}
+                            >
+                              <span>{child.label}</span>
+                              <span className="flex items-center gap-1.5">
+                                {child.premium && (
+                                  <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded">
+                                    PRO
+                                  </span>
+                                )}
+                                {child.comingSoon && (
+                                  <span className="text-[9px] font-medium text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                                    soon
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    // Direct link
+                    <button
+                      onClick={() => handleItemClick(item)}
+                      className={`
+                        w-full flex items-center justify-between px-4 py-3 rounded-lg text-left
+                        ${currentPage === item.href
+                          ? 'bg-[#722F37]/10 text-[#722F37]'
+                          : 'text-slate-600 hover:bg-slate-50'
+                        }
+                      `}
+                    >
+                      <span className="font-medium">{item.label}</span>
+                      {item.premium && (
+                        <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded">
+                          PRO
+                        </span>
+                      )}
+                    </button>
+                  )}
+                </div>
+              ))}
+
+              {isSignedIn && (
+                <Link
+                  to="/profile"
+                  onClick={() => setMobileMenuOpen(false)}
                   className={`
                     w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
-                    ${currentPage === item.id
+                    ${currentPage === 'profile'
                       ? 'bg-[#722F37]/10 text-[#722F37]'
                       : 'text-slate-600 hover:bg-slate-50'
                     }
                   `}
                 >
-                  <item.icon size={20} />
-                  <span className="font-medium">{item.label}</span>
-                  {item.premium && (
-                    <Sparkles size={14} className="text-[#D4AF37] ml-auto" />
-                  )}
-                </button>
-              ))}
-
-              {isSignedIn && (
-                <>
-                  <Link
-                    to="/profile"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`
-                      w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
-                      ${currentPage === 'profile'
-                        ? 'bg-[#722F37]/10 text-[#722F37]'
-                        : 'text-slate-600 hover:bg-slate-50'
-                      }
-                    `}
-                  >
-                    <User size={20} />
-                    <span className="font-medium">Profil</span>
-                  </Link>
-                  <Link
-                    to="/settings"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`
-                      w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left
-                      ${currentPage === 'settings'
-                        ? 'bg-[#722F37]/10 text-[#722F37]'
-                        : 'text-slate-600 hover:bg-slate-50'
-                      }
-                    `}
-                  >
-                    <Settings size={20} />
-                    <span className="font-medium">Ustawienia</span>
-                  </Link>
-                </>
+                  <User size={20} />
+                  <span className="font-medium">Profil</span>
+                </Link>
               )}
 
               {!isSignedIn && isLoaded && (

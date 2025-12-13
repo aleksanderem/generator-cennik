@@ -225,7 +225,7 @@ const App: React.FC = () => {
         defaultProduct="audit"
       />
 
-      <main className="pt-10 flex-grow w-full relative z-10">
+      <main className="flex-grow w-full relative z-10">
 
         {/* Error Notification */}
         {errorMsg && (
