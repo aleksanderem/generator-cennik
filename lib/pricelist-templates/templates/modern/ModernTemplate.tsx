@@ -98,12 +98,19 @@ const ModernTemplate: React.FC<TemplateProps> = ({
       )}
 
       {/* Categories */}
-      <div className="divide-y" style={{ borderColor: theme.boxBorderColor }}>
-        {data.categories.map((category, catIndex) => {
-          const isOpen = openCategories.has(catIndex);
+      <ColorZone
+        zone={getZone('border')}
+        theme={theme}
+        editMode={editMode}
+        isActive={activeZone === 'border'}
+        onClick={onColorZoneClick}
+      >
+        <div className="divide-y" style={{ borderColor: theme.boxBorderColor }}>
+          {data.categories.map((category, catIndex) => {
+            const isOpen = openCategories.has(catIndex);
 
-          return (
-            <div key={catIndex}>
+            return (
+              <div key={catIndex}>
               {/* Category Header */}
               <button
                 onClick={() => toggleCategory(catIndex)}
@@ -307,9 +314,10 @@ const ModernTemplate: React.FC<TemplateProps> = ({
                 </div>
               </div>
             </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </ColorZone>
     </div>
   );
 };

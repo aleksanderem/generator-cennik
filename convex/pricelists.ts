@@ -15,6 +15,7 @@ const pricelistValidator = v.object({
   ),
   pricingDataJson: v.string(),
   themeConfigJson: v.optional(v.string()),
+  templateId: v.optional(v.string()),
   servicesCount: v.optional(v.number()),
   categoriesCount: v.optional(v.number()),
   createdAt: v.number(),
@@ -230,6 +231,43 @@ export const deletePricelist = mutation({
     }
 
     await ctx.db.delete(args.pricelistId);
+    return null;
+  },
+});
+
+// Aktualizuj theme i templateId cennika (z edytora szablonów)
+export const updatePricelistTheme = mutation({
+  args: {
+    pricelistId: v.id("pricelists"),
+    themeConfigJson: v.string(),
+    templateId: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Musisz być zalogowany");
+    }
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (!user) {
+      throw new Error("Użytkownik nie znaleziony");
+    }
+
+    const pricelist = await ctx.db.get(args.pricelistId);
+    if (!pricelist || pricelist.userId !== user._id) {
+      throw new Error("Cennik nie znaleziony");
+    }
+
+    await ctx.db.patch(args.pricelistId, {
+      themeConfigJson: args.themeConfigJson,
+      templateId: args.templateId,
+      updatedAt: Date.now(),
+    });
     return null;
   },
 });

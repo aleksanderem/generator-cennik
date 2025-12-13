@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles } from 'lucide-react';
+import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy } from 'lucide-react';
 import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../../../types';
 import {
   TemplateDefinition,
@@ -10,6 +10,156 @@ import {
 } from '../types';
 import { getAllTemplates, getTemplate, DEFAULT_TEMPLATE_ID } from '../registry';
 import { COLOR_PRESETS, applyPreset, getPresetsForTemplate } from '../presets';
+
+// ============================================================================
+// HTML/CSS CODE GENERATOR
+// Generates embeddable HTML with inline CSS for copy-paste
+// ============================================================================
+
+const generateEmbedHTML = (data: PricingData, theme: ThemeConfig): string => {
+  const fontHeadingUrl = theme.fontHeading.replace(/ /g, '+');
+  const fontBodyUrl = theme.fontBody.replace(/ /g, '+');
+
+  const categoriesHTML = data.categories.map((cat, catIndex) => {
+    const servicesHTML = cat.services.map(svc => {
+      const imageHTML = svc.imageUrl ?
+        `<div class="service-image"><img src="${svc.imageUrl}" alt="${svc.name}" /></div>` : '';
+
+      let tagsHTML = '';
+      if (svc.isPromo) tagsHTML += `<span class="tag promo">Promocja</span>`;
+      if (svc.tags) {
+        svc.tags.forEach(t => {
+          tagsHTML += `<span class="tag standard">${t}</span>`;
+        });
+      }
+
+      return `
+        <div class="service-item ${svc.isPromo ? 'is-promo-row' : ''}">
+          <div class="service-main">
+            ${imageHTML}
+            <div class="service-content">
+              <div class="service-header">
+                <span class="service-name">${svc.name}</span>
+                ${tagsHTML ? `<div class="tags-wrapper">${tagsHTML}</div>` : ''}
+              </div>
+              ${svc.description ? `<p class="service-desc">${svc.description}</p>` : ''}
+              ${svc.duration ? `<p class="service-duration">⏱ ${svc.duration}</p>` : ''}
+            </div>
+          </div>
+          <div class="service-price">${svc.price}</div>
+        </div>
+      `}).join('');
+
+    return `
+        <details class="category-group" ${catIndex === 0 ? 'open' : ''}>
+          <summary class="category-summary">
+            <span class="category-title">${cat.categoryName} <small>(${cat.services.length})</small></span>
+            <span class="icon">▼</span>
+          </summary>
+          <div class="services-list">
+            ${servicesHTML}
+          </div>
+        </details>
+      `;
+  }).join('');
+
+  return `
+<!-- Cennik Salonu - Wygenerowano przez BeautyPricer AI -->
+<!-- Font Import -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=${fontHeadingUrl}:wght@400;600;700&family=${fontBodyUrl}:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    /* Brand */
+    --bp-primary: ${theme.primaryColor};
+    --bp-secondary: ${theme.secondaryColor};
+
+    /* Typography */
+    --bp-font-heading: '${theme.fontHeading}', serif;
+    --bp-font-body: '${theme.fontBody}', sans-serif;
+    --bp-text: ${theme.textColor};
+    --bp-text-muted: ${theme.mutedColor};
+
+    /* Boxes */
+    --bp-box-bg: ${theme.boxBgColor};
+    --bp-box-border: ${theme.boxBorderColor};
+
+    /* Promo */
+    --bp-promo-text: ${theme.promoColor};
+    --bp-promo-bg: ${theme.promoBgColor};
+  }
+
+  .salon-pricing { font-family: var(--bp-font-body); max-width: 800px; margin: 0 auto; color: var(--bp-text); box-sizing: border-box; }
+  .salon-pricing * { box-sizing: border-box; }
+
+  /* Details & Summary - Accordion */
+  .salon-pricing details { margin-bottom: 1rem; border: 1px solid var(--bp-box-border); border-radius: 0.75rem; overflow: hidden; background: var(--bp-box-bg); transition: all 0.2s; }
+  .salon-pricing summary { padding: 1.25rem; background: var(--bp-box-bg); cursor: pointer; list-style: none; display: flex; justify-content: space-between; align-items: center; font-weight: 600; font-size: 1.125rem; color: var(--bp-text); transition: background 0.2s; font-family: var(--bp-font-heading); }
+  .salon-pricing summary:hover { background-color: var(--bp-secondary); opacity: 0.9; }
+  .salon-pricing details[open] summary { background-color: var(--bp-secondary); border-bottom: 1px solid var(--bp-box-border); }
+  .salon-pricing summary::-webkit-details-marker { display: none; }
+  .salon-pricing summary .icon { transition: transform 0.2s; color: var(--bp-primary); }
+  .salon-pricing details[open] summary .icon { transform: rotate(180deg); }
+
+  /* List Layout */
+  .salon-pricing .services-list { padding: 1.25rem; background: var(--bp-box-bg); }
+
+  .salon-pricing .service-item {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.25rem 1rem;
+    border-bottom: 1px solid var(--bp-box-border);
+  }
+  .salon-pricing .service-item:last-child { border-bottom: none; }
+
+  .salon-pricing .service-main {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    width: 100%;
+  }
+
+  /* Promo Box Styles */
+  .salon-pricing .service-item.is-promo-row { background: var(--bp-promo-bg); border-radius: 0.5rem; border: 1px solid var(--bp-promo-text); border-color: color-mix(in srgb, var(--bp-promo-text), transparent 70%); margin-bottom: 0.5rem; }
+
+  /* Image */
+  .salon-pricing .service-image img { width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid var(--bp-box-border); display: block; }
+
+  /* Service Content */
+  .salon-pricing .service-content { flex: 1; min-width: 0; }
+  .salon-pricing .service-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+  .salon-pricing .service-name { font-weight: 600; font-size: 1.1rem; color: var(--bp-text); line-height: 1.3; }
+
+  /* Tags */
+  .salon-pricing .tags-wrapper { display: flex; gap: 4px; flex-wrap: wrap; }
+  .salon-pricing .tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.15rem 0.6rem; border-radius: 99px; font-weight: 700; font-family: sans-serif; white-space: nowrap; }
+  .salon-pricing .tag.promo { background: var(--bp-promo-text); color: var(--bp-box-bg); }
+  .salon-pricing .tag.standard { background: var(--bp-secondary); color: var(--bp-primary); }
+
+  .salon-pricing .service-desc { font-size: 0.9rem; color: var(--bp-text-muted); margin: 0.25rem 0 0 0; line-height: 1.5; }
+  .salon-pricing .service-duration { font-size: 0.75rem; color: var(--bp-text-muted); opacity: 0.8; margin: 0.35rem 0 0 0; font-weight: 500; }
+
+  /* Price */
+  .salon-pricing .service-price {
+    margin-top: 0.75rem;
+    font-weight: 700;
+    color: var(--bp-primary);
+    font-size: 1.25rem;
+    width: 100%;
+    text-align: left;
+  }
+  .salon-pricing .service-item.is-promo-row .service-price { color: var(--bp-promo-text); }
+
+</style>
+
+<div class="salon-pricing">
+  ${categoriesHTML}
+</div>
+    `.trim();
+};
 
 interface TemplateEditorProps {
   initialTemplateId?: string;
@@ -34,12 +184,15 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   const [activeZone, setActiveZone] = useState<string | null>(null);
   const [showPresets, setShowPresets] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showCode, setShowCode] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [saved, setSaved] = useState(false);
 
   const template = getTemplate(templateId);
   const allTemplates = getAllTemplates();
   const recommendedPresets = getPresetsForTemplate(templateId);
 
-  const handleThemeChange = useCallback((key: keyof ThemeConfig, value: string) => {
+  const handleThemeChange = useCallback((key: keyof ThemeConfig, value: string | number) => {
     const newTheme = { ...theme, [key]: value };
     setTheme(newTheme);
     onThemeChange?.(newTheme);
@@ -76,6 +229,13 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
       onThemeChange?.(DEFAULT_THEME);
     }
   }, [onThemeChange]);
+
+  const handleCopyCode = useCallback(() => {
+    const code = generateEmbedHTML(data, theme);
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [data, theme]);
 
   if (!template) {
     return <div>Template not found</div>;
@@ -198,8 +358,45 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               </button>
             </div>
 
-            {/* Color picker */}
-            {activeZoneData.themeKey !== 'fontHeading' && activeZoneData.themeKey !== 'fontBody' ? (
+            {/* Font Size slider */}
+            {activeZoneData.type === 'fontSize' ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-slate-500">Rozmiar fontu</span>
+                  <span className="text-sm font-mono text-slate-700">
+                    {theme[activeZoneData.themeKey] as number}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="32"
+                  step="1"
+                  value={theme[activeZoneData.themeKey] as number}
+                  onChange={(e) => handleThemeChange(activeZoneData.themeKey, parseInt(e.target.value))}
+                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#722F37]"
+                />
+                <div className="flex justify-between text-xs text-slate-400">
+                  <span>10px</span>
+                  <span>32px</span>
+                </div>
+              </div>
+            ) : activeZoneData.themeKey === 'fontHeading' || activeZoneData.themeKey === 'fontBody' ? (
+              /* Font family selector */
+              <select
+                value={theme[activeZoneData.themeKey] as string}
+                onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                style={{ fontFamily: theme[activeZoneData.themeKey] as string }}
+              >
+                {(activeZoneData.themeKey === 'fontHeading' ? FONT_OPTIONS.headings : FONT_OPTIONS.body).map((f) => (
+                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              /* Color picker */
               <div className="flex items-center gap-3">
                 <input
                   type="color"
@@ -214,19 +411,6 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
                 />
               </div>
-            ) : (
-              <select
-                value={theme[activeZoneData.themeKey] as string}
-                onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                style={{ fontFamily: theme[activeZoneData.themeKey] as string }}
-              >
-                {(activeZoneData.themeKey === 'fontHeading' ? FONT_OPTIONS.headings : FONT_OPTIONS.body).map((f) => (
-                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
             )}
           </div>
         )}
@@ -312,27 +496,83 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
           </div>
         </div>
 
+        {/* Font Sizes */}
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-4">
+            <Type size={14} />
+            Rozmiary fontów
+          </h4>
+
+          <div className="space-y-4">
+            {[
+              { key: 'fontSizeCategory', label: 'Kategoria' },
+              { key: 'fontSizeServiceName', label: 'Nazwa usługi' },
+              { key: 'fontSizeDescription', label: 'Opis' },
+              { key: 'fontSizePrice', label: 'Cena' },
+              { key: 'fontSizeDuration', label: 'Czas trwania' },
+            ].map(({ key, label }) => (
+              <div key={key}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs text-slate-500">{label}</label>
+                  <span className="text-xs font-mono text-slate-600">
+                    {theme[key as keyof ThemeConfig] as number}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="10"
+                  max="32"
+                  step="1"
+                  value={theme[key as keyof ThemeConfig] as number}
+                  onChange={(e) => handleThemeChange(key as keyof ThemeConfig, parseInt(e.target.value))}
+                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#722F37]"
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* Edit Mode Toggle */}
-        <button
-          onClick={() => setEditMode(!editMode)}
-          className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl border transition-colors ${
-            editMode
-              ? 'bg-[#722F37] text-white border-[#722F37]'
-              : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-          }`}
-        >
-          {editMode ? <Eye size={16} /> : <EyeOff size={16} />}
-          {editMode ? 'Tryb edycji włączony' : 'Włącz tryb edycji'}
-        </button>
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {editMode ? <Eye size={16} className="text-[#722F37]" /> : <EyeOff size={16} className="text-slate-400" />}
+              <span className="text-sm font-medium text-slate-700">Tryb edycji</span>
+            </div>
+            <button
+              onClick={() => setEditMode(!editMode)}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                editMode ? 'bg-[#722F37]' : 'bg-slate-200'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                  editMode ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+          <p className="text-xs text-slate-500 mt-2">
+            {editMode ? 'Kliknij elementy aby edytować' : 'Włącz aby edytować kolory i rozmiary'}
+          </p>
+        </div>
 
         {/* Save Button */}
         {onSave && (
           <button
-            onClick={() => onSave(templateId, theme)}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#722F37] text-white rounded-xl hover:bg-[#5a252c] transition-colors"
+            onClick={() => {
+              onSave(templateId, theme);
+              setSaved(true);
+              setTimeout(() => setSaved(false), 2000);
+            }}
+            className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl transition-all ${
+              saved
+                ? 'bg-emerald-500 text-white'
+                : 'bg-[#722F37] text-white hover:bg-[#5a252c]'
+            }`}
           >
             <Check size={16} />
-            Zapisz zmiany
+            {saved ? 'Zapisano!' : 'Zapisz zmiany'}
           </button>
         )}
       </div>
@@ -342,11 +582,11 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         <div className="max-w-2xl mx-auto">
           {editMode && (
             <div className="mb-4 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700">
-              💡 Kliknij na element aby zmienić jego kolor
+              💡 Kliknij na element aby zmienić jego kolor lub rozmiar
             </div>
           )}
 
-          <div className="bg-white rounded-xl shadow-lg overflow-hidden">
+          <div className="bg-white rounded-xl shadow-lg">
             <TemplateComponent
               data={data}
               theme={theme}
@@ -354,6 +594,41 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               onColorZoneClick={handleZoneClick}
               activeZone={activeZone}
             />
+          </div>
+
+          {/* Embed Code Section */}
+          <div className="mt-6 bg-slate-900 rounded-xl overflow-hidden shadow-xl border border-slate-700">
+            <button
+              onClick={() => setShowCode(!showCode)}
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 hover:bg-slate-750 transition-colors"
+            >
+              <div className="flex items-center gap-2 text-slate-300">
+                <Code size={18} />
+                <span className="text-sm font-medium">Kod do osadzenia (HTML/CSS)</span>
+                <ChevronDown
+                  size={16}
+                  className={`transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
+                />
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyCode();
+                }}
+                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#722F37] text-white hover:bg-[#5a252c] transition-colors z-10"
+              >
+                {copied ? <Check size={14} /> : <Copy size={14} />}
+                {copied ? 'Skopiowano!' : 'Kopiuj kod'}
+              </button>
+            </button>
+
+            {showCode && (
+              <div className="p-4 overflow-x-auto max-h-96">
+                <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
+                  <code>{generateEmbedHTML(data, theme)}</code>
+                </pre>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Clock, Star } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Star, ChevronDown } from 'lucide-react';
 import { TemplateProps, TemplateDefinition, ColorZone as ColorZoneType } from '../../types';
 import { ColorZone } from '../../components/ColorZone';
 
@@ -32,6 +32,20 @@ const ClassicTemplate: React.FC<TemplateProps> = ({
   activeZone,
   scale = 1,
 }) => {
+  const [openCategories, setOpenCategories] = useState<Set<number>>(new Set([0]));
+
+  const toggleCategory = (index: number) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const getZone = (id: string) => COLOR_ZONES.find(z => z.id === id)!;
 
   return (
@@ -72,9 +86,12 @@ const ClassicTemplate: React.FC<TemplateProps> = ({
 
       {/* Categories */}
       <div className="py-4">
-        {data.categories.map((category, catIndex) => (
+        {data.categories.map((category, catIndex) => {
+          const isOpen = openCategories.has(catIndex);
+
+          return (
           <div key={catIndex} className="mb-6 last:mb-0">
-            {/* Category Header */}
+            {/* Category Header - Clickable Accordion */}
             <ColorZone
               zone={getZone('headerBg')}
               theme={theme}
@@ -82,8 +99,9 @@ const ClassicTemplate: React.FC<TemplateProps> = ({
               isActive={activeZone === 'headerBg'}
               onClick={onColorZoneClick}
             >
-              <div
-                className="px-6 py-3 mb-4"
+              <button
+                onClick={() => toggleCategory(catIndex)}
+                className="w-full px-6 py-3 mb-0 flex items-center justify-between transition-colors"
                 style={{ backgroundColor: theme.secondaryColor }}
               >
                 <ColorZone
@@ -94,19 +112,35 @@ const ClassicTemplate: React.FC<TemplateProps> = ({
                   onClick={onColorZoneClick}
                 >
                   <h2
-                    className="text-lg font-semibold uppercase tracking-wider"
+                    className="text-lg font-semibold uppercase tracking-wider flex items-center gap-2"
                     style={{
                       fontFamily: theme.fontHeading,
                       color: theme.primaryColor,
                     }}
                   >
                     {category.categoryName}
+                    <span
+                      className="text-xs font-normal normal-case tracking-normal"
+                      style={{ color: theme.mutedColor }}
+                    >
+                      ({category.services.length})
+                    </span>
                   </h2>
                 </ColorZone>
-              </div>
+                <ChevronDown
+                  size={18}
+                  className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                  style={{ color: theme.primaryColor }}
+                />
+              </button>
             </ColorZone>
 
-            {/* Services */}
+            {/* Services - Collapsible */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isOpen ? 'max-h-[2000px]' : 'max-h-0'
+              }`}
+            >
             <div className="px-6 space-y-0">
               {category.services.map((service, svcIndex) => (
                 <ColorZone
@@ -242,8 +276,10 @@ const ClassicTemplate: React.FC<TemplateProps> = ({
                 </ColorZone>
               ))}
             </div>
+            </div>
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Footer decoration */}

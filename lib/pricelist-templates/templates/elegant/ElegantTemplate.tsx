@@ -1,5 +1,5 @@
-import React from 'react';
-import { Clock, Gem, Sparkles } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, Gem, Sparkles, ChevronDown } from 'lucide-react';
 import { TemplateProps, TemplateDefinition, ColorZone as ColorZoneType } from '../../types';
 import { ColorZone } from '../../components/ColorZone';
 
@@ -34,6 +34,20 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
   activeZone,
   scale = 1,
 }) => {
+  const [openCategories, setOpenCategories] = useState<Set<number>>(new Set([0]));
+
+  const toggleCategory = (index: number) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const getZone = (id: string) => COLOR_ZONES.find(z => z.id === id)!;
 
   return (
@@ -104,27 +118,51 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
         )}
 
         {/* Categories */}
-        <div className="space-y-10">
-          {data.categories.map((category, catIndex) => (
-            <div key={catIndex}>
-              {/* Category Header - elegant style */}
-              <div className="text-center mb-6">
-                <ColorZone
-                  zone={getZone('header')}
-                  theme={theme}
-                  editMode={editMode}
-                  isActive={activeZone === 'header'}
-                  onClick={onColorZoneClick}
+        <ColorZone
+          zone={getZone('border')}
+          theme={theme}
+          editMode={editMode}
+          isActive={activeZone === 'border'}
+          onClick={onColorZoneClick}
+        >
+          <div className="space-y-10">
+            {data.categories.map((category, catIndex) => {
+              const isOpen = openCategories.has(catIndex);
+
+              return (
+              <div key={catIndex}>
+              {/* Category Header - Clickable Accordion */}
+              <ColorZone
+                zone={getZone('header')}
+                theme={theme}
+                editMode={editMode}
+                isActive={activeZone === 'header'}
+                onClick={onColorZoneClick}
+              >
+                <button
+                  onClick={() => toggleCategory(catIndex)}
+                  className="w-full text-center mb-6"
                 >
                   <div className="inline-block relative">
                     <h2
-                      className="text-xl font-semibold px-8"
+                      className="text-xl font-semibold px-8 flex items-center gap-3"
                       style={{
                         fontFamily: theme.fontHeading,
                         color: theme.primaryColor,
                       }}
                     >
                       {category.categoryName}
+                      <span
+                        className="text-xs font-normal"
+                        style={{ color: theme.mutedColor }}
+                      >
+                        ({category.services.length})
+                      </span>
+                      <ChevronDown
+                        size={18}
+                        className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                        style={{ color: theme.primaryColor }}
+                      />
                     </h2>
                     {/* Underline decoration */}
                     <div
@@ -132,10 +170,15 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
                       style={{ backgroundColor: theme.primaryColor }}
                     />
                   </div>
-                </ColorZone>
-              </div>
+                </button>
+              </ColorZone>
 
-              {/* Services */}
+              {/* Services - Collapsible */}
+              <div
+                className={`overflow-hidden transition-all duration-300 ${
+                  isOpen ? 'max-h-[2000px]' : 'max-h-0'
+                }`}
+              >
               <div className="space-y-4">
                 {category.services.map((service, svcIndex) => (
                   <ColorZone
@@ -295,9 +338,12 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
                   </ColorZone>
                 ))}
               </div>
+              </div>
             </div>
-          ))}
-        </div>
+            );
+            })}
+          </div>
+        </ColorZone>
 
         {/* Footer decoration */}
         <div className="mt-10 flex items-center justify-center gap-4">

@@ -7,6 +7,7 @@ import { classicTemplateDefinition } from './templates/classic/ClassicTemplate';
 import { minimalTemplateDefinition } from './templates/minimal/MinimalTemplate';
 import { professionalTemplateDefinition } from './templates/professional/ProfessionalTemplate';
 import { elegantTemplateDefinition } from './templates/elegant/ElegantTemplate';
+import { premiumTemplateDefinition } from './templates/premium/PremiumTemplate';
 
 // ============================================================================
 // TEMPLATE REGISTRY
@@ -15,6 +16,7 @@ import { elegantTemplateDefinition } from './templates/elegant/ElegantTemplate';
 // ============================================================================
 
 const TEMPLATES: TemplateDefinition[] = [
+  premiumTemplateDefinition, // Default - shown first
   modernTemplateDefinition,
   classicTemplateDefinition,
   minimalTemplateDefinition,
@@ -60,7 +62,7 @@ export const getAllPresets = () => templateRegistry.getAllPresets();
 export const getPreset = (id: string) => templateRegistry.getPreset(id);
 
 // Default template
-export const DEFAULT_TEMPLATE_ID = 'modern';
+export const DEFAULT_TEMPLATE_ID = 'premium';
 
 // Helper to get template component directly
 export const getTemplateComponent = (id: string) => {

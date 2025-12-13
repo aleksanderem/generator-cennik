@@ -1,5 +1,5 @@
-import React from 'react';
-import { Clock, CheckCircle } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, CheckCircle, ChevronDown } from 'lucide-react';
 import { TemplateProps, TemplateDefinition, ColorZone as ColorZoneType } from '../../types';
 import { ColorZone } from '../../components/ColorZone';
 
@@ -35,6 +35,20 @@ const ProfessionalTemplate: React.FC<TemplateProps> = ({
   activeZone,
   scale = 1,
 }) => {
+  const [openCategories, setOpenCategories] = useState<Set<number>>(new Set([0]));
+
+  const toggleCategory = (index: number) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const getZone = (id: string) => COLOR_ZONES.find(z => z.id === id)!;
 
   return (
@@ -92,10 +106,20 @@ const ProfessionalTemplate: React.FC<TemplateProps> = ({
       )}
 
       {/* Categories */}
-      <div className="space-y-6">
-        {data.categories.map((category, catIndex) => (
-          <div key={catIndex}>
-            {/* Category Header */}
+      <ColorZone
+        zone={getZone('cardBorder')}
+        theme={theme}
+        editMode={editMode}
+        isActive={activeZone === 'cardBorder'}
+        onClick={onColorZoneClick}
+      >
+        <div className="space-y-6">
+          {data.categories.map((category, catIndex) => {
+            const isOpen = openCategories.has(catIndex);
+
+            return (
+            <div key={catIndex}>
+            {/* Category Header - Clickable Accordion */}
             <ColorZone
               zone={getZone('headerText')}
               theme={theme}
@@ -103,7 +127,10 @@ const ProfessionalTemplate: React.FC<TemplateProps> = ({
               isActive={activeZone === 'headerText'}
               onClick={onColorZoneClick}
             >
-              <div className="flex items-center gap-3 mb-4">
+              <button
+                onClick={() => toggleCategory(catIndex)}
+                className="w-full flex items-center gap-3 mb-4"
+              >
                 <div
                   className="w-2 h-2 rounded-full"
                   style={{ backgroundColor: theme.primaryColor }}
@@ -130,10 +157,20 @@ const ProfessionalTemplate: React.FC<TemplateProps> = ({
                 >
                   {category.services.length} usług
                 </span>
-              </div>
+                <ChevronDown
+                  size={18}
+                  className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                  style={{ color: theme.primaryColor }}
+                />
+              </button>
             </ColorZone>
 
-            {/* Services Grid */}
+            {/* Services Grid - Collapsible */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isOpen ? 'max-h-[2000px]' : 'max-h-0'
+              }`}
+            >
             <div className="grid gap-3">
               {category.services.map((service, svcIndex) => (
                 <ColorZone
@@ -278,9 +315,12 @@ const ProfessionalTemplate: React.FC<TemplateProps> = ({
                 </ColorZone>
               ))}
             </div>
+            </div>
           </div>
-        ))}
-      </div>
+          );
+          })}
+        </div>
+      </ColorZone>
     </div>
   );
 };

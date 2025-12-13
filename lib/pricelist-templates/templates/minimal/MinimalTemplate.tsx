@@ -1,5 +1,5 @@
-import React from 'react';
-import { Clock } from 'lucide-react';
+import React, { useState } from 'react';
+import { Clock, ChevronDown } from 'lucide-react';
 import { TemplateProps, TemplateDefinition, ColorZone as ColorZoneType } from '../../types';
 import { ColorZone } from '../../components/ColorZone';
 
@@ -32,6 +32,20 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
   activeZone,
   scale = 1,
 }) => {
+  const [openCategories, setOpenCategories] = useState<Set<number>>(new Set([0]));
+
+  const toggleCategory = (index: number) => {
+    setOpenCategories(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
   const getZone = (id: string) => COLOR_ZONES.find(z => z.id === id)!;
 
   return (
@@ -72,10 +86,20 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
       )}
 
       {/* Categories */}
-      <div className="space-y-12">
-        {data.categories.map((category, catIndex) => (
-          <div key={catIndex}>
-            {/* Category Header - very minimal */}
+      <ColorZone
+        zone={getZone('divider')}
+        theme={theme}
+        editMode={editMode}
+        isActive={activeZone === 'divider'}
+        onClick={onColorZoneClick}
+      >
+        <div className="space-y-8">
+          {data.categories.map((category, catIndex) => {
+            const isOpen = openCategories.has(catIndex);
+
+            return (
+            <div key={catIndex}>
+            {/* Category Header - Clickable Accordion */}
             <ColorZone
               zone={getZone('header')}
               theme={theme}
@@ -83,18 +107,37 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
               isActive={activeZone === 'header'}
               onClick={onColorZoneClick}
             >
-              <h2
-                className="text-xs font-medium uppercase tracking-[0.3em] mb-6"
-                style={{
-                  color: theme.mutedColor,
-                  fontFamily: theme.fontBody,
-                }}
+              <button
+                onClick={() => toggleCategory(catIndex)}
+                className="w-full flex items-center justify-between mb-4 pb-2 border-b"
+                style={{ borderColor: theme.boxBorderColor }}
               >
-                {category.categoryName}
-              </h2>
+                <h2
+                  className="text-xs font-medium uppercase tracking-[0.3em] flex items-center gap-3"
+                  style={{
+                    color: theme.mutedColor,
+                    fontFamily: theme.fontBody,
+                  }}
+                >
+                  {category.categoryName}
+                  <span className="text-[10px] normal-case tracking-normal">
+                    ({category.services.length})
+                  </span>
+                </h2>
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                  style={{ color: theme.mutedColor }}
+                />
+              </button>
             </ColorZone>
 
-            {/* Services - clean list */}
+            {/* Services - Collapsible */}
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                isOpen ? 'max-h-[2000px]' : 'max-h-0'
+              }`}
+            >
             <div className="space-y-4">
               {category.services.map((service, svcIndex) => (
                 <ColorZone
@@ -222,9 +265,12 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
                 </ColorZone>
               ))}
             </div>
+            </div>
           </div>
-        ))}
-      </div>
+          );
+          })}
+        </div>
+      </ColorZone>
     </div>
   );
 };

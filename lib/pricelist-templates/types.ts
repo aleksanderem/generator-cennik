@@ -11,10 +11,13 @@ export type { PricingData, Category, ServiceItem };
 
 export type ThemeConfigKey = keyof Omit<ThemeConfig, 'integrationMode'>;
 
+export type ZoneType = 'color' | 'fontSize';
+
 export interface ColorZone {
   id: string;
   label: string;           // Display name in Polish (e.g., "Kolor nagłówka")
   themeKey: ThemeConfigKey; // Which ThemeConfig property this maps to
+  type?: ZoneType;         // 'color' (default) or 'fontSize'
   description?: string;    // Optional tooltip description
 }
 
@@ -96,76 +99,49 @@ export interface TemplateRegistry {
 // ============================================================================
 
 export const SAMPLE_PRICING_DATA: PricingData = {
-  salonName: "Studio Urody Anna",
+  salonName: "Cennik Usług",
   categories: [
     {
-      categoryName: "Strzyżenie",
+      categoryName: "Usługi",
       services: [
         {
-          name: "Strzyżenie damskie",
+          name: "Manicure Hybrydowy",
           price: "120 zł",
-          description: "Konsultacja, mycie, strzyżenie, stylizacja",
+          description: "Zdjęcie poprzedniej stylizacji, opracowanie skórek, malowanie.",
           duration: "60 min",
-          isPromo: false,
-        },
-        {
-          name: "Strzyżenie męskie",
-          price: "60 zł",
-          duration: "30 min",
-          isPromo: false,
-        },
-        {
-          name: "Strzyżenie dziecięce",
-          price: "45 zł",
-          duration: "30 min",
-          isPromo: true,
-          tags: ["Promocja -20%"],
-        },
-      ],
-    },
-    {
-      categoryName: "Koloryzacja",
-      services: [
-        {
-          name: "Koloryzacja całościowa",
-          price: "od 200 zł",
-          description: "Pełna koloryzacja włosów farbą profesjonalną",
-          duration: "120 min",
           isPromo: false,
           tags: ["Bestseller"],
         },
         {
-          name: "Baleyage",
-          price: "od 350 zł",
-          description: "Naturalne rozjaśnienie z efektem sun-kissed",
-          duration: "180 min",
-          isPromo: false,
-        },
-        {
-          name: "Odrost",
-          price: "150 zł",
+          name: "Pedicure SPA",
+          price: "180 zł",
+          description: "Peeling, maska, masaż, malowanie.",
           duration: "90 min",
-          isPromo: false,
+          isPromo: true,
         },
-      ],
-    },
-    {
-      categoryName: "Pielęgnacja",
-      services: [
         {
-          name: "Regeneracja Olaplex",
-          price: "80 zł",
-          description: "Głęboka regeneracja zniszczonych włosów",
-          duration: "45 min",
+          name: "Strzyżenie damskie",
+          price: "150 zł",
+          description: "Mycie, strzyżenie, modelowanie.",
+          duration: "60 min",
           isPromo: false,
           tags: ["Nowość"],
         },
         {
-          name: "Keratynowe prostowanie",
-          price: "od 400 zł",
-          description: "Trwałe wygładzenie i regeneracja",
-          duration: "180 min",
+          name: "Koloryzacja globalna",
+          price: "od 300 zł",
+          description: "Jeden kolor, bez rozjaśniania.",
+          duration: "120 min",
           isPromo: false,
+          imageUrl: "https://images.unsplash.com/photo-1562322140-8baeececf3df?q=80&w=200&auto=format&fit=crop",
+        },
+        {
+          name: "Masaż Relaksacyjny",
+          price: "200 zł",
+          description: "Pełny masaż ciała olejkami eterycznymi.",
+          duration: "60 min",
+          isPromo: false,
+          tags: ["Hit Sezonu"],
         },
       ],
     },

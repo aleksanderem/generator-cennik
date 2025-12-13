@@ -122,6 +122,9 @@ export default defineSchema({
     // Ustawienia wyświetlania jako JSON string (ThemeConfig)
     themeConfigJson: v.optional(v.string()),
 
+    // Wybrany szablon (modern, classic, minimal, professional, elegant)
+    templateId: v.optional(v.string()),
+
     // Statystyki
     servicesCount: v.optional(v.number()),
     categoriesCount: v.optional(v.number()),

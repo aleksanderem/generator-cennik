@@ -5,7 +5,9 @@ import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Link } from 'react-router-dom';
 import { cn } from '../../lib/utils';
-import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../../types';
+import { ThemeConfig, DEFAULT_THEME, PricingData } from '../../types';
+import { TemplateEditor, SAMPLE_PRICING_DATA } from '../../lib/pricelist-templates';
+import type { Id } from '../../convex/_generated/dataModel';
 import {
   IconSettings,
   IconLogout,
@@ -29,7 +31,6 @@ import {
   IconPhoto,
   IconEdit,
   IconColorSwatch,
-  IconTypography,
   IconList,
   IconTrash,
   IconCode,
@@ -96,32 +97,105 @@ const ProfilePage: React.FC = () => {
   });
 
   const updateSalonData = useMutation(api.users.updateSalonData);
+  const updatePricelistTheme = useMutation(api.pricelists.updatePricelistTheme);
 
   // Theme/colors state (for price list customization)
   const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
+  const LOCAL_STORAGE_TEMPLATE_KEY = 'beauty_pricer_template_id';
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>('modern');
 
+  // Selected pricelist for editing in Identity tab
+  const [selectedPricelistId, setSelectedPricelistId] = useState<Id<"pricelists"> | null>(null);
+  const [selectedPricelistData, setSelectedPricelistData] = useState<PricingData | null>(null);
+
+  // Load theme from selected pricelist or localStorage fallback
   useEffect(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (saved) {
+    if (selectedPricelistId && pricelists) {
+      const pricelist = pricelists.find(p => p._id === selectedPricelistId);
+      if (pricelist) {
+        // Load pricing data
+        try {
+          const pricingData = JSON.parse(pricelist.pricingDataJson) as PricingData;
+          setSelectedPricelistData(pricingData);
+        } catch (e) {
+          console.error('Error parsing pricelist data:', e);
+          setSelectedPricelistData(null);
+        }
+
+        // Load theme config if exists
+        if (pricelist.themeConfigJson) {
+          try {
+            const savedTheme = JSON.parse(pricelist.themeConfigJson) as ThemeConfig;
+            setThemeConfig(savedTheme);
+          } catch (e) {
+            console.error('Error parsing theme config:', e);
+          }
+        }
+
+        // Load template ID if exists
+        if (pricelist.templateId) {
+          setSelectedTemplateId(pricelist.templateId);
+        }
+        return;
+      }
+    }
+
+    // Fallback to localStorage when no pricelist selected
+    const savedTheme = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedTheme) {
       try {
-        setThemeConfig(JSON.parse(saved));
+        setThemeConfig(JSON.parse(savedTheme));
       } catch (e) {
         console.error('Error loading theme config:', e);
       }
     }
-  }, []);
+    const savedTemplateId = localStorage.getItem(LOCAL_STORAGE_TEMPLATE_KEY);
+    if (savedTemplateId) {
+      setSelectedTemplateId(savedTemplateId);
+    }
+  }, [selectedPricelistId, pricelists]);
 
-  const handleThemeChange = (key: keyof ThemeConfig, value: string) => {
-    const newConfig = { ...themeConfig, [key]: value };
-    setThemeConfig(newConfig);
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newConfig));
+  // Auto-select first pricelist when list loads
+  useEffect(() => {
+    if (pricelists && pricelists.length > 0 && !selectedPricelistId) {
+      setSelectedPricelistId(pricelists[0]._id);
+    }
+  }, [pricelists, selectedPricelistId]);
+
+  const handleFullThemeChange = async (newTheme: ThemeConfig) => {
+    setThemeConfig(newTheme);
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newTheme));
+
+    // Also save to database if a pricelist is selected
+    if (selectedPricelistId) {
+      try {
+        await updatePricelistTheme({
+          pricelistId: selectedPricelistId,
+          themeConfigJson: JSON.stringify(newTheme),
+          templateId: selectedTemplateId,
+        });
+      } catch (e) {
+        console.error('Error saving theme to database:', e);
+      }
+    }
   };
 
-  const resetTheme = () => {
-    if (confirm("Czy na pewno chcesz przywrócić kolory domyślne?")) {
-      setThemeConfig(DEFAULT_THEME);
-      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(DEFAULT_THEME));
+  const handleTemplateChange = async (templateId: string) => {
+    setSelectedTemplateId(templateId);
+    localStorage.setItem(LOCAL_STORAGE_TEMPLATE_KEY, templateId);
+
+    // Also save to database if a pricelist is selected
+    if (selectedPricelistId) {
+      try {
+        await updatePricelistTheme({
+          pricelistId: selectedPricelistId,
+          themeConfigJson: JSON.stringify(themeConfig),
+          templateId: templateId,
+        });
+      } catch (e) {
+        console.error('Error saving template to database:', e);
+      }
     }
   };
 
@@ -1018,8 +1092,8 @@ const ProfilePage: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="p-5">
-                  <div className="max-w-lg">
+                <div className={cn("p-5", salonSubTab === 'identity' && "p-0")}>
+                  <div className={cn(salonSubTab === 'data' && "max-w-lg")}>
                     {/* Sub-tab: Dane (Salon Data) */}
                     {salonSubTab === 'data' && (
                       <>
@@ -1263,150 +1337,33 @@ const ProfilePage: React.FC = () => {
 
                     {/* Sub-tab: Identyfikacja (Visual Identity) */}
                     {salonSubTab === 'identity' && (
-                      <div>
-                        <div className="flex items-center gap-2 mb-2">
-                          <IconColorSwatch size={20} className="text-[#722F37]" />
-                          <h3 className="font-medium text-slate-900">Identyfikacja wizualna</h3>
-                        </div>
-                        <p className="text-sm text-slate-500 mb-6">
-                          Dostosuj kolory cennika do identyfikacji wizualnej Twojego salonu.
-                        </p>
+                      <div className="p-4 min-h-[600px]">
+                        {/* Template Editor */}
+                        <TemplateEditor
+                          initialTemplateId={selectedTemplateId}
+                          initialTheme={themeConfig}
+                          data={selectedPricelistData || SAMPLE_PRICING_DATA}
+                          onThemeChange={handleFullThemeChange}
+                          onTemplateChange={handleTemplateChange}
+                          onSave={async (templateId, theme) => {
+                            // Save to localStorage (always works)
+                            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(theme));
+                            localStorage.setItem(LOCAL_STORAGE_TEMPLATE_KEY, templateId);
 
-                        {/* Color pickers */}
-                        <div className="space-y-5">
-                          {/* Primary Color */}
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                              Kolor główny (nagłówki, akcenty)
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="color"
-                                value={themeConfig.primaryColor}
-                                onChange={(e) => handleThemeChange('primaryColor', e.target.value)}
-                                className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer"
-                              />
-                              <input
-                                type="text"
-                                value={themeConfig.primaryColor}
-                                onChange={(e) => handleThemeChange('primaryColor', e.target.value)}
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                                placeholder="#722F37"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Secondary Color */}
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                              Kolor dodatkowy (akcenty, przyciski)
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="color"
-                                value={themeConfig.secondaryColor}
-                                onChange={(e) => handleThemeChange('secondaryColor', e.target.value)}
-                                className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer"
-                              />
-                              <input
-                                type="text"
-                                value={themeConfig.secondaryColor}
-                                onChange={(e) => handleThemeChange('secondaryColor', e.target.value)}
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                                placeholder="#D4A574"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Background Color */}
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                              Kolor tła
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="color"
-                                value={themeConfig.boxBgColor}
-                                onChange={(e) => handleThemeChange('boxBgColor', e.target.value)}
-                                className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer"
-                              />
-                              <input
-                                type="text"
-                                value={themeConfig.boxBgColor}
-                                onChange={(e) => handleThemeChange('boxBgColor', e.target.value)}
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                                placeholder="#FFFFFF"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Text Color */}
-                          <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-2">
-                              Kolor tekstu
-                            </label>
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="color"
-                                value={themeConfig.textColor}
-                                onChange={(e) => handleThemeChange('textColor', e.target.value)}
-                                className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer"
-                              />
-                              <input
-                                type="text"
-                                value={themeConfig.textColor}
-                                onChange={(e) => handleThemeChange('textColor', e.target.value)}
-                                className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                                placeholder="#1E293B"
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Font Section */}
-                        <div className="mt-8">
-                          <div className="flex items-center gap-2 mb-4">
-                            <IconTypography size={18} className="text-slate-500" />
-                            <label className="block text-sm font-medium text-slate-700">
-                              Czcionka nagłówków
-                            </label>
-                          </div>
-                          <select
-                            value={themeConfig.fontHeading}
-                            onChange={(e) => handleThemeChange('fontHeading', e.target.value)}
-                            className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37] bg-white"
-                          >
-                            {FONT_OPTIONS.headings.map((font) => (
-                              <option key={font.value} value={font.value} style={{ fontFamily: font.value }}>
-                                {font.label}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {/* Preview box */}
-                        <div className="mt-8 p-4 rounded-xl border border-slate-200" style={{ backgroundColor: themeConfig.boxBgColor }}>
-                          <p className="text-xs text-slate-400 mb-3">Podgląd</p>
-                          <h4
-                            className="text-lg font-semibold mb-2"
-                            style={{ color: themeConfig.primaryColor, fontFamily: themeConfig.fontHeading }}
-                          >
-                            Przykładowa kategoria
-                          </h4>
-                          <p className="text-sm" style={{ color: themeConfig.textColor }}>
-                            Usługa fryzjerska <span style={{ color: themeConfig.secondaryColor, fontWeight: 600 }}>120 zł</span>
-                          </p>
-                        </div>
-
-                        {/* Reset button */}
-                        <div className="mt-6">
-                          <button
-                            onClick={resetTheme}
-                            className="text-sm text-slate-500 hover:text-slate-700 hover:underline transition-colors"
-                          >
-                            Przywróć domyślne kolory
-                          </button>
-                        </div>
+                            // Also save to database if pricelist selected
+                            if (selectedPricelistId) {
+                              try {
+                                await updatePricelistTheme({
+                                  pricelistId: selectedPricelistId,
+                                  themeConfigJson: JSON.stringify(theme),
+                                  templateId: templateId,
+                                });
+                              } catch (e) {
+                                console.error('Error saving theme to database:', e);
+                              }
+                            }
+                          }}
+                        />
                       </div>
                     )}
                   </div>

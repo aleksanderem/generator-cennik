@@ -47,3 +47,4 @@ export { default as ClassicTemplate, classicTemplateDefinition } from './templat
 export { default as MinimalTemplate, minimalTemplateDefinition } from './templates/minimal/MinimalTemplate';
 export { default as ProfessionalTemplate, professionalTemplateDefinition } from './templates/professional/ProfessionalTemplate';
 export { default as ElegantTemplate, elegantTemplateDefinition } from './templates/elegant/ElegantTemplate';
+export { default as PremiumTemplate, premiumTemplateDefinition } from './templates/premium/PremiumTemplate';
