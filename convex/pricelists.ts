@@ -51,7 +51,34 @@ export const getUserPricelists = query({
   },
 });
 
-// Pobierz pojedynczy cennik po ID
+// Pobierz pojedynczy cennik po ID (publiczny - do podglądu)
+export const getPricelistPublic = query({
+  args: { pricelistId: v.id("pricelists") },
+  returns: v.union(
+    v.object({
+      pricingDataJson: v.string(),
+      themeConfigJson: v.optional(v.string()),
+      templateId: v.optional(v.string()),
+      name: v.string(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    const pricelist = await ctx.db.get(args.pricelistId);
+    if (!pricelist) {
+      return null;
+    }
+    // Zwracamy tylko dane potrzebne do wyświetlenia (bez userId itp.)
+    return {
+      pricingDataJson: pricelist.pricingDataJson,
+      themeConfigJson: pricelist.themeConfigJson,
+      templateId: pricelist.templateId,
+      name: pricelist.name,
+    };
+  },
+});
+
+// Pobierz pojedynczy cennik po ID (wymaga auth)
 export const getPricelist = query({
   args: { pricelistId: v.id("pricelists") },
   returns: v.union(pricelistValidator, v.null()),

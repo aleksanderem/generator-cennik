@@ -103,6 +103,40 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
+  // Kopie robocze cenników (dla wszystkich użytkowników, także niezalogowanych)
+  pricelistDrafts: defineTable({
+    // Unikalny identyfikator draftu (UUID) - używany w URL
+    draftId: v.string(),
+
+    // Opcjonalne powiązanie z użytkownikiem (jeśli zalogowany)
+    userId: v.optional(v.id("users")),
+
+    // Dane cennika jako JSON string (PricingData)
+    pricingDataJson: v.string(),
+
+    // Ustawienia wyświetlania jako JSON string (ThemeConfig)
+    themeConfigJson: v.optional(v.string()),
+
+    // Wybrany szablon
+    templateId: v.optional(v.string()),
+
+    // Oryginalne dane wejściowe (do ponownego generowania)
+    rawInputData: v.optional(v.string()),
+
+    // Statystyki
+    servicesCount: v.optional(v.number()),
+    categoriesCount: v.optional(v.number()),
+
+    createdAt: v.number(),
+    updatedAt: v.optional(v.number()),
+
+    // TTL - drafty bez userId są usuwane po 7 dniach
+    expiresAt: v.optional(v.number()),
+  })
+    .index("by_draft_id", ["draftId"])
+    .index("by_user", ["userId"])
+    .index("by_expires", ["expiresAt"]),
+
   // Cenniki (zapisane przez użytkowników)
   pricelists: defineTable({
     userId: v.id("users"),

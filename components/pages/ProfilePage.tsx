@@ -1,12 +1,12 @@
 "use client";
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { ThemeConfig, DEFAULT_THEME, PricingData } from '../../types';
-import { TemplateEditor, SAMPLE_PRICING_DATA } from '../../lib/pricelist-templates';
+import { TemplateEditor, SAMPLE_PRICING_DATA, getTemplate, generateEmbedHTML } from '../../lib/pricelist-templates';
 import type { Id } from '../../convex/_generated/dataModel';
 import {
   IconSettings,
@@ -44,9 +44,23 @@ type Tab = 'pricelists' | 'audits' | 'payments' | 'invoices' | 'company' | 'salo
 const ProfilePage: React.FC = () => {
   const { user: clerkUser, isLoaded: isClerkLoaded } = useUser();
   const { signOut, openUserProfile } = useClerk();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<Tab>('pricelists');
   const [isEditingCompany, setIsEditingCompany] = useState(false);
   const [companySaving, setCompanySaving] = useState(false);
+
+  // Modal podglądu cennika
+  const [previewPricelist, setPreviewPricelist] = useState<{
+    _id: Id<"pricelists">;
+    name: string;
+    pricingDataJson: string;
+    themeConfigJson?: string;
+    templateId?: string;
+  } | null>(null);
+
+  // Stan akcji
+  const [copyingCode, setCopyingCode] = useState<Id<"pricelists"> | null>(null);
+  const [editingPricelist, setEditingPricelist] = useState<Id<"pricelists"> | null>(null);
 
   // Form state for company data
   const [companyForm, setCompanyForm] = useState({
@@ -100,6 +114,7 @@ const ProfilePage: React.FC = () => {
 
   const updateSalonData = useMutation(api.users.updateSalonData);
   const updatePricelistTheme = useMutation(api.pricelists.updatePricelistTheme);
+  const createDraftFromPricelist = useMutation(api.pricelistDrafts.createDraftFromPricelist);
 
   // Theme/colors state (for price list customization)
   const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
@@ -226,6 +241,40 @@ const ProfilePage: React.FC = () => {
       setSalonSaving(false);
     }
   };
+
+  // Funkcja kopiowania kodu HTML cennika
+  const handleCopyCode = useCallback(async (pricelist: {
+    _id: Id<"pricelists">;
+    pricingDataJson: string;
+    themeConfigJson?: string;
+  }) => {
+    setCopyingCode(pricelist._id);
+    try {
+      const pricingData = JSON.parse(pricelist.pricingDataJson) as PricingData;
+      const themeConfig = pricelist.themeConfigJson
+        ? JSON.parse(pricelist.themeConfigJson) as ThemeConfig
+        : DEFAULT_THEME;
+      const code = generateEmbedHTML(pricingData, themeConfig);
+      await navigator.clipboard.writeText(code);
+      // Krótki feedback - kod skopiowany
+      setTimeout(() => setCopyingCode(null), 1500);
+    } catch (error) {
+      console.error('Error copying code:', error);
+      setCopyingCode(null);
+    }
+  }, []);
+
+  // Funkcja edycji cennika - tworzy draft i przekierowuje do edytora
+  const handleEditPricelist = useCallback(async (pricelistId: Id<"pricelists">) => {
+    setEditingPricelist(pricelistId);
+    try {
+      const draftId = await createDraftFromPricelist({ pricelistId });
+      navigate(`/start-generator?draft=${draftId}`);
+    } catch (error) {
+      console.error('Error creating draft:', error);
+      setEditingPricelist(null);
+    }
+  }, [createDraftFromPricelist, navigate]);
 
   // Initialize company form when user data loads
   React.useEffect(() => {
@@ -586,26 +635,46 @@ const ProfilePage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
+                            {/* Podgląd w nowej zakładce */}
                             <button
-                              onClick={() => {
-                                // TODO: Otwórz podgląd cennika
-                                alert('Podgląd cennika - do zaimplementowania');
-                              }}
+                              onClick={() => window.open(`/preview?pricelist=${pricelist._id}`, '_blank')}
                               className="p-2 text-slate-400 hover:text-[#722F37] hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Podgląd"
+                              title="Podgląd w nowej zakładce"
                             >
                               <IconEye size={16} />
                             </button>
+                            {/* Edycja */}
                             <button
-                              onClick={() => {
-                                // TODO: Kopiuj kod embed
-                                alert('Kopiowanie kodu - do zaimplementowania');
-                              }}
-                              className="p-2 text-slate-400 hover:text-[#722F37] hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Kopiuj kod"
+                              onClick={() => handleEditPricelist(pricelist._id)}
+                              disabled={editingPricelist === pricelist._id}
+                              className="p-2 text-slate-400 hover:text-[#722F37] hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                              title="Edytuj"
                             >
-                              <IconCode size={16} />
+                              {editingPricelist === pricelist._id ? (
+                                <IconLoader2 size={16} className="animate-spin" />
+                              ) : (
+                                <IconEdit size={16} />
+                              )}
                             </button>
+                            {/* Kopiuj kod */}
+                            <button
+                              onClick={() => handleCopyCode(pricelist)}
+                              disabled={copyingCode === pricelist._id}
+                              className={cn(
+                                "p-2 rounded-lg transition-colors",
+                                copyingCode === pricelist._id
+                                  ? "text-emerald-600 bg-emerald-50"
+                                  : "text-slate-400 hover:text-[#722F37] hover:bg-slate-100"
+                              )}
+                              title={copyingCode === pricelist._id ? "Skopiowano!" : "Kopiuj kod HTML"}
+                            >
+                              {copyingCode === pricelist._id ? (
+                                <IconCheck size={16} />
+                              ) : (
+                                <IconCode size={16} />
+                              )}
+                            </button>
+                            {/* Usuń */}
                             <button
                               onClick={async () => {
                                 if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
@@ -1357,24 +1426,6 @@ const ProfilePage: React.FC = () => {
                           data={selectedPricelistData || SAMPLE_PRICING_DATA}
                           onThemeChange={handleFullThemeChange}
                           onTemplateChange={handleTemplateChange}
-                          onSave={async (templateId, theme) => {
-                            // Save to localStorage (always works)
-                            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(theme));
-                            localStorage.setItem(LOCAL_STORAGE_TEMPLATE_KEY, templateId);
-
-                            // Also save to database if pricelist selected
-                            if (selectedPricelistId) {
-                              try {
-                                await updatePricelistTheme({
-                                  pricelistId: selectedPricelistId,
-                                  themeConfigJson: JSON.stringify(theme),
-                                  templateId: templateId,
-                                });
-                              } catch (e) {
-                                console.error('Error saving theme to database:', e);
-                              }
-                            }
-                          }}
                         />
                       </div>
                     )}
@@ -1385,6 +1436,100 @@ const ProfilePage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Modal podglądu cennika */}
+      {previewPricelist && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setPreviewPricelist(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal header */}
+            <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="font-semibold text-slate-900">{previewPricelist.name}</h3>
+                <p className="text-sm text-slate-500">Podgląd cennika</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleEditPricelist(previewPricelist._id)}
+                  disabled={editingPricelist === previewPricelist._id}
+                  className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-[#722F37] bg-[#722F37]/5 rounded-lg hover:bg-[#722F37]/10 transition-colors disabled:opacity-50"
+                >
+                  {editingPricelist === previewPricelist._id ? (
+                    <IconLoader2 size={14} className="animate-spin" />
+                  ) : (
+                    <IconEdit size={14} />
+                  )}
+                  Edytuj
+                </button>
+                <button
+                  onClick={() => handleCopyCode(previewPricelist)}
+                  disabled={copyingCode === previewPricelist._id}
+                  className={cn(
+                    "flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-lg transition-colors",
+                    copyingCode === previewPricelist._id
+                      ? "text-emerald-600 bg-emerald-50"
+                      : "text-slate-600 bg-slate-100 hover:bg-slate-200"
+                  )}
+                >
+                  {copyingCode === previewPricelist._id ? (
+                    <>
+                      <IconCheck size={14} />
+                      Skopiowano!
+                    </>
+                  ) : (
+                    <>
+                      <IconCode size={14} />
+                      Kopiuj kod
+                    </>
+                  )}
+                </button>
+                <button
+                  onClick={() => setPreviewPricelist(null)}
+                  className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  <IconX size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal content - preview */}
+            <div className="flex-1 overflow-auto p-6 bg-slate-50">
+              <div className="bg-white rounded-xl shadow-lg max-w-2xl mx-auto">
+                {(() => {
+                  try {
+                    const pricingData = JSON.parse(previewPricelist.pricingDataJson) as PricingData;
+                    const themeConfig = previewPricelist.themeConfigJson
+                      ? JSON.parse(previewPricelist.themeConfigJson) as ThemeConfig
+                      : DEFAULT_THEME;
+                    const templateId = previewPricelist.templateId || 'modern';
+                    const template = getTemplate(templateId);
+
+                    if (template) {
+                      const TemplateComponent = template.Component;
+                      return (
+                        <TemplateComponent
+                          data={pricingData}
+                          theme={themeConfig}
+                          editMode={false}
+                        />
+                      );
+                    }
+                    return <p className="p-4 text-slate-500">Nie można załadować szablonu</p>;
+                  } catch (e) {
+                    console.error('Error rendering preview:', e);
+                    return <p className="p-4 text-red-500">Błąd podczas ładowania podglądu</p>;
+                  }
+                })()}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

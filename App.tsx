@@ -16,15 +16,17 @@ import GeneratorPage from './components/pages/GeneratorPage';
 import SuccessPage from './components/pages/SuccessPage';
 import ProfilePage from './components/pages/ProfilePage';
 import StartAuditPage from './components/pages/StartAuditPage';
+import StartGeneratorPage from './components/pages/StartGeneratorPage';
 import MetaAdsPage from './components/pages/MetaAdsPage';
 import GoogleAdsPage from './components/pages/GoogleAdsPage';
+import PreviewPage from './components/pages/PreviewPage';
 import DevMenu from './components/dev/DevMenu';
 import { StickyBanner } from './components/ui/sticky-banner';
 import { useUser, SignInButton } from '@clerk/clerk-react';
 import { ChevronRight } from 'lucide-react';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2, Code2, Palette, Copy, CheckCircle, PanelRightOpen, PanelRightClose, LogIn } from 'lucide-react';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'campaigns-meta' | 'campaigns-google';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'start-generator' | 'campaigns-meta' | 'campaigns-google' | 'preview';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -45,8 +47,10 @@ const App: React.FC = () => {
     if (path === '/success') return 'success';
     if (path === '/profile') return 'profile';
     if (path === '/start-audit') return 'start-audit';
+    if (path === '/start-generator') return 'start-generator';
     if (path === '/campaigns-meta') return 'campaigns-meta';
     if (path === '/campaigns-google') return 'campaigns-google';
+    if (path === '/preview') return 'preview';
     return 'home';
   };
 
@@ -213,8 +217,8 @@ const App: React.FC = () => {
         </StickyBanner>
       )}
 
-      {/* Header with Navigation (hidden on success/start-audit pages) */}
-      {currentPage !== 'success' && currentPage !== 'start-audit' && (
+      {/* Header with Navigation (hidden on success/start-audit/preview pages) */}
+      {currentPage !== 'success' && currentPage !== 'start-audit' && currentPage !== 'preview' && (
         <Header
           currentPage={currentPage}
           onNavigate={handleNavigate}
@@ -247,6 +251,16 @@ const App: React.FC = () => {
         {/* Page: START-AUDIT - Full screen for users with credits */}
         {currentPage === 'start-audit' && (
           <StartAuditPage />
+        )}
+
+        {/* Page: START-GENERATOR - Full screen pricelist generator */}
+        {currentPage === 'start-generator' && (
+          <StartGeneratorPage />
+        )}
+
+        {/* Page: PREVIEW - Full screen cennik preview (opens in new tab) */}
+        {currentPage === 'preview' && (
+          <PreviewPage />
         )}
 
         {/* Page: HOME (Landing) - Full width */}

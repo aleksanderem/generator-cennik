@@ -11,6 +11,7 @@
 import type * as audits from "../audits.js";
 import type * as dev from "../dev.js";
 import type * as http from "../http.js";
+import type * as pricelistDrafts from "../pricelistDrafts.js";
 import type * as pricelists from "../pricelists.js";
 import type * as purchases from "../purchases.js";
 import type * as stripe from "../stripe.js";
@@ -26,6 +27,7 @@ declare const fullApi: ApiFromModules<{
   audits: typeof audits;
   dev: typeof dev;
   http: typeof http;
+  pricelistDrafts: typeof pricelistDrafts;
   pricelists: typeof pricelists;
   purchases: typeof purchases;
   stripe: typeof stripe;

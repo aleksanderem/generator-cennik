@@ -1,5 +1,6 @@
 "use client";
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { motion } from 'motion/react';
 import {
@@ -399,6 +400,12 @@ const SpeedSkeleton = () => {
 // ========================================
 
 const GeneratorPage: React.FC<GeneratorPageProps> = ({ onOpenPaywall }) => {
+  const navigate = useNavigate();
+
+  const handleStartGenerator = () => {
+    navigate('/start-generator');
+  };
+
   return (
     <div className="w-full">
       {/* ===================== HERO: DARMOWY GENERATOR CENNIKA ===================== */}
@@ -455,7 +462,7 @@ const GeneratorPage: React.FC<GeneratorPageProps> = ({ onOpenPaywall }) => {
               <BlurFade delay={0.4} inView>
                 {/* Main CTA - Darmowy generator */}
                 <RainbowButton
-                  onClick={onOpenPaywall}
+                  onClick={handleStartGenerator}
                   className="w-full sm:w-auto mb-6"
                 >
                   Stwórz cennik za darmo
@@ -575,7 +582,7 @@ const GeneratorPage: React.FC<GeneratorPageProps> = ({ onOpenPaywall }) => {
           <BlurFade delay={0.5} inView>
             <div className="text-center mt-10">
               <button
-                onClick={onOpenPaywall}
+                onClick={handleStartGenerator}
                 className="inline-flex items-center gap-2 text-[#171717] font-semibold hover:gap-3 transition-all"
               >
                 Wypróbuj generator za darmo <IconArrowRight size={18} />
@@ -707,7 +714,7 @@ const GeneratorPage: React.FC<GeneratorPageProps> = ({ onOpenPaywall }) => {
                 </div>
 
                 <button
-                  onClick={onOpenPaywall}
+                  onClick={handleStartGenerator}
                   className="inline-flex items-center gap-2 px-6 py-3 bg-[#171717] text-white font-semibold rounded-xl hover:bg-[#2a2a2a] transition-colors"
                 >
                   <IconSparkles size={18} className="text-[#D4A574]" />

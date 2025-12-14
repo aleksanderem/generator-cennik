@@ -39,7 +39,7 @@ export {
 
 // Components
 export { ColorZone, InlineColorZone } from './components/ColorZone';
-export { TemplateEditor } from './components/TemplateEditor';
+export { TemplateEditor, generateEmbedHTML } from './components/TemplateEditor';
 
 // Individual Templates (for direct import if needed)
 export { default as ModernTemplate, modernTemplateDefinition } from './templates/modern/ModernTemplate';

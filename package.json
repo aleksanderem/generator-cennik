@@ -30,6 +30,7 @@
     "lucide-react": "^0.555.0",
     "motion": "^12.23.26",
     "react": "^19.2.1",
+    "react-color": "^2.19.3",
     "react-dom": "^19.2.1",
     "react-fast-marquee": "^1.6.5",
     "react-icons": "^5.5.0",
@@ -42,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
+    "@types/react-color": "^3.0.13",
     "@vitejs/plugin-basic-ssl": "^2.1.0",
     "@vitejs/plugin-react": "^5.0.0",
     "autoprefixer": "^10.4.22",
