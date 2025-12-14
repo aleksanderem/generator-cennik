@@ -242,7 +242,7 @@ export const getInvoices = action({
       return [];
     }
 
-    const user = await ctx.runQuery(internal.users.getUserByClerkId, {
+    const user: { stripeCustomerId?: string } | null = await ctx.runQuery(internal.users.getUserByClerkId, {
       clerkId: identity.subject,
     });
 
@@ -252,29 +252,50 @@ export const getInvoices = action({
 
     const stripe = getStripe();
 
+    type InvoiceResult = {
+      id: string;
+      number: string | null;
+      status: string;
+      amount: number;
+      currency: string;
+      created: number;
+      pdfUrl: string | null;
+      hostedUrl: string | null;
+      description: string | null;
+    };
+
     try {
-      const invoices = await stripe.invoices.list({
+      const invoicesResponse = await stripe.invoices.list({
         customer: user.stripeCustomerId,
         limit: 50,
       });
 
-      return invoices.data.map((inv) => ({
+      const result: InvoiceResult[] = invoicesResponse.data.map((inv) => ({
         id: inv.id,
         number: inv.number,
         status: inv.status || "unknown",
         amount: inv.amount_paid || inv.total || 0,
         currency: inv.currency,
         created: inv.created,
-        pdfUrl: inv.invoice_pdf,
-        hostedUrl: inv.hosted_invoice_url,
+        pdfUrl: inv.invoice_pdf ?? null,
+        hostedUrl: inv.hosted_invoice_url ?? null,
         description: inv.description,
       }));
+      return result;
     } catch (error) {
       console.error("Error fetching invoices:", error);
-      return [];
+      const empty: InvoiceResult[] = [];
+      return empty;
     }
   },
 });
+
+// Typ zwracany przez syncStripeCustomer
+type SyncStripeCustomerResult = {
+  success: boolean;
+  customerId?: string;
+  message?: string;
+};
 
 // Synchronizuj stripeCustomerId z Stripe (znajdź klienta po emailu)
 export const syncStripeCustomer = action({
@@ -284,13 +305,13 @@ export const syncStripeCustomer = action({
     customerId: v.optional(v.string()),
     message: v.optional(v.string()),
   }),
-  handler: async (ctx) => {
+  handler: async (ctx): Promise<SyncStripeCustomerResult> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       return { success: false, message: "Musisz być zalogowany" };
     }
 
-    const user = await ctx.runQuery(internal.users.getUserByClerkId, {
+    const user: { _id: Id<"users">; email?: string; stripeCustomerId?: string } | null = await ctx.runQuery(internal.users.getUserByClerkId, {
       clerkId: identity.subject,
     });
 
