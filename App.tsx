@@ -16,13 +16,15 @@ import GeneratorPage from './components/pages/GeneratorPage';
 import SuccessPage from './components/pages/SuccessPage';
 import ProfilePage from './components/pages/ProfilePage';
 import StartAuditPage from './components/pages/StartAuditPage';
+import MetaAdsPage from './components/pages/MetaAdsPage';
+import GoogleAdsPage from './components/pages/GoogleAdsPage';
 import DevMenu from './components/dev/DevMenu';
 import { StickyBanner } from './components/ui/sticky-banner';
 import { useUser, SignInButton } from '@clerk/clerk-react';
 import { ChevronRight } from 'lucide-react';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2, Code2, Palette, Copy, CheckCircle, PanelRightOpen, PanelRightClose, LogIn } from 'lucide-react';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'campaigns-meta' | 'campaigns-google';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -43,6 +45,8 @@ const App: React.FC = () => {
     if (path === '/success') return 'success';
     if (path === '/profile') return 'profile';
     if (path === '/start-audit') return 'start-audit';
+    if (path === '/campaigns-meta') return 'campaigns-meta';
+    if (path === '/campaigns-google') return 'campaigns-google';
     return 'home';
   };
 
@@ -260,8 +264,22 @@ const App: React.FC = () => {
           />
         )}
 
-        {/* Pages with constrained width (not landing/generator/success/start-audit) */}
-        {currentPage !== 'home' && currentPage !== 'generator' && currentPage !== 'success' && currentPage !== 'start-audit' && (
+        {/* Page: CAMPAIGNS-META (full width) */}
+        {currentPage === 'campaigns-meta' && (
+          <MetaAdsPage
+            onOpenPaywall={() => setIsPaywallOpen(true)}
+          />
+        )}
+
+        {/* Page: CAMPAIGNS-GOOGLE (full width) */}
+        {currentPage === 'campaigns-google' && (
+          <GoogleAdsPage
+            onOpenPaywall={() => setIsPaywallOpen(true)}
+          />
+        )}
+
+        {/* Pages with constrained width (not landing/generator/success/start-audit/campaigns) */}
+        {currentPage !== 'home' && currentPage !== 'generator' && currentPage !== 'success' && currentPage !== 'start-audit' && currentPage !== 'campaigns-meta' && currentPage !== 'campaigns-google' && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
 
         {/* Page: AUDIT (Premium) */}

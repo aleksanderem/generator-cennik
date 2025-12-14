@@ -1,6 +1,6 @@
 "use client"
 
-import { RefObject, useEffect, useId, useState } from "react"
+import { RefObject, useEffect, useId, useState, useRef } from "react"
 import { motion } from "motion/react"
 
 import { cn } from "@/lib/utils"
@@ -23,6 +23,7 @@ export interface AnimatedBeamProps {
   startYOffset?: number
   endXOffset?: number
   endYOffset?: number
+  onPulse?: () => void
 }
 
 export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
@@ -43,6 +44,7 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
   startYOffset = 0,
   endXOffset = 0,
   endYOffset = 0,
+  onPulse,
 }) => {
   const id = useId()
   const [pathD, setPathD] = useState("")
@@ -113,6 +115,33 @@ export const AnimatedBeam: React.FC<AnimatedBeamProps> = ({
     endXOffset,
     endYOffset,
   ])
+
+  // Pulse callback at end of each animation cycle
+  const onPulseRef = useRef(onPulse)
+  onPulseRef.current = onPulse
+
+  useEffect(() => {
+    if (!onPulseRef.current) return
+
+    // Fire pulse when gradient reaches the end (around 85% of duration due to easing)
+    const pulseTime = duration * 0.85 * 1000
+    const cycleTime = duration * 1000
+
+    // Initial pulse after delay + travel time
+    const initialTimeout = setTimeout(() => {
+      onPulseRef.current?.()
+    }, (delay * 1000) + pulseTime)
+
+    // Subsequent pulses every cycle
+    const interval = setInterval(() => {
+      onPulseRef.current?.()
+    }, cycleTime)
+
+    return () => {
+      clearTimeout(initialTimeout)
+      clearInterval(interval)
+    }
+  }, [delay, duration])
 
   return (
     <svg

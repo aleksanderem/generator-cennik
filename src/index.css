@@ -76,6 +76,20 @@ body {
   animation: shine var(--duration, 14s) infinite linear;
 }
 
+/* Orbit animation for floating elements */
+@keyframes orbit {
+  0% {
+    transform: rotate(var(--initial-position, 0deg)) translateX(var(--translate-position, 100px)) rotate(calc(var(--initial-position, 0deg) * -1));
+  }
+  100% {
+    transform: rotate(calc(var(--initial-position, 0deg) + 360deg)) translateX(var(--translate-position, 100px)) rotate(calc((var(--initial-position, 0deg) + 360deg) * -1));
+  }
+}
+
+.animate-orbit {
+  animation: orbit var(--orbit-duration, 20s) linear infinite;
+}
+
 /* Custom scrollbar for cleaner look */
 ::-webkit-scrollbar {
   width: 8px;

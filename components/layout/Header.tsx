@@ -19,6 +19,7 @@ import {
   Wand2,
   ChevronDown,
 } from 'lucide-react';
+import { IconBrandMeta, IconBrandGoogle } from '@tabler/icons-react';
 import { AuroraText } from '../ui/aurora-text';
 import { PulsatingButton } from '../ui/pulsating-button';
 
@@ -30,6 +31,7 @@ interface NavSubItem {
   premium?: boolean;
   comingSoon?: boolean;
   href?: string;
+  icon?: 'meta' | 'google';
 }
 
 interface NavItem {
@@ -76,9 +78,9 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
       id: 'kampanie',
       label: 'Kampanie',
       children: [
-        { id: 'campaigns-meta', label: 'Kampanie reklamowe Meta', comingSoon: true },
-        { id: 'campaigns-google', label: 'Kampanie reklamowe Google Ads', comingSoon: true },
-        { id: 'agency', label: 'Obsługa agencji 360', comingSoon: true },
+        { id: 'campaigns-meta', label: 'Meta Ads', icon: 'meta' },
+        { id: 'campaigns-google', label: 'Google Ads', icon: 'google' },
+        { id: 'agency', label: 'Agencja 360', comingSoon: true },
       ],
     },
   ];
@@ -110,19 +112,7 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
             to="/"
             className="flex items-center gap-2 group"
           >
-            <div className="flex flex-col">
-              <AuroraText
-                className="font-serif text-xl font-bold leading-none"
-                colors={["#722F37", "#B76E79", "#8B4049", "#D4A574"]}
-                speed={0.5}
-              >
-                BooksyAudit.pl
-              </AuroraText>
-              <div className="flex items-center gap-1 ml-auto -mt-0.5">
-                <span className="text-xs text-slate-400">by</span>
-                <img src="/kolabo.svg" alt="KolaboIT" className="h-4 opacity-50" />
-              </div>
-            </div>
+            <img src="/logo2.png" alt="BooksyAudit" className="h-6" />
           </Link>
 
           {/* Desktop Navigation */}
@@ -174,14 +164,14 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
 
                 {/* Dropdown menu */}
                 {item.children && openDropdown === item.id && (
-                  <div className="absolute top-[calc(100%-4px)] left-0 py-2 bg-white rounded-xl shadow-lg border border-slate-200 min-w-[220px] before:absolute before:-top-3 before:left-0 before:right-0 before:h-4 before:bg-transparent">
+                  <div className="absolute top-[calc(100%-4px)] left-0 py-2 bg-white rounded-xl shadow-lg border border-slate-200 min-w-[180px] before:absolute before:-top-3 before:left-0 before:right-0 before:h-4 before:bg-transparent">
                     {item.children.map((child) => (
                       <button
                         key={child.id}
                         onClick={() => handleItemClick(child)}
                         disabled={child.comingSoon}
                         className={`
-                          w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-left transition-colors
+                          w-full flex items-center justify-between gap-3 px-4 py-2.5 text-sm text-left transition-colors whitespace-nowrap
                           ${child.comingSoon
                             ? 'text-slate-400 cursor-not-allowed'
                             : currentPage === child.id
@@ -190,7 +180,11 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                           }
                         `}
                       >
-                        <span>{child.label}</span>
+                        <span className="flex items-center gap-2">
+                          {child.icon === 'meta' && <IconBrandMeta size={18} className="text-[#0081FB]" />}
+                          {child.icon === 'google' && <img src="/g-only.png" alt="Google" className="w-[18px] h-[18px]" />}
+                          {child.label}
+                        </span>
                         <span className="flex items-center gap-1.5">
                           {child.premium && (
                             <span className="text-[10px] font-bold text-[#D4AF37] bg-[#D4AF37]/10 px-1.5 py-0.5 rounded">

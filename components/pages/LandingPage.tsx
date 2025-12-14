@@ -2053,7 +2053,7 @@ const LandingPage: React.FC<LandingPageProps> = ({ onNavigate, onOpenPaywall }) 
       <footer className="py-10 border-t border-slate-100 bg-white">
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="font-serif text-xl font-bold text-[#171717]">BooksyAudit.pl</span>
+            <img src="/logo2.png" alt="BooksyAudit" className="h-6" />
             <div className="flex items-center gap-6 text-sm text-slate-500">
               <a href="#" className="hover:text-[#171717]">Regulamin</a>
               <a href="#" className="hover:text-[#171717]">Prywatność</a>
