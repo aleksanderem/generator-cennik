@@ -61,6 +61,7 @@ const StartGeneratorPage: React.FC = () => {
   const [linkCopied, setLinkCopied] = useState(false);
   const [pricelistName, setPricelistName] = useState(`Cennik ${new Date().toLocaleDateString('pl-PL')}`);
   const [isEditingName, setIsEditingName] = useState(false);
+  const [sourcePricelistId, setSourcePricelistId] = useState<string | null>(null);
 
   // Convex
   const user = useQuery(api.users.getCurrentUser);
@@ -95,6 +96,9 @@ const StartGeneratorPage: React.FC = () => {
         }
         if (existingDraft.rawInputData) {
           setInputText(existingDraft.rawInputData);
+        }
+        if (existingDraft.sourcePricelistId) {
+          setSourcePricelistId(existingDraft.sourcePricelistId);
         }
 
         setAppState('PREVIEW');
@@ -253,8 +257,16 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
   };
 
   const handleCopyLink = () => {
-    if (!draftId) return;
-    const url = `${window.location.origin}/preview?draft=${draftId}`;
+    // Jeśli edytujemy istniejący cennik, użyj jego ID dla stabilnego linka
+    // W przeciwnym razie użyj drafta
+    let url: string;
+    if (sourcePricelistId) {
+      url = `${window.location.origin}/preview?pricelist=${sourcePricelistId}`;
+    } else if (draftId) {
+      url = `${window.location.origin}/preview?draft=${draftId}`;
+    } else {
+      return;
+    }
     navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
@@ -264,6 +276,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
     setAppState('INPUT');
     setPricingData(null);
     setSavedPricelistId(null);
+    setSourcePricelistId(null);
     setError(null);
     setDraftId(null);
     setSearchParams({});

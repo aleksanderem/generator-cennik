@@ -10,6 +10,7 @@ const draftValidator = v.object({
   _creationTime: v.number(),
   draftId: v.string(),
   userId: v.optional(v.id("users")),
+  sourcePricelistId: v.optional(v.id("pricelists")),
   pricingDataJson: v.string(),
   themeConfigJson: v.optional(v.string()),
   templateId: v.optional(v.string()),
@@ -293,6 +294,7 @@ export const createDraftFromPricelist = mutation({
     await ctx.db.insert("pricelistDrafts", {
       draftId,
       userId: user._id,
+      sourcePricelistId: args.pricelistId, // Zachowaj referencję do źródłowego cennika
       pricingDataJson: pricelist.pricingDataJson,
       themeConfigJson: pricelist.themeConfigJson,
       templateId: pricelist.templateId,

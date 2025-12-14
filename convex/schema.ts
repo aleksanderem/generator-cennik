@@ -111,6 +111,9 @@ export default defineSchema({
     // Opcjonalne powiązanie z użytkownikiem (jeśli zalogowany)
     userId: v.optional(v.id("users")),
 
+    // Opcjonalne powiązanie z źródłowym cennikiem (jeśli edytujemy istniejący)
+    sourcePricelistId: v.optional(v.id("pricelists")),
+
     // Dane cennika jako JSON string (PricingData)
     pricingDataJson: v.string(),
 
