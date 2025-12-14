@@ -309,6 +309,8 @@ export const createDraftFromPricelist = mutation({
 });
 
 // Konwertuj draft na zapisany cennik (wymaga logowania)
+// Jeśli draft pochodzi z istniejącego cennika (sourcePricelistId), aktualizuje go
+// W przeciwnym razie tworzy nowy cennik
 export const convertDraftToPricelist = mutation({
   args: {
     draftId: v.string(),
@@ -339,18 +341,51 @@ export const convertDraftToPricelist = mutation({
       throw new Error("Draft nie znaleziony");
     }
 
-    // Utwórz cennik z draftu
-    const pricelistId = await ctx.db.insert("pricelists", {
-      userId: user._id,
-      name: args.name,
-      source: "manual",
-      pricingDataJson: draft.pricingDataJson,
-      themeConfigJson: draft.themeConfigJson,
-      templateId: draft.templateId,
-      servicesCount: draft.servicesCount,
-      categoriesCount: draft.categoriesCount,
-      createdAt: Date.now(),
-    });
+    let pricelistId: typeof draft.sourcePricelistId;
+
+    // Jeśli edytujemy istniejący cennik, zaktualizuj go
+    if (draft.sourcePricelistId) {
+      const existingPricelist = await ctx.db.get(draft.sourcePricelistId);
+      if (existingPricelist && existingPricelist.userId === user._id) {
+        // Aktualizuj istniejący cennik
+        await ctx.db.patch(draft.sourcePricelistId, {
+          name: args.name,
+          pricingDataJson: draft.pricingDataJson,
+          themeConfigJson: draft.themeConfigJson,
+          templateId: draft.templateId,
+          servicesCount: draft.servicesCount,
+          categoriesCount: draft.categoriesCount,
+          updatedAt: Date.now(),
+        });
+        pricelistId = draft.sourcePricelistId;
+      } else {
+        // Źródłowy cennik nie istnieje lub nie należy do użytkownika - utwórz nowy
+        pricelistId = await ctx.db.insert("pricelists", {
+          userId: user._id,
+          name: args.name,
+          source: "manual",
+          pricingDataJson: draft.pricingDataJson,
+          themeConfigJson: draft.themeConfigJson,
+          templateId: draft.templateId,
+          servicesCount: draft.servicesCount,
+          categoriesCount: draft.categoriesCount,
+          createdAt: Date.now(),
+        });
+      }
+    } else {
+      // Nowy cennik - utwórz
+      pricelistId = await ctx.db.insert("pricelists", {
+        userId: user._id,
+        name: args.name,
+        source: "manual",
+        pricingDataJson: draft.pricingDataJson,
+        themeConfigJson: draft.themeConfigJson,
+        templateId: draft.templateId,
+        servicesCount: draft.servicesCount,
+        categoriesCount: draft.categoriesCount,
+        createdAt: Date.now(),
+      });
+    }
 
     // Usuń draft po konwersji
     await ctx.db.delete(draft._id);
