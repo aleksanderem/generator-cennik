@@ -242,6 +242,11 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
         name: pricelistName,
       });
       setSavedPricelistId(pricelistId);
+      // Po zapisaniu ustaw sourcePricelistId żeby link podglądu działał
+      // (draft został usunięty, więc musimy używać pricelistId)
+      setSourcePricelistId(pricelistId);
+      // Wyczyść draftId bo draft został usunięty
+      setDraftId(null);
 
       confetti({
         particleCount: 50,
