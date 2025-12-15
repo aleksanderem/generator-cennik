@@ -10,7 +10,6 @@ import { TemplateEditor, SAMPLE_PRICING_DATA, getTemplate, generateEmbedHTML } f
 import type { Id } from '../../convex/_generated/dataModel';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
-import { Button } from 'primereact/button';
 import {
   IconSettings,
   IconLogout,
@@ -95,27 +94,38 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
 }) => {
   const [expandedRows, setExpandedRows] = useState<Pricelist[]>([]);
 
-  // Group pricelists: main rows are originals (or orphan optimized), linked ones become expandable
+  // Group pricelists: OPTIMIZED versions on top, originals as expandable sub-rows
   const { mainPricelists, linkedMap } = useMemo(() => {
     const linked = new Map<string, Pricelist>();
     const main: Pricelist[] = [];
+    const originalIds = new Set<string>();
 
-    // First pass: identify optimized versions that have their original in the list
-    const optimizedIds = new Set<string>();
+    // First pass: identify originals that have optimized versions
     for (const p of pricelists) {
       if (p.isOptimized && p.optimizedFromPricelistId) {
         // Check if original exists in the list
-        const originalExists = pricelists.some(orig => orig._id === p.optimizedFromPricelistId);
-        if (originalExists) {
-          optimizedIds.add(p._id);
-          linked.set(p.optimizedFromPricelistId, p);
+        const original = pricelists.find(orig => orig._id === p.optimizedFromPricelistId);
+        if (original) {
+          originalIds.add(original._id);
+          linked.set(p._id, original); // optimized -> original mapping
         }
       }
     }
 
-    // Second pass: build main list (excluding linked optimized versions)
+    // Second pass: build main list (optimized first, then orphan originals)
+    // Optimized ones go first
     for (const p of pricelists) {
-      if (!optimizedIds.has(p._id)) {
+      if (p.isOptimized && linked.has(p._id)) {
+        main.push(p);
+      }
+    }
+    // Then add non-linked pricelists (originals without optimized or standalone)
+    for (const p of pricelists) {
+      if (!originalIds.has(p._id) && !p.isOptimized) {
+        main.push(p);
+      }
+      // Also add orphan optimized (without original in list)
+      if (p.isOptimized && !linked.has(p._id)) {
         main.push(p);
       }
     }
@@ -123,11 +133,11 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
     return { mainPricelists: main, linkedMap: linked };
   }, [pricelists]);
 
-  // Source badge renderer
+  // Source badge renderer - burgundy/gold theme
   const sourceBadge = (source: string, isOptimized?: boolean) => {
     if (isOptimized) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#D4A574]/20 text-[#996B3D]">
           <IconSparkles size={12} />
           AI
         </span>
@@ -135,8 +145,8 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
     }
     const configs: Record<string, { label: string; className: string }> = {
       manual: { label: 'Ręczny', className: 'bg-slate-100 text-slate-600' },
-      booksy: { label: 'Booksy', className: 'bg-blue-100 text-blue-700' },
-      audit: { label: 'Audyt', className: 'bg-emerald-100 text-emerald-700' },
+      booksy: { label: 'Booksy', className: 'bg-[#722F37]/10 text-[#722F37]' },
+      audit: { label: 'Audyt', className: 'bg-[#722F37]/10 text-[#722F37]' },
     };
     const config = configs[source] || configs.manual;
     return (
@@ -148,7 +158,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
 
   // Name column template
   const nameTemplate = (rowData: Pricelist) => (
-    <div className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-0.5 font-sans">
       <span className="font-medium text-slate-900">{rowData.name}</span>
       <span className="text-xs text-slate-500">{formatDate(rowData.createdAt)}</span>
     </div>
@@ -158,8 +168,8 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   const sourceTemplate = (rowData: Pricelist) => (
     <div className="flex items-center gap-2">
       {sourceBadge(rowData.source, rowData.isOptimized)}
-      {rowData.optimizedVersionId && !rowData.isOptimized && (
-        <span className="text-xs text-purple-600">→ ma AI</span>
+      {linkedMap.has(rowData._id) && rowData.isOptimized && (
+        <span className="text-xs text-[#D4A574]">← oryginał</span>
       )}
     </div>
   );
@@ -174,142 +184,193 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   // Actions column template
   const actionsTemplate = (rowData: Pricelist) => (
     <div className="flex items-center gap-1 justify-end">
-      <Button
-        icon={<IconEye size={16} />}
-        className="p-button-text p-button-sm"
-        tooltip="Podgląd"
-        tooltipOptions={{ position: 'top' }}
+      <button
+        className="p-1.5 text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors"
+        title="Podgląd"
         onClick={() => onPreview(rowData._id)}
-      />
-      <Button
-        icon={editingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
-        className="p-button-text p-button-sm"
-        tooltip="Edytuj"
-        tooltipOptions={{ position: 'top' }}
+      >
+        <IconEye size={16} />
+      </button>
+      <button
+        className="p-1.5 text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors disabled:opacity-50"
+        title="Edytuj"
         disabled={editingPricelist === rowData._id}
         onClick={() => onEdit(rowData._id)}
-      />
-      <Button
-        icon={copyingCode === rowData._id ? <IconCheck size={16} /> : <IconCode size={16} />}
-        className={cn("p-button-text p-button-sm", copyingCode === rowData._id && "text-emerald-600")}
-        tooltip={copyingCode === rowData._id ? "Skopiowano!" : "Kopiuj kod"}
-        tooltipOptions={{ position: 'top' }}
+      >
+        {editingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
+      </button>
+      <button
+        className={cn(
+          "p-1.5 rounded transition-colors",
+          copyingCode === rowData._id
+            ? "text-emerald-600 bg-emerald-50"
+            : "text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5"
+        )}
+        title={copyingCode === rowData._id ? "Skopiowano!" : "Kopiuj kod"}
         disabled={copyingCode === rowData._id}
         onClick={() => onCopyCode(rowData)}
-      />
+      >
+        {copyingCode === rowData._id ? <IconCheck size={16} /> : <IconCode size={16} />}
+      </button>
       {rowData.isOptimized ? (
-        <Button
-          icon={<IconSparkles size={16} />}
-          className="p-button-text p-button-sm text-purple-600"
-          tooltip="Zobacz wyniki optymalizacji"
-          tooltipOptions={{ position: 'top' }}
+        <button
+          className="p-1.5 text-[#D4A574] hover:text-[#996B3D] hover:bg-[#D4A574]/10 rounded transition-colors"
+          title="Zobacz wyniki optymalizacji"
           onClick={() => onViewResults(rowData._id)}
-        />
+        >
+          <IconSparkles size={16} />
+        </button>
       ) : !rowData.optimizedVersionId && (
-        <Button
-          icon={optimizingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconSparkles size={16} />}
-          className="p-button-text p-button-sm"
-          tooltip="Optymalizuj AI"
-          tooltipOptions={{ position: 'top' }}
+        <button
+          className="p-1.5 text-slate-500 hover:text-[#D4A574] hover:bg-[#D4A574]/10 rounded transition-colors disabled:opacity-50"
+          title="Optymalizuj AI"
           disabled={optimizingPricelist === rowData._id}
           onClick={() => onOptimize(rowData._id)}
-        />
+        >
+          {optimizingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconSparkles size={16} />}
+        </button>
       )}
-      <Button
-        icon={<IconTrash size={16} />}
-        className="p-button-text p-button-sm p-button-danger"
-        tooltip="Usuń"
-        tooltipOptions={{ position: 'top' }}
+      <button
+        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+        title="Usuń"
         onClick={() => onDelete(rowData._id)}
-      />
+      >
+        <IconTrash size={16} />
+      </button>
     </div>
   );
 
-  // Row expansion template (shows the linked optimized version)
+  // Row expansion template (shows the linked ORIGINAL version)
   const rowExpansionTemplate = (data: Pricelist) => {
     const linkedPricelist = linkedMap.get(data._id);
     if (!linkedPricelist) return null;
 
     return (
-      <div className="p-3 bg-purple-50/50 border-l-4 border-purple-300">
+      <div className="p-3 bg-slate-50 border-l-4 border-[#D4A574]/50 font-sans">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <IconSparkles size={16} className="text-purple-600" />
-              <span className="font-medium text-slate-900">{linkedPricelist.name}</span>
+              <IconFileText size={16} className="text-slate-400" />
+              <span className="font-medium text-slate-700">{linkedPricelist.name}</span>
+              <span className="text-xs text-slate-400">(oryginał)</span>
             </div>
-            {sourceBadge(linkedPricelist.source, linkedPricelist.isOptimized)}
+            {sourceBadge(linkedPricelist.source)}
             <span className="text-sm text-slate-500">
               {linkedPricelist.categoriesCount || 0} kat. / {linkedPricelist.servicesCount || 0} usł.
             </span>
             <span className="text-xs text-slate-400">{formatDate(linkedPricelist.createdAt)}</span>
           </div>
           <div className="flex items-center gap-1">
-            <Button
-              icon={<IconEye size={16} />}
-              className="p-button-text p-button-sm"
-              tooltip="Podgląd"
-              tooltipOptions={{ position: 'top' }}
+            <button
+              className="p-1.5 text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors"
+              title="Podgląd"
               onClick={() => onPreview(linkedPricelist._id)}
-            />
-            <Button
-              icon={editingPricelist === linkedPricelist._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
-              className="p-button-text p-button-sm"
-              tooltip="Edytuj"
-              tooltipOptions={{ position: 'top' }}
+            >
+              <IconEye size={16} />
+            </button>
+            <button
+              className="p-1.5 text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors disabled:opacity-50"
+              title="Edytuj"
               disabled={editingPricelist === linkedPricelist._id}
               onClick={() => onEdit(linkedPricelist._id)}
-            />
-            <Button
-              icon={copyingCode === linkedPricelist._id ? <IconCheck size={16} /> : <IconCode size={16} />}
-              className={cn("p-button-text p-button-sm", copyingCode === linkedPricelist._id && "text-emerald-600")}
-              tooltip={copyingCode === linkedPricelist._id ? "Skopiowano!" : "Kopiuj kod"}
-              tooltipOptions={{ position: 'top' }}
+            >
+              {editingPricelist === linkedPricelist._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
+            </button>
+            <button
+              className={cn(
+                "p-1.5 rounded transition-colors",
+                copyingCode === linkedPricelist._id
+                  ? "text-emerald-600 bg-emerald-50"
+                  : "text-slate-500 hover:text-[#722F37] hover:bg-[#722F37]/5"
+              )}
+              title={copyingCode === linkedPricelist._id ? "Skopiowano!" : "Kopiuj kod"}
               disabled={copyingCode === linkedPricelist._id}
               onClick={() => onCopyCode(linkedPricelist)}
-            />
-            <Button
-              icon={<IconSparkles size={16} />}
-              className="p-button-text p-button-sm text-purple-600"
-              tooltip="Zobacz wyniki optymalizacji"
-              tooltipOptions={{ position: 'top' }}
-              onClick={() => onViewResults(linkedPricelist._id)}
-            />
-            <Button
-              icon={<IconTrash size={16} />}
-              className="p-button-text p-button-sm p-button-danger"
-              tooltip="Usuń"
-              tooltipOptions={{ position: 'top' }}
+            >
+              {copyingCode === linkedPricelist._id ? <IconCheck size={16} /> : <IconCode size={16} />}
+            </button>
+            <button
+              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              title="Usuń"
               onClick={() => onDelete(linkedPricelist._id)}
-            />
+            >
+              <IconTrash size={16} />
+            </button>
           </div>
         </div>
       </div>
     );
   };
 
-  // Check if row is expandable (has linked optimized version)
+  // Check if row is expandable (has linked original version)
   const allowExpansion = (rowData: Pricelist) => linkedMap.has(rowData._id);
 
   return (
-    <DataTable
-      value={mainPricelists}
-      expandedRows={expandedRows}
-      onRowToggle={(e) => setExpandedRows(e.data as Pricelist[])}
-      rowExpansionTemplate={rowExpansionTemplate}
-      dataKey="_id"
-      stripedRows
-      size="small"
-      emptyMessage="Brak cenników"
-      className="text-sm"
-      rowClassName={(data) => linkedMap.has(data._id) ? 'cursor-pointer' : ''}
-    >
-      <Column expander={allowExpansion} style={{ width: '3rem' }} />
-      <Column field="name" header="Nazwa" body={nameTemplate} sortable />
-      <Column field="source" header="Źródło" body={sourceTemplate} style={{ width: '140px' }} />
-      <Column field="servicesCount" header="Usługi" body={statsTemplate} style={{ width: '140px' }} />
-      <Column body={actionsTemplate} style={{ width: '220px' }} />
-    </DataTable>
+    <div className="pricelist-table font-sans">
+      <style>{`
+        .pricelist-table .p-datatable {
+          font-family: 'Inter', sans-serif;
+        }
+        .pricelist-table .p-datatable .p-datatable-thead > tr > th {
+          background: #fafafa;
+          color: #64748b;
+          font-weight: 500;
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+          padding: 0.75rem 1rem;
+          border-color: #f1f5f9;
+        }
+        .pricelist-table .p-datatable .p-datatable-tbody > tr {
+          background: white;
+        }
+        .pricelist-table .p-datatable .p-datatable-tbody > tr > td {
+          padding: 0.75rem 1rem;
+          border-color: #f1f5f9;
+        }
+        .pricelist-table .p-datatable .p-datatable-tbody > tr:hover {
+          background: #fafafa;
+        }
+        .pricelist-table .p-datatable .p-row-toggler {
+          color: #722F37;
+          width: 1.75rem;
+          height: 1.75rem;
+        }
+        .pricelist-table .p-datatable .p-row-toggler:hover {
+          background: rgba(114, 47, 55, 0.1);
+          color: #722F37;
+        }
+        .pricelist-table .p-datatable .p-datatable-tbody > tr.p-highlight {
+          background: rgba(212, 165, 116, 0.1);
+        }
+        .pricelist-table .p-datatable .p-sortable-column:hover {
+          background: #f1f5f9;
+        }
+        .pricelist-table .p-datatable .p-sortable-column.p-highlight {
+          background: rgba(114, 47, 55, 0.05);
+          color: #722F37;
+        }
+        .pricelist-table .p-datatable .p-sortable-column.p-highlight .p-sortable-column-icon {
+          color: #722F37;
+        }
+      `}</style>
+      <DataTable
+        value={mainPricelists}
+        expandedRows={expandedRows}
+        onRowToggle={(e) => setExpandedRows(e.data as Pricelist[])}
+        rowExpansionTemplate={rowExpansionTemplate}
+        dataKey="_id"
+        size="small"
+        emptyMessage="Brak cenników"
+        rowClassName={(data) => linkedMap.has(data._id) ? 'cursor-pointer' : ''}
+      >
+        <Column expander={allowExpansion} style={{ width: '3rem' }} />
+        <Column field="name" header="Nazwa" body={nameTemplate} sortable />
+        <Column field="source" header="Źródło" body={sourceTemplate} style={{ width: '140px' }} />
+        <Column field="servicesCount" header="Usługi" body={statsTemplate} style={{ width: '140px' }} />
+        <Column body={actionsTemplate} style={{ width: '200px' }} />
+      </DataTable>
+    </div>
   );
 };
 
