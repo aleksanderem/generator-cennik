@@ -6,11 +6,10 @@ import { cn } from "../../lib/utils";
 
 interface CodeBlockProps {
   code: string;
-  title?: string;
   className?: string;
 }
 
-export function CodeBlock({ code, title, className }: CodeBlockProps) {
+export function CodeBlock({ code, className }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
@@ -72,14 +71,8 @@ export function CodeBlock({ code, title, className }: CodeBlockProps) {
 
   return (
     <div className={cn("", className)}>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-3">
-        {title && (
-          <div className="flex items-center gap-2">
-            <span className="text-slate-400 font-mono text-sm">&lt;/&gt;</span>
-            <span className="text-sm font-medium text-slate-600 uppercase tracking-wide">{title}</span>
-          </div>
-        )}
+      {/* Copy button */}
+      <div className="flex justify-end mb-3">
         <button
           onClick={handleCopy}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors"
@@ -99,7 +92,7 @@ export function CodeBlock({ code, title, className }: CodeBlockProps) {
       </div>
 
       {/* Code content */}
-      <div className="rounded-lg bg-rose-50/50 border-l-4 border-rose-300 p-4 overflow-x-auto">
+      <div className="rounded-lg bg-rose-50/50 border-l-4 border-rose-300 p-4 overflow-hidden">
         <pre className="text-sm leading-relaxed">
           <code className="font-mono text-slate-700 whitespace-pre">
             {renderHighlightedCode(code)}
