@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy, Edit3, X, Tag, Clock, DollarSign, FileText, Layers, ExternalLink } from 'lucide-react';
+import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy, Edit3, X, Tag, Clock, DollarSign, FileText, Layers, ExternalLink, Loader2, Zap } from 'lucide-react';
 import { SketchPicker, ColorResult } from 'react-color';
 import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../../../types';
 import {
@@ -12,6 +12,9 @@ import {
 } from '../types';
 import { getAllTemplates, getTemplate, DEFAULT_TEMPLATE_ID } from '../registry';
 import { COLOR_PRESETS, applyPreset, getPresetsForTemplate } from '../presets';
+import { ShineBorder } from '../../../components/ui/shine-border';
+import { LampDivider } from '../../../components/ui/lamp';
+import { RainbowButton } from '../../../components/ui/rainbow-button';
 
 // ============================================================================
 // HTML/CSS CODE GENERATOR
@@ -180,6 +183,11 @@ interface TemplateEditorProps {
   enableDataEditing?: boolean;
   // ID draftu do otwierania podglądu w nowej zakładce
   draftId?: string | null;
+  // Optymalizacja AI
+  showOptimizationCard?: boolean;
+  onOptimizeClick?: () => void;
+  isOptimizing?: boolean;
+  optimizationPrice?: string;
 }
 
 // Typy trybu edycji
@@ -194,6 +202,10 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   onDataChange,
   enableDataEditing = false,
   draftId = null,
+  showOptimizationCard = false,
+  onOptimizeClick,
+  isOptimizing = false,
+  optimizationPrice = '29,90 zł',
 }) => {
   const [templateId, setTemplateId] = useState(initialTemplateId);
   const [theme, setTheme] = useState<ThemeConfig>(initialTheme);
@@ -1060,6 +1072,98 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               <p className="text-sm text-amber-700">
                 Kliknij na kategorię lub usługę w podglądzie, aby edytować jej treść.
               </p>
+            </div>
+          )}
+
+          {/* AI Optimization Card - karta zachęcająca do optymalizacji */}
+          {showOptimizationCard && (
+            <div className="relative rounded-2xl overflow-hidden">
+              <ShineBorder
+                borderWidth={2}
+                duration={8}
+                shineColor={["#D4A574", "#C9956C", "#E8C4A0"]}
+                className="rounded-2xl"
+              />
+              {/* Ciemne tło */}
+              <div className="relative p-5 rounded-2xl bg-[#0d0d0d]">
+                {/* Header z emblemem */}
+                <div className="relative flex items-center gap-3 mb-3">
+                  <img
+                    src="/emblem.png"
+                    alt="Beauty Audit"
+                    className="w-10 h-10 rounded-xl"
+                  />
+                  <div>
+                    <h3 className="text-white font-bold text-sm">Optymalizacja AI</h3>
+                    <p className="text-[#D4A574]/70 text-xs">Popraw cennik jednym kliknięciem</p>
+                  </div>
+                </div>
+
+                {/* Lamp divider */}
+                <LampDivider className="h-10 -my-1" />
+
+                {/* Benefity */}
+                <div className="relative space-y-2 mb-4">
+                  {[
+                    'Profesjonalne opisy usług',
+                    'Poprawiony copywriting sprzedażowy',
+                    'Wykrywanie duplikatów i błędów',
+                    'Optymalna kolejność kategorii',
+                  ].map((benefit, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <div
+                        className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0"
+                        style={{ backgroundColor: 'rgba(212, 165, 116, 0.2)' }}
+                      >
+                        <Check size={10} style={{ color: '#D4A574' }} />
+                      </div>
+                      <span className="text-slate-300 text-xs">{benefit}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Cena */}
+                <div className="relative flex items-center justify-between mb-4">
+                  <div>
+                    <span className="text-2xl font-bold text-white">{optimizationPrice}</span>
+                    <span className="text-slate-600 text-xs ml-2 line-through">59,90 zł</span>
+                  </div>
+                  <span
+                    className="text-xs font-semibold px-2 py-1 rounded-full"
+                    style={{
+                      color: '#D4A574',
+                      backgroundColor: 'rgba(212, 165, 116, 0.15)',
+                      border: '1px solid rgba(212, 165, 116, 0.3)',
+                    }}
+                  >
+                    -50%
+                  </span>
+                </div>
+
+                {/* Rainbow Button */}
+                <RainbowButton
+                  onClick={onOptimizeClick}
+                  disabled={isOptimizing}
+                  className="w-full h-11 text-sm"
+                >
+                  {isOptimizing ? (
+                    <>
+                      <Loader2 size={16} className="animate-spin" />
+                      Optymalizuję...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={16} />
+                      Zoptymalizuj cennik
+                    </>
+                  )}
+                </RainbowButton>
+
+                {/* Trust badge */}
+                <p className="relative text-center text-slate-500 text-[10px] mt-3">
+                  Bezpieczna płatność Stripe • Faktura VAT
+                </p>
+              </div>
             </div>
           )}
 

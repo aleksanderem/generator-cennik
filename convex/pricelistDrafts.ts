@@ -17,6 +17,9 @@ const draftValidator = v.object({
   rawInputData: v.optional(v.string()),
   servicesCount: v.optional(v.number()),
   categoriesCount: v.optional(v.number()),
+  isOptimized: v.optional(v.boolean()),
+  originalPricingDataJson: v.optional(v.string()),
+  optimizationResultJson: v.optional(v.string()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
   expiresAt: v.optional(v.number()),
@@ -131,13 +134,16 @@ export const saveDraft = mutation({
   },
 });
 
-// Aktualizuj draft (theme, templateId)
+// Aktualizuj draft (theme, templateId, optimization data)
 export const updateDraft = mutation({
   args: {
     draftId: v.string(),
     themeConfigJson: v.optional(v.string()),
     templateId: v.optional(v.string()),
     pricingDataJson: v.optional(v.string()),
+    isOptimized: v.optional(v.boolean()),
+    originalPricingDataJson: v.optional(v.string()),
+    optimizationResultJson: v.optional(v.string()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -181,6 +187,18 @@ export const updateDraft = mutation({
       } catch (e) {
         // Ignoruj błędy parsowania
       }
+    }
+
+    if (args.isOptimized !== undefined) {
+      updates.isOptimized = args.isOptimized;
+    }
+
+    if (args.originalPricingDataJson !== undefined) {
+      updates.originalPricingDataJson = args.originalPricingDataJson;
+    }
+
+    if (args.optimizationResultJson !== undefined) {
+      updates.optimizationResultJson = args.optimizationResultJson;
     }
 
     // Sprawdź czy użytkownik jest zalogowany i przypisz draft
@@ -309,8 +327,9 @@ export const createDraftFromPricelist = mutation({
 });
 
 // Konwertuj draft na zapisany cennik (wymaga logowania)
-// Jeśli draft pochodzi z istniejącego cennika (sourcePricelistId), aktualizuje go
-// W przeciwnym razie tworzy nowy cennik
+// Jeśli draft jest zoptymalizowany, tworzy DWA cenniki:
+// 1. Oryginalny cennik (jeśli nie istnieje)
+// 2. Zoptymalizowany cennik z referencją do oryginalnego
 export const convertDraftToPricelist = mutation({
   args: {
     draftId: v.string(),
@@ -341,9 +360,95 @@ export const convertDraftToPricelist = mutation({
       throw new Error("Draft nie znaleziony");
     }
 
+    const now = Date.now();
+
+    // Oblicz statystyki dla oryginalnego cennika
+    let originalServicesCount = 0;
+    let originalCategoriesCount = 0;
+    if (draft.originalPricingDataJson) {
+      try {
+        const originalData = JSON.parse(draft.originalPricingDataJson);
+        if (originalData.categories && Array.isArray(originalData.categories)) {
+          originalCategoriesCount = originalData.categories.length;
+          for (const cat of originalData.categories) {
+            if (cat.services && Array.isArray(cat.services)) {
+              originalServicesCount += cat.services.length;
+            }
+          }
+        }
+      } catch {
+        // Ignoruj błędy parsowania
+      }
+    }
+
+    // Jeśli draft jest zoptymalizowany, tworzymy dwa cenniki
+    if (draft.isOptimized && draft.originalPricingDataJson) {
+      let originalPricelistId: typeof draft.sourcePricelistId;
+
+      // Sprawdź czy mamy już oryginalny cennik (sourcePricelistId)
+      if (draft.sourcePricelistId) {
+        const existingOriginal = await ctx.db.get(draft.sourcePricelistId);
+        if (existingOriginal && existingOriginal.userId === user._id) {
+          // Oryginalny cennik już istnieje - użyj go
+          originalPricelistId = draft.sourcePricelistId;
+        } else {
+          // Źródłowy cennik nie istnieje - utwórz nowy oryginalny
+          originalPricelistId = await ctx.db.insert("pricelists", {
+            userId: user._id,
+            name: args.name,
+            source: "manual",
+            pricingDataJson: draft.originalPricingDataJson,
+            themeConfigJson: draft.themeConfigJson,
+            templateId: draft.templateId,
+            servicesCount: originalServicesCount,
+            categoriesCount: originalCategoriesCount,
+            createdAt: now,
+          });
+        }
+      } else {
+        // Nie ma źródłowego cennika - utwórz nowy oryginalny
+        originalPricelistId = await ctx.db.insert("pricelists", {
+          userId: user._id,
+          name: args.name,
+          source: "manual",
+          pricingDataJson: draft.originalPricingDataJson,
+          themeConfigJson: draft.themeConfigJson,
+          templateId: draft.templateId,
+          servicesCount: originalServicesCount,
+          categoriesCount: originalCategoriesCount,
+          createdAt: now,
+        });
+      }
+
+      // Teraz utwórz zoptymalizowany cennik z referencją do oryginalnego
+      const optimizedPricelistId = await ctx.db.insert("pricelists", {
+        userId: user._id,
+        name: `${args.name} (zoptymalizowany)`,
+        source: "manual",
+        pricingDataJson: draft.pricingDataJson,
+        themeConfigJson: draft.themeConfigJson,
+        templateId: draft.templateId,
+        servicesCount: draft.servicesCount,
+        categoriesCount: draft.categoriesCount,
+        isOptimized: true,
+        optimizedFromPricelistId: originalPricelistId,
+        originalPricingDataJson: draft.originalPricingDataJson,
+        optimizationResultJson: draft.optimizationResultJson,
+        optimizedAt: now,
+        createdAt: now,
+      });
+
+      // Usuń draft po konwersji
+      await ctx.db.delete(draft._id);
+
+      // Zwróć ID zoptymalizowanego cennika
+      return optimizedPricelistId;
+    }
+
+    // Jeśli draft NIE jest zoptymalizowany, tworzymy tylko jeden cennik
+    // (standardowe zachowanie)
     let pricelistId: typeof draft.sourcePricelistId;
 
-    // Jeśli edytujemy istniejący cennik, zaktualizuj go
     if (draft.sourcePricelistId) {
       const existingPricelist = await ctx.db.get(draft.sourcePricelistId);
       if (existingPricelist && existingPricelist.userId === user._id) {
@@ -355,11 +460,11 @@ export const convertDraftToPricelist = mutation({
           templateId: draft.templateId,
           servicesCount: draft.servicesCount,
           categoriesCount: draft.categoriesCount,
-          updatedAt: Date.now(),
+          updatedAt: now,
         });
         pricelistId = draft.sourcePricelistId;
       } else {
-        // Źródłowy cennik nie istnieje lub nie należy do użytkownika - utwórz nowy
+        // Źródłowy cennik nie istnieje - utwórz nowy
         pricelistId = await ctx.db.insert("pricelists", {
           userId: user._id,
           name: args.name,
@@ -369,7 +474,7 @@ export const convertDraftToPricelist = mutation({
           templateId: draft.templateId,
           servicesCount: draft.servicesCount,
           categoriesCount: draft.categoriesCount,
-          createdAt: Date.now(),
+          createdAt: now,
         });
       }
     } else {
@@ -383,7 +488,7 @@ export const convertDraftToPricelist = mutation({
         templateId: draft.templateId,
         servicesCount: draft.servicesCount,
         categoriesCount: draft.categoriesCount,
-        createdAt: Date.now(),
+        createdAt: now,
       });
     }
 

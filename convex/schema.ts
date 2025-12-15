@@ -43,7 +43,8 @@ export default defineSchema({
 
     product: v.union(
       v.literal("audit"),
-      v.literal("audit_consultation")
+      v.literal("audit_consultation"),
+      v.literal("pricelist_optimization")
     ),
 
     amount: v.number(), // w groszach (PLN)
@@ -130,6 +131,15 @@ export default defineSchema({
     servicesCount: v.optional(v.number()),
     categoriesCount: v.optional(v.number()),
 
+    // Czy draft został zoptymalizowany przez AI
+    isOptimized: v.optional(v.boolean()),
+
+    // Oryginalne dane przed optymalizacją (do porównania)
+    originalPricingDataJson: v.optional(v.string()),
+
+    // Wyniki optymalizacji AI (jako JSON string z OptimizationResult)
+    optimizationResultJson: v.optional(v.string()),
+
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
 
@@ -166,10 +176,26 @@ export default defineSchema({
     servicesCount: v.optional(v.number()),
     categoriesCount: v.optional(v.number()),
 
+    // Czy cennik był już optymalizowany przez AI
+    isOptimized: v.optional(v.boolean()),
+
+    // Referencja do oryginalnego cennika (jeśli to zoptymalizowana wersja)
+    optimizedFromPricelistId: v.optional(v.id("pricelists")),
+
+    // Oryginalne dane przed optymalizacją (do porównania)
+    originalPricingDataJson: v.optional(v.string()),
+
+    // Wyniki optymalizacji AI (jako JSON string z OptimizationResult)
+    optimizationResultJson: v.optional(v.string()),
+
+    // Data optymalizacji
+    optimizedAt: v.optional(v.number()),
+
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_source", ["userId", "source"])
-    .index("by_audit", ["auditId"]),
+    .index("by_audit", ["auditId"])
+    .index("by_optimized_from", ["optimizedFromPricelistId"]),
 });

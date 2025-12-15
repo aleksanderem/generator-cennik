@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useQuery, useMutation } from 'convex/react';
+import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useUser } from '@clerk/clerk-react';
 import {
@@ -34,6 +34,7 @@ import { AuroraText } from '../ui/aurora-text';
 import { parsePricingData } from '../../services/geminiService';
 import { PricingData, ThemeConfig, DEFAULT_THEME } from '../../types';
 import { TemplateEditor } from '../../lib/pricelist-templates';
+import { useAuth, SignInButton, SignUpButton } from '@clerk/clerk-react';
 
 type AppState = 'INPUT' | 'PROCESSING' | 'PREVIEW';
 
@@ -62,6 +63,7 @@ const StartGeneratorPage: React.FC = () => {
   const [pricelistName, setPricelistName] = useState(`Cennik ${new Date().toLocaleDateString('pl-PL')}`);
   const [isEditingName, setIsEditingName] = useState(false);
   const [sourcePricelistId, setSourcePricelistId] = useState<string | null>(null);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
 
   // Convex
   const user = useQuery(api.users.getCurrentUser);
@@ -69,6 +71,8 @@ const StartGeneratorPage: React.FC = () => {
   const saveDraft = useMutation(api.pricelistDrafts.saveDraft);
   const updateDraft = useMutation(api.pricelistDrafts.updateDraft);
   const convertDraftToPricelist = useMutation(api.pricelistDrafts.convertDraftToPricelist);
+  const createCheckoutSession = useAction(api.stripe.createCheckoutSession);
+  const verifySession = useAction(api.stripe.verifySession);
 
   // Get draft from URL param
   const urlDraftId = searchParams.get('draft');
@@ -108,7 +112,7 @@ const StartGeneratorPage: React.FC = () => {
       }
       setIsLoadingDraft(false);
     }
-  }, [existingDraft]);
+  }, [existingDraft, searchParams]);
 
   // Load theme from localStorage
   const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
@@ -287,6 +291,68 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
     setSearchParams({});
   };
 
+  // Handle optimization purchase
+  const handleOptimizeClick = async () => {
+    if (!isSignedIn) {
+      // Show login prompt instead of error
+      setShowLoginPrompt(true);
+      return;
+    }
+    if (!draftId || !pricingData) {
+      setError('Najpierw wygeneruj cennik.');
+      return;
+    }
+
+    try {
+      const result = await createCheckoutSession({
+        product: 'pricelist_optimization',
+        successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
+        cancelUrl: `${window.location.origin}/start-generator?draft=${draftId}`,
+        draftId: draftId,
+      });
+
+      if (result.url) {
+        window.location.href = result.url;
+      }
+    } catch (err: any) {
+      console.error('Checkout error:', err);
+      setError(err.message || 'Wystąpił błąd podczas tworzenia płatności.');
+    }
+  };
+
+  // Check for pending checkout after login and auto-trigger checkout
+  const pendingCheckoutParam = searchParams.get('pending_checkout');
+
+  useEffect(() => {
+    const triggerPendingCheckout = async () => {
+      if (pendingCheckoutParam === 'true' && isSignedIn && draftId && pricingData) {
+        // Clear the pending_checkout param first
+        const newParams = new URLSearchParams(searchParams);
+        newParams.delete('pending_checkout');
+        setSearchParams(newParams);
+
+        // Trigger checkout
+        try {
+          const result = await createCheckoutSession({
+            product: 'pricelist_optimization',
+            successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
+            cancelUrl: `${window.location.origin}/start-generator?draft=${draftId}`,
+            draftId: draftId,
+          });
+
+          if (result.url) {
+            window.location.href = result.url;
+          }
+        } catch (err: any) {
+          console.error('Checkout error:', err);
+          setError(err.message || 'Wystąpił błąd podczas tworzenia płatności.');
+        }
+      }
+    };
+
+    triggerPendingCheckout();
+  }, [pendingCheckoutParam, isSignedIn, draftId, pricingData]);
+
   // Processing state
   if (appState === 'PROCESSING') {
     return (
@@ -321,6 +387,78 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
   if (appState === 'PREVIEW' && pricingData) {
     return (
       <div className="min-h-screen bg-slate-50">
+        {/* Login prompt modal */}
+        {showLoginPrompt && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            {/* Backdrop */}
+            <div
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+              onClick={() => setShowLoginPrompt(false)}
+            />
+            {/* Modal */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-[#0d0d0d] rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-800 shadow-2xl overflow-hidden"
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowLoginPrompt(false)}
+                className="absolute top-4 right-4 z-10 text-slate-400 hover:text-white transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+
+              {/* Content */}
+              <div className="relative text-center">
+                <img
+                  src="/ba-logo-light.png"
+                  alt="Booksy Auditor"
+                  className="h-12 mx-auto mb-4"
+                />
+                <h3 className="text-2xl font-serif font-bold text-white mb-6">
+                  Zaloguj się, aby kontynuować
+                </h3>
+                {/* Lamp effect */}
+                <div className="relative h-6 mb-2">
+                  <div className="absolute left-1/2 -translate-x-1/2 w-48 h-[2px] bg-gradient-to-r from-transparent via-[#D4A574] to-transparent" />
+                  <div className="absolute left-1/2 -translate-x-1/2 top-0 w-40 h-6 bg-[#D4A574]/20 blur-xl" />
+                </div>
+                <p className="text-slate-400 mb-8">
+                  Optymalizacja AI wymaga konta. Zaloguj się lub zarejestruj, aby wykorzystać pełen potencjał swojego cennika.
+                </p>
+
+                <div className="space-y-3">
+                  <SignInButton
+                    mode="modal"
+                    forceRedirectUrl={`${window.location.pathname}?draft=${draftId}&pending_checkout=true`}
+                  >
+                    <button className="w-full py-3 px-6 bg-[#D4A574] hover:bg-[#C9956C] text-white font-medium rounded-xl transition-colors">
+                      Zaloguj się
+                    </button>
+                  </SignInButton>
+
+                  <SignUpButton
+                    mode="modal"
+                    forceRedirectUrl={`${window.location.pathname}?draft=${draftId}&pending_checkout=true`}
+                  >
+                    <button className="w-full py-3 px-6 bg-slate-800/50 hover:bg-slate-800 text-white font-medium rounded-xl border border-slate-700 transition-colors">
+                      Załóż konto
+                    </button>
+                  </SignUpButton>
+                </div>
+
+                <p className="text-xs text-slate-500 mt-6">
+                  Po zalogowaniu zostaniesz przekierowany do płatności Stripe
+                </p>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {/* Sub-navigation bar - full width, dark background */}
         <div className="bg-slate-900 border-b border-slate-700">
           <div className="px-6 py-3">
@@ -439,6 +577,10 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
             onDataChange={handleDataChange}
             enableDataEditing={true}
             draftId={draftId}
+            showOptimizationCard={true}
+            onOptimizeClick={handleOptimizeClick}
+            isOptimizing={false}
+            optimizationPrice="29,90 zł"
           />
         </div>
       </div>

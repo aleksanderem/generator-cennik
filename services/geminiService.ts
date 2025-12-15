@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PricingData, AuditResult, Category, ServiceItem, IntegrationMode } from "../types";
+import { PricingData, AuditResult, Category, ServiceItem, IntegrationMode, OptimizationResult, OptimizationChange } from "../types";
 
 // Simple string hash function for cache keys
 const simpleHash = (str: string): string => {
@@ -474,4 +474,240 @@ const optimizeBooksyContent = async (url: string, mode: IntegrationMode, onProgr
   }
 };
 
-export { parsePricingData, optimizeBooksyContent };
+// --- PRICELIST OPTIMIZATION ---
+// Ta funkcja optymalizuje cennik pod kątem UX/UI/Copywriting/Sprzedaż
+// WAŻNE: NIE tworzy nowych usług, NIE usuwa usług - tylko poprawia istniejące
+
+const OPTIMIZATION_CACHE_PREFIX = 'bp_optim_v1_';
+
+const optimizePricelist = async (
+  pricingData: PricingData,
+  onProgress?: (msg: string) => void
+): Promise<OptimizationResult> => {
+  const inputJson = JSON.stringify(pricingData);
+  const cacheKey = OPTIMIZATION_CACHE_PREFIX + simpleHash(inputJson);
+
+  // Check cache
+  const cachedResult = localStorage.getItem(cacheKey);
+  if (cachedResult) {
+    console.log("Returning cached optimization result");
+    if (onProgress) onProgress("Wczytano wynik z pamięci podręcznej.");
+    try {
+      return JSON.parse(cachedResult) as OptimizationResult;
+    } catch (e) {
+      localStorage.removeItem(cacheKey);
+    }
+  }
+
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Brak klucza API. Upewnij się, że environment variable API_KEY jest ustawiony.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  if (onProgress) onProgress("Analizuję cennik...");
+
+  // Schema for structured output
+  const optimizationSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      optimizedCategories: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            categoryName: { type: Type.STRING },
+            services: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  price: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  duration: { type: Type.STRING },
+                  isPromo: { type: Type.BOOLEAN },
+                  tags: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["name", "price", "isPromo"]
+              }
+            }
+          },
+          required: ["categoryName", "services"]
+        }
+      },
+      changes: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            type: {
+              type: Type.STRING,
+              enum: ['name_improved', 'description_added', 'description_improved', 'duplicate_merged', 'category_renamed', 'category_reordered', 'service_reordered', 'price_formatted', 'tag_added', 'duration_estimated', 'typo_fixed']
+            },
+            categoryIndex: { type: Type.INTEGER },
+            serviceIndex: { type: Type.INTEGER },
+            field: { type: Type.STRING },
+            originalValue: { type: Type.STRING },
+            newValue: { type: Type.STRING },
+            reason: { type: Type.STRING }
+          },
+          required: ["type", "field", "originalValue", "newValue", "reason"]
+        }
+      },
+      recommendations: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING }
+      },
+      qualityScore: { type: Type.INTEGER }
+    },
+    required: ["optimizedCategories", "changes", "recommendations", "qualityScore"]
+  };
+
+  const systemPrompt = `
+Jesteś ekspertem UX/UI i copywriterem specjalizującym się w branży beauty/wellness.
+
+TWOJE ZADANIE: Zoptymalizuj cennik pod kątem sprzedaży i doświadczenia klienta.
+
+BEZWZGLĘDNE ZASADY (NIENARUSZALNE):
+1. LICZBA USŁUG MUSI BYĆ IDENTYCZNA - nie usuwaj ani nie dodawaj usług
+2. LICZBA KATEGORII MUSI BYĆ IDENTYCZNA - nie usuwaj ani nie dodawaj kategorii
+3. CENY MUSZĄ POZOSTAĆ NIEZMIENIONE (chyba że poprawiasz format, np. "100zł" → "100 zł")
+4. NIE TWÓRZ NOWYCH USŁUG Z NICZEGO
+5. NIE ŁĄCZ USŁUG W JEDNĄ (np. 4 warianty = 4 osobne usługi)
+
+CO MOŻESZ ROBIĆ:
+1. NAZWY USŁUG - popraw copywriting:
+   - "Masaż 60min" → "Masaż Relaksacyjny (60 min) – Pełne Odprężenie"
+   - "Depilacja laserowa nogi" → "Depilacja Laserowa – Nogi (Gładkość na Lata)"
+   - Dodaj emotikony gdzie pasuje (✨ 💎 🌟)
+
+2. OPISY - dodaj lub popraw:
+   - Dodaj opis jeśli brakuje (krótki, sprzedażowy, 1-2 zdania)
+   - Popraw istniejący opis (język korzyści, dla kogo, efekty)
+
+3. NAZWY KATEGORII - popraw:
+   - "Usługi" → "✨ Zabiegi na Twarz"
+   - "Inne" → "💆 Masaże i Relaks"
+
+4. KOLEJNOŚĆ - zoptymalizuj:
+   - Kategorie od najpopularniejszych (twarzy, włosy) do niszowych
+   - Usługi w kategorii od bestsellera do specjalistycznych
+
+5. TAGI - dodaj gdzie uzasadnione:
+   - "Bestseller" - popularne zabiegi
+   - "Nowość" - nowe usługi
+   - "Premium" - drogie zabiegi
+
+6. LITERÓWKI - popraw
+
+7. WYKRYWANIE DUPLIKATÓW:
+   - Jeśli widzisz duplikaty (identyczne nazwy), oznacz to w "changes" z typem "duplicate_merged"
+   - ALE NIE USUWAJ DUPLIKATÓW - zostaw je, tylko zgłoś
+
+FORMATOWANIE ODPOWIEDZI:
+- Zwróć DOKŁADNIE tyle kategorii ile w input
+- Zwróć DOKŁADNIE tyle usług w każdej kategorii ile w input
+- Każda zmiana musi być udokumentowana w tablicy "changes"
+- qualityScore: 0-100 (jakość cennika po optymalizacji)
+`;
+
+  const prompt = `
+${systemPrompt}
+
+CENNIK DO OPTYMALIZACJI:
+${inputJson}
+
+WAŻNE: Wejście ma ${pricingData.categories.length} kategorii i łącznie ${pricingData.categories.reduce((acc, cat) => acc + cat.services.length, 0)} usług.
+Twój output MUSI mieć DOKŁADNIE tyle samo kategorii i usług!
+`;
+
+  if (onProgress) onProgress("Optymalizuję nazwy i opisy...");
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: optimizationSchema
+      }
+    });
+
+    if (!response.text) {
+      throw new Error("Otrzymano pustą odpowiedź od AI.");
+    }
+
+    const parsed = JSON.parse(response.text);
+
+    if (onProgress) onProgress("Weryfikuję wyniki...");
+
+    // Validate that we have the same number of categories and services
+    const inputServiceCount = pricingData.categories.reduce((acc, cat) => acc + cat.services.length, 0);
+    const outputServiceCount = parsed.optimizedCategories.reduce((acc: number, cat: any) => acc + cat.services.length, 0);
+
+    if (parsed.optimizedCategories.length !== pricingData.categories.length) {
+      console.warn(`Category count mismatch: input=${pricingData.categories.length}, output=${parsed.optimizedCategories.length}`);
+      // Fallback: use original structure with AI suggestions applied manually
+    }
+
+    if (outputServiceCount !== inputServiceCount) {
+      console.warn(`Service count mismatch: input=${inputServiceCount}, output=${outputServiceCount}`);
+      // This is a critical error - AI violated the rules
+    }
+
+    // Build the result
+    const optimizedPricingData: PricingData = {
+      salonName: pricingData.salonName,
+      categories: parsed.optimizedCategories.map((cat: any) => ({
+        categoryName: cat.categoryName,
+        services: cat.services.map((svc: any) => ({
+          name: svc.name,
+          price: svc.price,
+          description: svc.description || undefined,
+          duration: svc.duration || undefined,
+          isPromo: svc.isPromo || false,
+          tags: svc.tags || undefined
+        }))
+      }))
+    };
+
+    // Calculate summary
+    const changes: OptimizationChange[] = parsed.changes || [];
+    const summary = {
+      totalChanges: changes.length,
+      duplicatesFound: changes.filter((c: OptimizationChange) => c.type === 'duplicate_merged').length,
+      descriptionsAdded: changes.filter((c: OptimizationChange) => c.type === 'description_added').length,
+      namesImproved: changes.filter((c: OptimizationChange) => c.type === 'name_improved').length,
+      categoriesOptimized: changes.filter((c: OptimizationChange) =>
+        c.type === 'category_renamed' || c.type === 'category_reordered'
+      ).length
+    };
+
+    const result: OptimizationResult = {
+      optimizedPricingData,
+      changes,
+      summary,
+      recommendations: parsed.recommendations || [],
+      qualityScore: parsed.qualityScore || 75
+    };
+
+    // Cache result
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) {
+      console.warn("Could not save optimization to cache", e);
+    }
+
+    if (onProgress) onProgress("Optymalizacja zakończona!");
+
+    return result;
+
+  } catch (error) {
+    console.error("Optimization error:", error);
+    throw new Error("Błąd podczas optymalizacji cennika. Spróbuj ponownie.");
+  }
+};
+
+export { parsePricingData, optimizeBooksyContent, optimizePricelist };

@@ -29,6 +29,11 @@ const PRODUCTS = {
     credits: 1, // 1 audyt (konsultacja to osobna usługa)
     amount: 24000, // 240 zł w groszach
   },
+  pricelist_optimization: {
+    priceId: process.env.STRIPE_PRICE_OPTIMIZATION!,
+    credits: 0, // nie daje kredytów, to jednorazowa usługa
+    amount: 2990, // 29,90 zł w groszach
+  },
 } as const;
 
 export type ProductType = keyof typeof PRODUCTS;
@@ -38,10 +43,13 @@ export const createCheckoutSession = action({
   args: {
     product: v.union(
       v.literal("audit"),
-      v.literal("audit_consultation")
+      v.literal("audit_consultation"),
+      v.literal("pricelist_optimization")
     ),
     successUrl: v.string(),
     cancelUrl: v.string(),
+    // Opcjonalny draftId dla optymalizacji cennika
+    draftId: v.optional(v.string()),
   },
   returns: v.object({
     url: v.union(v.string(), v.null()),
@@ -90,13 +98,14 @@ export const createCheckoutSession = action({
         },
       ],
       mode: "payment",
-      success_url: `${args.successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${args.successUrl}${args.successUrl.includes('?') ? '&' : '?'}session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: args.cancelUrl,
       client_reference_id: identity.subject, // clerkId
       metadata: {
         product: args.product,
         userId: user._id,
         clerkId: identity.subject,
+        ...(args.draftId && { draftId: args.draftId }),
       },
       locale: "pl",
       // Zbierz dane do faktury podczas checkout
@@ -122,7 +131,9 @@ export const createCheckoutSession = action({
         invoice_data: {
           description: args.product === "audit"
             ? "Audyt AI profilu Booksy"
-            : "Audyt AI + Konsultacja eksperta",
+            : args.product === "audit_consultation"
+              ? "Audyt AI + Konsultacja eksperta"
+              : "Optymalizacja AI cennika",
         },
       },
     };
@@ -163,8 +174,9 @@ export const verifySession = action({
   returns: v.object({
     success: v.boolean(),
     product: v.optional(
-      v.union(v.literal("audit"), v.literal("audit_consultation"))
+      v.union(v.literal("audit"), v.literal("audit_consultation"), v.literal("pricelist_optimization"))
     ),
+    draftId: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
     try {
@@ -175,6 +187,7 @@ export const verifySession = action({
         return {
           success: true,
           product: session.metadata?.product as ProductType | undefined,
+          draftId: session.metadata?.draftId,
         };
       }
 

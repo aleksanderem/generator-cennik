@@ -18,6 +18,11 @@ const pricelistValidator = v.object({
   templateId: v.optional(v.string()),
   servicesCount: v.optional(v.number()),
   categoriesCount: v.optional(v.number()),
+  isOptimized: v.optional(v.boolean()),
+  optimizedFromPricelistId: v.optional(v.id("pricelists")),
+  originalPricingDataJson: v.optional(v.string()),
+  optimizationResultJson: v.optional(v.string()),
+  optimizedAt: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
 });

@@ -131,14 +131,62 @@ export interface AuditResult {
   rawCsv: string; // The raw data extracted
   optimizedText: string; // The AI improved version
   generalFeedback: string;
-  
+
   // New Detailed Report Fields
   strengths?: string[];
   weaknesses?: { point: string; consequence: string }[];
   recommendations?: string[];
   beforeAfter?: { before: string; after: string; explanation: string };
   salesPotential?: string;
-  
+
   // Holistic Growth Strategy
   growthTips?: GrowthTip[];
+}
+
+// --- OPTIMIZATION INTERFACES ---
+
+export type OptimizationChangeType =
+  | 'name_improved'      // Nazwa usługi poprawiona (copywriting)
+  | 'description_added'  // Dodano opis do usługi
+  | 'description_improved' // Poprawiono istniejący opis
+  | 'duplicate_merged'   // Wykryto i oznaczono duplikat
+  | 'category_renamed'   // Zmieniono nazwę kategorii
+  | 'category_reordered' // Zmieniono kolejność kategorii
+  | 'service_reordered'  // Zmieniono kolejność usług
+  | 'price_formatted'    // Poprawiono format ceny
+  | 'tag_added'          // Dodano tag (Bestseller, Nowość)
+  | 'duration_estimated' // Oszacowano czas trwania
+  | 'typo_fixed';        // Poprawiono literówkę
+
+export interface OptimizationChange {
+  type: OptimizationChangeType;
+  categoryIndex?: number;      // Indeks kategorii (jeśli dotyczy)
+  serviceIndex?: number;       // Indeks usługi w kategorii
+  field: string;               // Które pole zostało zmienione
+  originalValue: string;       // Oryginalna wartość
+  newValue: string;            // Nowa wartość
+  reason: string;              // Dlaczego zmieniono (po polsku)
+}
+
+export interface OptimizationResult {
+  // Zoptymalizowane dane cennika (ta sama struktura co PricingData)
+  optimizedPricingData: PricingData;
+
+  // Lista wszystkich zmian
+  changes: OptimizationChange[];
+
+  // Podsumowanie optymalizacji
+  summary: {
+    totalChanges: number;
+    duplicatesFound: number;
+    descriptionsAdded: number;
+    namesImproved: number;
+    categoriesOptimized: number;
+  };
+
+  // Ogólne rekomendacje (nie konkretne zmiany)
+  recommendations: string[];
+
+  // Score jakości cennika (0-100)
+  qualityScore: number;
 }

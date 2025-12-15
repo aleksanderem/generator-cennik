@@ -17,6 +17,7 @@ import SuccessPage from './components/pages/SuccessPage';
 import ProfilePage from './components/pages/ProfilePage';
 import StartAuditPage from './components/pages/StartAuditPage';
 import StartGeneratorPage from './components/pages/StartGeneratorPage';
+import OptimizationResultsPage from './components/pages/OptimizationResultsPage';
 import MetaAdsPage from './components/pages/MetaAdsPage';
 import GoogleAdsPage from './components/pages/GoogleAdsPage';
 import PreviewPage from './components/pages/PreviewPage';
@@ -26,7 +27,7 @@ import { useUser, SignInButton } from '@clerk/clerk-react';
 import { ChevronRight } from 'lucide-react';
 import { ArrowLeft, Check, FileText, Link, Settings, X, Sparkles, LayoutList, Loader2, Columns2, Code2, Palette, Copy, CheckCircle, PanelRightOpen, PanelRightClose, LogIn } from 'lucide-react';
 
-type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'start-generator' | 'campaigns-meta' | 'campaigns-google' | 'preview';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'start-generator' | 'optimization-results' | 'campaigns-meta' | 'campaigns-google' | 'preview';
 
 const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
 
@@ -48,6 +49,7 @@ const App: React.FC = () => {
     if (path === '/profile') return 'profile';
     if (path === '/start-audit') return 'start-audit';
     if (path === '/start-generator') return 'start-generator';
+    if (path === '/optimization-results') return 'optimization-results';
     if (path === '/campaigns-meta') return 'campaigns-meta';
     if (path === '/campaigns-google') return 'campaigns-google';
     if (path === '/preview') return 'preview';
@@ -197,8 +199,8 @@ const App: React.FC = () => {
         `}
       </style>
 
-      {/* Sticky Banner - at the very top (hidden on success/start-audit pages) */}
-      {currentPage !== 'success' && currentPage !== 'start-audit' && (
+      {/* Sticky Banner - at the very top (hidden on success/start-audit/optimization-results pages) */}
+      {currentPage !== 'success' && currentPage !== 'start-audit' && currentPage !== 'optimization-results' && (
         <StickyBanner>
           <span className="text-[#D4A574]">✨</span>
           <p className="text-white/90">
@@ -217,8 +219,8 @@ const App: React.FC = () => {
         </StickyBanner>
       )}
 
-      {/* Header with Navigation (hidden on success/start-audit/preview pages) */}
-      {currentPage !== 'success' && currentPage !== 'start-audit' && currentPage !== 'preview' && (
+      {/* Header with Navigation (hidden on success/start-audit/preview/optimization-results pages) */}
+      {currentPage !== 'success' && currentPage !== 'start-audit' && currentPage !== 'preview' && currentPage !== 'optimization-results' && (
         <Header
           currentPage={currentPage}
           onNavigate={handleNavigate}
@@ -256,6 +258,11 @@ const App: React.FC = () => {
         {/* Page: START-GENERATOR - Full screen pricelist generator */}
         {currentPage === 'start-generator' && (
           <StartGeneratorPage />
+        )}
+
+        {/* Page: OPTIMIZATION-RESULTS - Full screen optimization results */}
+        {currentPage === 'optimization-results' && (
+          <OptimizationResultsPage />
         )}
 
         {/* Page: PREVIEW - Full screen cennik preview (opens in new tab) */}

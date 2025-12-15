@@ -37,6 +37,7 @@ import {
   IconEye,
   IconPlus,
   IconX,
+  IconSparkles,
 } from '@tabler/icons-react';
 
 type Tab = 'pricelists' | 'audits' | 'payments' | 'invoices' | 'company' | 'salon';
@@ -61,6 +62,7 @@ const ProfilePage: React.FC = () => {
   // Stan akcji
   const [copyingCode, setCopyingCode] = useState<Id<"pricelists"> | null>(null);
   const [editingPricelist, setEditingPricelist] = useState<Id<"pricelists"> | null>(null);
+  const [optimizingPricelist, setOptimizingPricelist] = useState<Id<"pricelists"> | null>(null);
 
   // Form state for company data
   const [companyForm, setCompanyForm] = useState({
@@ -81,6 +83,7 @@ const ProfilePage: React.FC = () => {
   const createPortalSession = useAction(api.stripe.createCustomerPortalSession);
   const syncStripeCustomer = useAction(api.stripe.syncStripeCustomer);
   const getInvoices = useAction(api.stripe.getInvoices);
+  const createCheckoutSession = useAction(api.stripe.createCheckoutSession);
 
   const [openingPortal, setOpeningPortal] = useState(false);
   const [syncingStripe, setSyncingStripe] = useState(false);
@@ -275,6 +278,30 @@ const ProfilePage: React.FC = () => {
       setEditingPricelist(null);
     }
   }, [createDraftFromPricelist, navigate]);
+
+  // Funkcja optymalizacji cennika AI - tworzy draft i przekierowuje do Stripe checkout
+  const handleOptimizePricelist = useCallback(async (pricelistId: Id<"pricelists">) => {
+    setOptimizingPricelist(pricelistId);
+    try {
+      // Najpierw utwórz draft z cennika
+      const draftId = await createDraftFromPricelist({ pricelistId });
+
+      // Następnie przekieruj do Stripe checkout
+      const result = await createCheckoutSession({
+        product: 'pricelist_optimization',
+        successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
+        cancelUrl: `${window.location.origin}/profil`,
+        draftId: draftId,
+      });
+
+      if (result.url) {
+        window.location.href = result.url;
+      }
+    } catch (error) {
+      console.error('Error starting optimization:', error);
+      setOptimizingPricelist(null);
+    }
+  }, [createDraftFromPricelist, createCheckoutSession]);
 
   // Initialize company form when user data loads
   React.useEffect(() => {
@@ -613,7 +640,8 @@ const ProfilePage: React.FC = () => {
                     const sourceInfo = sourceLabels[pricelist.source] || sourceLabels.manual;
 
                     return (
-                      <div key={pricelist._id} className="px-5 py-4 hover:bg-slate-50/50 transition-colors">
+                      <React.Fragment key={pricelist._id}>
+                      <div className="px-5 py-4 hover:bg-slate-50/50 transition-colors">
                         <div className="flex items-start gap-4">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2 mb-1">
@@ -656,6 +684,29 @@ const ProfilePage: React.FC = () => {
                                 <IconEdit size={16} />
                               )}
                             </button>
+                            {/* Optymalizacja AI */}
+                            {pricelist.isOptimized ? (
+                              <button
+                                onClick={() => navigate(`/optimization-results?pricelist=${pricelist._id}`)}
+                                className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
+                                title="Zobacz wyniki optymalizacji"
+                              >
+                                <IconSparkles size={16} />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleOptimizePricelist(pricelist._id)}
+                                disabled={optimizingPricelist === pricelist._id}
+                                className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
+                                title="Optymalizuj AI"
+                              >
+                                {optimizingPricelist === pricelist._id ? (
+                                  <IconLoader2 size={16} className="animate-spin" />
+                                ) : (
+                                  <IconSparkles size={16} />
+                                )}
+                              </button>
+                            )}
                             {/* Kopiuj kod */}
                             <button
                               onClick={() => handleCopyCode(pricelist)}
@@ -689,6 +740,24 @@ const ProfilePage: React.FC = () => {
                           </div>
                         </div>
                       </div>
+                      {/* Golden optimization bar for optimized pricelists */}
+                      {pricelist.isOptimized && (
+                        <div className="px-5 py-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 border-t border-amber-200/50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <IconSparkles size={14} className="text-amber-500" />
+                            <span className="text-xs font-medium text-amber-700">
+                              Zoptymalizowano {pricelist.updatedAt ? formatDate(pricelist.updatedAt) : formatDate(pricelist.createdAt)}
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => navigate(`/optimization-results?pricelist=${pricelist._id}`)}
+                            className="text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline transition-colors"
+                          >
+                            Zobacz wyniki optymalizacji →
+                          </button>
+                        </div>
+                      )}
+                      </React.Fragment>
                     );
                   })
                 ) : (
