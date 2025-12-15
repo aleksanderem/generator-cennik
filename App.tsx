@@ -316,12 +316,12 @@ const App: React.FC = () => {
                 </div>
 
                 <h1 className="text-4xl md:text-5xl lg:text-6xl font-serif font-bold text-slate-900 mb-6 tracking-tight">
-                  Profesjonalny <span className="bg-gradient-to-r from-[#722F37] to-[#B76E79] bg-clip-text text-transparent">Audyt AI</span>
+                  Profesjonalny <span className="bg-gradient-to-r from-[#722F37] to-[#B76E79] bg-clip-text text-transparent">Audyt AuditorAI®</span>
                   <br />
                   Twojego cennika
                 </h1>
                 <p className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto leading-relaxed mb-8">
-                  Pełna analiza Twojego profilu Booksy z eksperckimi rekomendacjami AI.
+                  Pełna analiza Twojego profilu Booksy z eksperckimi rekomendacjami AuditorAI®.
                   <br className="hidden sm:block" />
                   Dowiedz się, <span className="text-[#722F37] font-medium">co poprawić, żeby przyciągnąć więcej klientów</span>.
                 </p>
@@ -364,7 +364,7 @@ const App: React.FC = () => {
                     <Sparkles size={32} className="text-[#D4AF37]" />
                   </div>
 
-                  <h2 className="text-2xl font-serif font-bold mb-3">Audyt AI Cennika</h2>
+                  <h2 className="text-2xl font-serif font-bold mb-3">Audyt AuditorAI® Cennika</h2>
                   <p className="text-white/80 mb-6 text-sm">
                     Jednorazowa analiza z pełnym raportem PDF i rekomendacjami do wdrożenia.
                   </p>

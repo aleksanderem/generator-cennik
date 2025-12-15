@@ -130,10 +130,10 @@ export const createCheckoutSession = action({
         enabled: true,
         invoice_data: {
           description: args.product === "audit"
-            ? "Audyt AI profilu Booksy"
+            ? "Audyt AuditorAI® profilu Booksy"
             : args.product === "audit_consultation"
-              ? "Audyt AI + Konsultacja eksperta"
-              : "Optymalizacja AI cennika",
+              ? "Audyt AuditorAI® + Konsultacja eksperta"
+              : "Optymalizacja AuditorAI® cennika",
         },
       },
     };
@@ -415,11 +415,22 @@ export const handleWebhook = internalAction({
               });
 
             if (purchase) {
-              // Utwórz audyt w statusie pending
-              await ctx.runMutation(internal.audits.createPendingAudit, {
-                userId: purchase.userId,
-                purchaseId: purchaseId,
-              });
+              // Dla optymalizacji cennika - połącz draft z purchaseId
+              if (purchase.product === "pricelist_optimization" && session.metadata?.draftId) {
+                await ctx.runMutation(internal.pricelistDrafts.linkDraftToPurchase, {
+                  draftId: session.metadata.draftId,
+                  purchaseId: purchaseId,
+                });
+                console.log(
+                  `Linked draft ${session.metadata.draftId} to purchase ${purchaseId}`
+                );
+              } else {
+                // Dla audytów - utwórz audyt w statusie pending
+                await ctx.runMutation(internal.audits.createPendingAudit, {
+                  userId: purchase.userId,
+                  purchaseId: purchaseId,
+                });
+              }
 
               // Pobierz dane z custom_fields (NIP i nazwa firmy)
               let customCompanyName: string | undefined;

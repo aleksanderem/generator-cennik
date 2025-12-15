@@ -70,7 +70,7 @@ export const generateEmbedHTML = (data: PricingData, theme: ThemeConfig): string
   }).join('');
 
   return `
-<!-- Cennik Salonu - Wygenerowano przez BeautyPricer AI -->
+<!-- Cennik Salonu - Wygenerowano przez AuditorAI® -->
 <!-- Font Import -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -189,6 +189,8 @@ interface TemplateEditorProps {
   onOptimizeClick?: () => void;
   isOptimizing?: boolean;
   optimizationPrice?: string;
+  // ID cennika do generowania embed snippet
+  pricelistId?: string | null;
 }
 
 // Typy trybu edycji
@@ -207,6 +209,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   onOptimizeClick,
   isOptimizing = false,
   optimizationPrice = '29,90 zł',
+  pricelistId = null,
 }) => {
   const [templateId, setTemplateId] = useState(initialTemplateId);
   const [theme, setTheme] = useState<ThemeConfig>(initialTheme);
@@ -290,12 +293,22 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
     }
   }, [onThemeChange]);
 
+  // Generuj embed snippet (script tag)
+  const generateEmbedSnippet = useCallback(() => {
+    if (!pricelistId) return '';
+    return `<script
+  src="https://app.beautyaudit.pl/embed.js"
+  data-pricelist="${pricelistId}">
+</script>`;
+  }, [pricelistId]);
+
   const handleCopyCode = useCallback(() => {
-    const code = generateEmbedHTML(pricingData, theme);
+    // Jeśli mamy pricelistId, kopiuj embed snippet, w przeciwnym razie HTML/CSS
+    const code = pricelistId ? generateEmbedSnippet() : generateEmbedHTML(pricingData, theme);
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [pricingData, theme]);
+  }, [pricingData, theme, pricelistId, generateEmbedSnippet]);
 
   const handleExportPDF = useCallback(async () => {
     if (!previewRef.current || isExportingPDF) return;
@@ -871,7 +884,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               >
                 <div className="flex items-center gap-2 text-slate-300">
                   <Code size={18} />
-                  <span className="text-sm font-medium">Kod do osadzenia (HTML/CSS)</span>
+                  <span className="text-sm font-medium">Kod do osadzenia</span>
                   <ChevronDown
                     size={16}
                     className={`transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
@@ -885,15 +898,31 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#722F37] text-white hover:bg-[#5a252c] transition-colors z-10"
                 >
                   {copied ? <Check size={14} /> : <Copy size={14} />}
-                  {copied ? 'Skopiowano!' : 'Kopiuj kod'}
+                  {copied ? 'Skopiowano!' : 'Kopiuj'}
                 </button>
               </button>
 
               {showCode && (
                 <div className="p-4 overflow-x-auto max-h-96">
-                  <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
-                    <code>{generateEmbedHTML(pricingData, theme)}</code>
-                  </pre>
+                  {pricelistId ? (
+                    <>
+                      <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap rounded-lg bg-rose-50/20 border-l-4 border-rose-400/50 p-4">
+                        <code>
+                          <span className="text-blue-400">&lt;script</span>{'\n'}
+                          {'  '}<span className="text-purple-400">src</span>=<span className="text-emerald-400">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
+                          {'  '}<span className="text-purple-400">data-pricelist</span>=<span className="text-emerald-400">"{pricelistId}"</span>&gt;{'\n'}
+                          <span className="text-blue-400">&lt;/script&gt;</span>
+                        </code>
+                      </pre>
+                      <p className="text-xs text-slate-500 mt-3">
+                        Wklej ten kod na swojej stronie internetowej, w miejscu gdzie chcesz wyświetlić cennik.
+                      </p>
+                    </>
+                  ) : (
+                    <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
+                      <code>{generateEmbedHTML(pricingData, theme)}</code>
+                    </pre>
+                  )}
                 </div>
               )}
             </div>
@@ -1214,7 +1243,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
             >
               <div className="flex items-center gap-2 text-slate-300">
                 <Code size={18} />
-                <span className="text-sm font-medium">Kod HTML/CSS</span>
+                <span className="text-sm font-medium">Kod do osadzenia</span>
                 <ChevronDown
                   size={16}
                   className={`transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
@@ -1234,9 +1263,25 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
             {showCode && (
               <div className="p-3 overflow-x-auto max-h-64">
-                <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
-                  <code>{generateEmbedHTML(pricingData, theme)}</code>
-                </pre>
+                {pricelistId ? (
+                  <>
+                    <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap rounded-lg bg-rose-50/20 border-l-4 border-rose-400/50 p-3">
+                      <code>
+                        <span className="text-blue-400">&lt;script</span>{'\n'}
+                        {'  '}<span className="text-purple-400">src</span>=<span className="text-emerald-400">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
+                        {'  '}<span className="text-purple-400">data-pricelist</span>=<span className="text-emerald-400">"{pricelistId}"</span>&gt;{'\n'}
+                        <span className="text-blue-400">&lt;/script&gt;</span>
+                      </code>
+                    </pre>
+                    <p className="text-xs text-slate-500 mt-2">
+                      Wklej ten kod na swojej stronie, gdzie chcesz wyświetlić cennik.
+                    </p>
+                  </>
+                ) : (
+                  <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
+                    <code>{generateEmbedHTML(pricingData, theme)}</code>
+                  </pre>
+                )}
               </div>
             )}
           </div>

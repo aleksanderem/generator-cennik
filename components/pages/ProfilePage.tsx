@@ -8,7 +8,8 @@ import { cn } from '../../lib/utils';
 import { ThemeConfig, DEFAULT_THEME, PricingData } from '../../types';
 import { TemplateEditor, SAMPLE_PRICING_DATA, getTemplate, generateEmbedHTML } from '../../lib/pricelist-templates';
 import type { Id } from '../../convex/_generated/dataModel';
-import { IconChevronDown, IconDotsVertical } from '@tabler/icons-react';
+import { IconChevronDown, IconDotsVertical, IconHelp } from '@tabler/icons-react';
+import { InfoTooltip } from '../ui/tooltip-card';
 import {
   IconSettings,
   IconLogout,
@@ -58,6 +59,8 @@ type Pricelist = {
   isOptimized?: boolean;
   optimizedFromPricelistId?: Id<"pricelists">;
   optimizedVersionId?: Id<"pricelists">;
+  purchaseId?: Id<"purchases">; // Powiązanie z zakupem (dla faktur)
+  auditId?: Id<"audits">; // Powiązanie z audytem Booksy
   createdAt: number;
   updatedAt?: number;
 };
@@ -72,6 +75,9 @@ interface PricelistsDataTableProps {
   onOptimize: (id: Id<"pricelists">) => void;
   onDelete: (id: Id<"pricelists">) => Promise<void>;
   onViewResults: (id: Id<"pricelists">) => void;
+  onGoToInvoices: () => void;
+  onGoToAudits: () => void;
+  onOpenStripePortal: () => void;
   editingPricelist: Id<"pricelists"> | null;
   copyingCode: Id<"pricelists"> | null;
   optimizingPricelist: Id<"pricelists"> | null;
@@ -87,6 +93,9 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   onOptimize,
   onDelete,
   onViewResults,
+  onGoToInvoices,
+  onGoToAudits,
+  onOpenStripePortal,
   editingPricelist,
   copyingCode,
   optimizingPricelist,
@@ -159,12 +168,12 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#D4A574]/20 text-[#996B3D]">
           <IconSparkles size={12} />
-          AI
+          AuditorAI®
         </span>
       );
     }
     const configs: Record<string, { label: string; className: string }> = {
-      manual: { label: 'Ręczny', className: 'bg-slate-100 text-slate-600' },
+      manual: { label: 'Wygenerowany', className: 'bg-slate-100 text-slate-600' },
       booksy: { label: 'Booksy', className: 'bg-[#722F37]/10 text-[#722F37]' },
       audit: { label: 'Audyt', className: 'bg-[#722F37]/10 text-[#722F37]' },
     };
@@ -175,6 +184,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
       </span>
     );
   };
+
 
   // Action dropdown menu for a pricelist row
   const ActionDropdown = ({ pricelist, isNested = false }: { pricelist: Pricelist; isNested?: boolean }) => {
@@ -201,7 +211,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+          <div className="absolute right-0 top-full mt-1 w-56 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
             {/* Preview */}
             <button
               className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
@@ -255,24 +265,24 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
             {/* AI Optimize or View Results */}
             {pricelist.isOptimized ? (
               <button
-                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors"
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors"
                 onClick={(e) => { e.stopPropagation(); handleAction(() => onViewResults(pricelist._id)); }}
               >
-                <IconSparkles size={16} className="text-[#D4A574]" />
-                Zobacz wyniki AI
+                <IconSparkles size={16} className="text-[#D4A574] flex-shrink-0" />
+                Zobacz wyniki AuditorAI®
               </button>
             ) : !pricelist.optimizedVersionId && !isNested && (
               <button
-                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors disabled:opacity-50"
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors disabled:opacity-50"
                 disabled={optimizingPricelist === pricelist._id}
                 onClick={(e) => { e.stopPropagation(); handleAction(() => onOptimize(pricelist._id)); }}
               >
                 {optimizingPricelist === pricelist._id ? (
-                  <IconLoader2 size={16} className="text-[#D4A574] animate-spin" />
+                  <IconLoader2 size={16} className="text-[#D4A574] animate-spin flex-shrink-0" />
                 ) : (
-                  <IconSparkles size={16} className="text-[#D4A574]" />
+                  <IconSparkles size={16} className="text-[#D4A574] flex-shrink-0" />
                 )}
-                Optymalizuj AI
+                Optymalizuj AuditorAI®
               </button>
             )}
 
@@ -296,6 +306,8 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   // Single pricelist row
   const PricelistRow = ({ pricelist, isNested = false }: { pricelist: Pricelist; isNested?: boolean }) => {
     const hasChild = linkedMap.has(pricelist._id);
+    const hasLinks = !!(pricelist.purchaseId || pricelist.auditId);
+    const isExpandable = hasChild || hasLinks;
     const isExpanded = expandedIds.has(pricelist._id);
     const linkedPricelist = linkedMap.get(pricelist._id);
 
@@ -304,14 +316,15 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
         <div
           className={cn(
             "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
-            hasChild && "cursor-pointer",
-            isNested ? "bg-slate-50/50 hover:bg-slate-100/50" : "hover:bg-slate-50"
+            isExpandable && "cursor-pointer",
+            isNested ? "bg-slate-50/50 hover:bg-slate-100/50" :
+              isExpanded ? "bg-slate-50" : "hover:bg-slate-50"
           )}
-          onClick={() => hasChild && toggleExpand(pricelist._id)}
+          onClick={() => isExpandable && toggleExpand(pricelist._id)}
         >
           {/* Expand toggle */}
           <div className="w-5 flex-shrink-0">
-            {hasChild && (
+            {isExpandable ? (
               <IconChevronDown
                 size={16}
                 className={cn(
@@ -319,6 +332,17 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
                   isExpanded && "rotate-180"
                 )}
               />
+            ) : (
+              <div className="relative group/tooltip">
+                <IconChevronDown
+                  size={16}
+                  className="text-slate-300 cursor-default"
+                />
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-1.5 px-2 py-1 text-xs text-white bg-slate-800 rounded whitespace-nowrap opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-opacity duration-150 pointer-events-none z-50">
+                  Brak powiązanych elementów
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-x-4 border-x-transparent border-t-4 border-t-slate-800" />
+                </div>
+              </div>
             )}
           </div>
 
@@ -338,14 +362,14 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className={cn(
-                "font-medium truncate",
-                isNested ? "text-slate-600 text-sm" : "text-slate-900"
+                "truncate text-sm",
+                isNested ? "text-slate-600" : "font-medium text-slate-900"
               )}>
                 {pricelist.name}
               </span>
               <SourceBadge source={pricelist.source} isOptimized={pricelist.isOptimized} />
               {isNested && (
-                <span className="text-xs text-slate-400">(oryginał)</span>
+                <span className="text-xs text-slate-400">podstawowy</span>
               )}
             </div>
             <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
@@ -355,23 +379,226 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
             </div>
           </div>
 
+          {/* Info tooltip */}
+          <InfoTooltip
+            content={
+              pricelist.isOptimized ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-slate-900">Lepszy cennik. Gotowy do sprzedaży.</p>
+                  <p className="text-slate-600 text-xs">
+                    Ten cennik został przeprojektowany przez AuditorAI®, aby był jaśniejszy, atrakcyjniejszy i skuteczniejszy.
+                  </p>
+                  <p className="text-[#996B3D] text-xs mt-2 font-medium">
+                    Zobacz, co się zmieniło →
+                  </p>
+                </div>
+              ) : isNested ? (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-slate-900">Cennik bazowy</p>
+                  <p className="text-slate-600 text-xs">
+                    Uporządkowany. Czytelny. Gotowy na stronę.
+                  </p>
+                  <p className="text-slate-500 text-xs mt-2">
+                    Ta wersja została przygotowana przez aplikację i stanowi punkt wyjścia do dalszej optymalizacji AuditorAI®.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <p className="font-medium text-slate-900">Cennik bazowy</p>
+                  <p className="text-slate-600 text-xs">
+                    Uporządkowany. Czytelny. Gotowy na stronę.
+                  </p>
+                  <p className="text-slate-500 text-xs mt-2">
+                    Ta wersja została przygotowana przez aplikację i stanowi punkt wyjścia do dalszej optymalizacji AuditorAI®.
+                  </p>
+                </div>
+              )
+            }
+          />
+
           {/* Actions dropdown */}
           <ActionDropdown pricelist={pricelist} isNested={isNested} />
         </div>
 
-        {/* Nested child (original version) with tree connector */}
-        {hasChild && isExpanded && linkedPricelist && (
-          <div className="relative ml-[22px] mt-1 mb-2">
-            {/* Tree connector line - vertical then horizontal */}
-            <div
-              className="absolute left-0 top-0 w-4 border-l-2 border-b-2 border-[#D4A574]/40 rounded-bl-lg"
-              style={{ height: '50%' }}
-            />
-            <div className="ml-5">
-              <PricelistRow pricelist={linkedPricelist} isNested />
+        {/* Expanded content: original pricelist and linked items */}
+        {isExpandable && isExpanded && (() => {
+          // Collect all items to render
+          const items: Array<{ type: 'pricelist' | 'invoice' | 'audit'; key: string }> = [];
+          if (linkedPricelist) items.push({ type: 'pricelist', key: 'pricelist' });
+          if (pricelist.purchaseId) items.push({ type: 'invoice', key: 'invoice' });
+          if (pricelist.auditId) items.push({ type: 'audit', key: 'audit' });
+
+          return (
+            <div className="ml-12 mb-2">
+              {/* Header */}
+              <div className="text-sm text-slate-400 uppercase tracking-wider mb-2 pl-8 pt-3">
+                Powiązane elementy
+              </div>
+
+              {/* Tree structure */}
+              <div className="relative pl-4">
+                {/* Continuous vertical line - starts from near parent, ends at last branch */}
+                <div className="absolute left-0 -top-9 bottom-[25px] w-px bg-slate-200" />
+
+                {/* Items */}
+                <div className="space-y-1">
+                  {items.map((item, index) => (
+                    <div key={item.key} className="relative">
+                      {/* Horizontal branch from vertical line */}
+                      <div className="absolute -left-4 top-[30px] w-4 h-px bg-slate-200" />
+
+                      {/* Item content */}
+                      {item.type === 'pricelist' && linkedPricelist && (
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80">
+                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <IconFileText size={16} className="text-blue-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-600 text-sm">{linkedPricelist.name}</span>
+                              <SourceBadge source={linkedPricelist.source} />
+                              <span className="text-xs text-slate-400">podstawowy</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                              <span>{linkedPricelist.categoriesCount || 0} kat. / {linkedPricelist.servicesCount || 0} usł.</span>
+                              <span className="text-slate-300">•</span>
+                              <span>{formatDate(linkedPricelist.createdAt)}</span>
+                            </div>
+                          </div>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1.5">
+                                <p className="font-medium text-slate-900">Cennik bazowy</p>
+                                <p className="text-slate-600 text-xs">
+                                  Uporządkowany. Czytelny. Gotowy na stronę.
+                                </p>
+                                <p className="text-slate-500 text-xs mt-2">
+                                  Ta wersja została przygotowana przez aplikację i stanowi punkt wyjścia do dalszej optymalizacji AuditorAI®.
+                                </p>
+                              </div>
+                            }
+                          />
+                          <ActionDropdown pricelist={linkedPricelist} isNested={true} />
+                        </div>
+                      )}
+
+                      {item.type === 'invoice' && (
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80">
+                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                            <IconReceipt size={16} className="text-emerald-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-900 text-sm">Faktura VAT</span>
+                              <span className="text-xs text-slate-500">NR FV/...</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                opłacona
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                              <span>Płatność kartą</span>
+                              <span className="text-slate-300">•</span>
+                              <span>{formatDate(pricelist.createdAt)}</span>
+                            </div>
+                          </div>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1.5">
+                                <p className="font-medium text-slate-900">Faktura VAT</p>
+                                <p className="text-slate-600 text-xs">
+                                  Dokument rozliczeniowy za usługę AuditorAI®.
+                                </p>
+                                <p className="text-slate-500 text-xs mt-2">
+                                  Zobacz w „Faktury".
+                                </p>
+                              </div>
+                            }
+                          />
+                          {/* Invoice actions dropdown */}
+                          <div className="relative" ref={openDropdownId === `invoice-${pricelist._id}` ? dropdownRef : undefined}>
+                            <button
+                              className={cn(
+                                "p-1.5 rounded-lg transition-colors",
+                                openDropdownId === `invoice-${pricelist._id}` ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                              )}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenDropdownId(openDropdownId === `invoice-${pricelist._id}` ? null : `invoice-${pricelist._id}`);
+                              }}
+                            >
+                              <IconDotsVertical size={18} />
+                            </button>
+                            {openDropdownId === `invoice-${pricelist._id}` && (
+                              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                <button
+                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onGoToInvoices();
+                                    setOpenDropdownId(null);
+                                  }}
+                                >
+                                  <IconReceipt size={16} className="text-slate-400" />
+                                  Zobacz faktury
+                                </button>
+                                <button
+                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onOpenStripePortal();
+                                    setOpenDropdownId(null);
+                                  }}
+                                >
+                                  <IconExternalLink size={16} className="text-slate-400" />
+                                  Otwórz portal płatności
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {item.type === 'audit' && (
+                        <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80">
+                          <div className="w-8 h-8 rounded-lg bg-[#722F37]/10 flex items-center justify-center flex-shrink-0">
+                            <IconFileText size={16} className="text-[#722F37]" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-slate-900 text-sm">Audyt Booksy</span>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                <IconCircleCheck size={10} />
+                                zakończony
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                              <span>Profil Booksy</span>
+                              <span className="text-slate-300">•</span>
+                              <span>{formatDate(pricelist.createdAt)}</span>
+                            </div>
+                          </div>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1.5">
+                                <p className="font-medium text-slate-900">Audyt profilu Booksy</p>
+                                <p className="text-slate-600 text-xs">
+                                  Analiza AuditorAI® Twojego profilu Booksy, z którego pobrano dane do tego cennika.
+                                </p>
+                                <p className="text-slate-500 text-xs mt-2">
+                                  Szczegóły audytu i raport PDF znajdziesz w zakładce „Audyty".
+                                </p>
+                              </div>
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
     );
   };
@@ -742,7 +969,7 @@ const ProfilePage: React.FC = () => {
 
   const getProductName = (product: string) => {
     const names: Record<string, string> = {
-      audit: 'Audyt AI',
+      audit: 'Audyt AuditorAI®',
       audit_consultation: 'Audyt + Konsultacja',
     };
     return names[product] || product;
@@ -995,6 +1222,9 @@ const ProfilePage: React.FC = () => {
                       }
                     }}
                     onViewResults={(id) => navigate(`/optimization-results?pricelist=${id}`)}
+                    onGoToInvoices={() => setActiveTab('invoices')}
+                    onGoToAudits={() => setActiveTab('audits')}
+                    onOpenStripePortal={handleOpenStripePortal}
                     editingPricelist={editingPricelist}
                     copyingCode={copyingCode}
                     optimizingPricelist={optimizingPricelist}
@@ -1734,6 +1964,7 @@ const ProfilePage: React.FC = () => {
                           data={selectedPricelistData || SAMPLE_PRICING_DATA}
                           onThemeChange={handleFullThemeChange}
                           onTemplateChange={handleTemplateChange}
+                          pricelistId={selectedPricelistId}
                         />
                       </div>
                     )}
