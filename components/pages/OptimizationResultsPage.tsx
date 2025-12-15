@@ -28,7 +28,7 @@ import {
   X,
   Download,
 } from 'lucide-react';
-import { exportToPDF } from '../../lib/pricelist-templates/utils/pdfExport';
+import { exportToPDFFromData } from '../../lib/pricelist-templates/utils/pdfExport';
 import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME } from '../../types';
 import { RainbowButton } from '../ui/rainbow-button';
 import { HeroHighlight } from '../ui/hero-highlight';
@@ -480,12 +480,12 @@ const OptimizationResultsPage: React.FC = () => {
 
   // Handle PDF export for original pricelist
   const handleExportOriginalPDF = async () => {
-    if (!originalPricelistRef.current || isExportingOriginalPDF) return;
+    if (!originalPricingData || isExportingOriginalPDF) return;
     setIsExportingOriginalPDF(true);
     try {
-      const salonName = originalPricingData?.salonName || 'cennik-oryginalny';
+      const salonName = originalPricingData.salonName || 'cennik-oryginalny';
       const filename = salonName.toLowerCase().replace(/\s+/g, '-') + '-oryginalny';
-      await exportToPDF(originalPricelistRef.current, { filename });
+      await exportToPDFFromData(originalPricingData, { filename });
     } finally {
       setIsExportingOriginalPDF(false);
     }
@@ -493,12 +493,12 @@ const OptimizationResultsPage: React.FC = () => {
 
   // Handle PDF export for optimized pricelist
   const handleExportOptimizedPDF = async () => {
-    if (!optimizedPricelistRef.current || isExportingOptimizedPDF) return;
+    if (!optimizedPricingData || isExportingOptimizedPDF) return;
     setIsExportingOptimizedPDF(true);
     try {
-      const salonName = optimizedPricingData?.salonName || 'cennik-zoptymalizowany';
+      const salonName = optimizedPricingData.salonName || 'cennik-zoptymalizowany';
       const filename = salonName.toLowerCase().replace(/\s+/g, '-') + '-zoptymalizowany';
-      await exportToPDF(optimizedPricelistRef.current, { filename });
+      await exportToPDFFromData(optimizedPricingData, { filename });
     } finally {
       setIsExportingOptimizedPDF(false);
     }

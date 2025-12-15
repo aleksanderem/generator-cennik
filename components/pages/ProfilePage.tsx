@@ -746,7 +746,7 @@ const ProfilePage: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <IconSparkles size={14} className="text-amber-500" />
                             <span className="text-xs font-medium text-amber-700">
-                              Zoptymalizowano {pricelist.updatedAt ? formatDate(pricelist.updatedAt) : formatDate(pricelist.createdAt)}
+                              Zoptymalizowano {pricelist.optimizedAt ? formatDate(pricelist.optimizedAt) : formatDate(pricelist.createdAt)}
                             </span>
                           </div>
                           <button
@@ -754,6 +754,40 @@ const ProfilePage: React.FC = () => {
                             className="text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline transition-colors"
                           >
                             Zobacz wyniki optymalizacji →
+                          </button>
+                        </div>
+                      )}
+                      {/* Blue bar showing link to original pricelist (for optimized versions) */}
+                      {pricelist.isOptimized && pricelist.optimizedFromPricelistId && (
+                        <div className="px-5 py-2 bg-gradient-to-r from-blue-50 to-sky-50 border-t border-blue-200/50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <IconLink size={14} className="text-blue-500" />
+                            <span className="text-xs text-blue-700">
+                              Wersja zoptymalizowana
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => window.open(`/preview?pricelist=${pricelist.optimizedFromPricelistId}`, '_blank')}
+                            className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
+                          >
+                            Zobacz oryginalną wersję →
+                          </button>
+                        </div>
+                      )}
+                      {/* Blue bar showing link to optimized version (for original pricelists) */}
+                      {!pricelist.isOptimized && pricelist.optimizedVersionId && (
+                        <div className="px-5 py-2 bg-gradient-to-r from-emerald-50 to-green-50 border-t border-emerald-200/50 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <IconLink size={14} className="text-emerald-500" />
+                            <span className="text-xs text-emerald-700">
+                              Wersja oryginalna
+                            </span>
+                          </div>
+                          <button
+                            onClick={() => window.open(`/preview?pricelist=${pricelist.optimizedVersionId}`, '_blank')}
+                            className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
+                          >
+                            Zobacz zoptymalizowaną wersję →
                           </button>
                         </div>
                       )}

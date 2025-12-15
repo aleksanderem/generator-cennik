@@ -182,6 +182,9 @@ export default defineSchema({
     // Referencja do oryginalnego cennika (jeśli to zoptymalizowana wersja)
     optimizedFromPricelistId: v.optional(v.id("pricelists")),
 
+    // Referencja do zoptymalizowanej wersji (jeśli to oryginalny cennik)
+    optimizedVersionId: v.optional(v.id("pricelists")),
+
     // Oryginalne dane przed optymalizacją (do porównania)
     originalPricingDataJson: v.optional(v.string()),
 

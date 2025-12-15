@@ -381,44 +381,22 @@ export const convertDraftToPricelist = mutation({
       }
     }
 
-    // Jeśli draft jest zoptymalizowany, tworzymy dwa cenniki
+    // Jeśli draft jest zoptymalizowany, tworzymy ZAWSZE dwa cenniki:
+    // 1. Oryginalny cennik (z danymi przed optymalizacją)
+    // 2. Zoptymalizowany cennik (z danymi po optymalizacji)
     if (draft.isOptimized && draft.originalPricingDataJson) {
-      let originalPricelistId: typeof draft.sourcePricelistId;
-
-      // Sprawdź czy mamy już oryginalny cennik (sourcePricelistId)
-      if (draft.sourcePricelistId) {
-        const existingOriginal = await ctx.db.get(draft.sourcePricelistId);
-        if (existingOriginal && existingOriginal.userId === user._id) {
-          // Oryginalny cennik już istnieje - użyj go
-          originalPricelistId = draft.sourcePricelistId;
-        } else {
-          // Źródłowy cennik nie istnieje - utwórz nowy oryginalny
-          originalPricelistId = await ctx.db.insert("pricelists", {
-            userId: user._id,
-            name: args.name,
-            source: "manual",
-            pricingDataJson: draft.originalPricingDataJson,
-            themeConfigJson: draft.themeConfigJson,
-            templateId: draft.templateId,
-            servicesCount: originalServicesCount,
-            categoriesCount: originalCategoriesCount,
-            createdAt: now,
-          });
-        }
-      } else {
-        // Nie ma źródłowego cennika - utwórz nowy oryginalny
-        originalPricelistId = await ctx.db.insert("pricelists", {
-          userId: user._id,
-          name: args.name,
-          source: "manual",
-          pricingDataJson: draft.originalPricingDataJson,
-          themeConfigJson: draft.themeConfigJson,
-          templateId: draft.templateId,
-          servicesCount: originalServicesCount,
-          categoriesCount: originalCategoriesCount,
-          createdAt: now,
-        });
-      }
+      // ZAWSZE tworzymy nowy oryginalny cennik (nie używamy ponownie istniejącego)
+      const originalPricelistId = await ctx.db.insert("pricelists", {
+        userId: user._id,
+        name: args.name,
+        source: "manual",
+        pricingDataJson: draft.originalPricingDataJson,
+        themeConfigJson: draft.themeConfigJson,
+        templateId: draft.templateId,
+        servicesCount: originalServicesCount,
+        categoriesCount: originalCategoriesCount,
+        createdAt: now,
+      });
 
       // Teraz utwórz zoptymalizowany cennik z referencją do oryginalnego
       const optimizedPricelistId = await ctx.db.insert("pricelists", {
@@ -436,6 +414,11 @@ export const convertDraftToPricelist = mutation({
         optimizationResultJson: draft.optimizationResultJson,
         optimizedAt: now,
         createdAt: now,
+      });
+
+      // Ustaw dwustronne połączenie - oryginalny cennik wskazuje na zoptymalizowany
+      await ctx.db.patch(originalPricelistId, {
+        optimizedVersionId: optimizedPricelistId,
       });
 
       // Usuń draft po konwersji
