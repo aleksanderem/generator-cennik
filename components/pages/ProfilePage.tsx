@@ -629,174 +629,212 @@ const ProfilePage: React.FC = () => {
 
             {/* Tab: Pricelists */}
             {activeTab === 'pricelists' && (
-              <div className="divide-y divide-slate-100">
+              <div className="p-5">
                 {pricelists && pricelists.length > 0 ? (
-                  pricelists.map((pricelist) => {
-                    const sourceLabels: Record<string, { label: string; className: string }> = {
-                      manual: { label: 'Generator', className: 'bg-slate-100 text-slate-600' },
-                      booksy: { label: 'Booksy', className: 'bg-purple-100 text-purple-700' },
-                      audit: { label: 'Audyt', className: 'bg-amber-100 text-amber-700' },
-                    };
-                    const sourceInfo = sourceLabels[pricelist.source] || sourceLabels.manual;
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {pricelists.map((pricelist) => {
+                      const sourceLabels: Record<string, { label: string; className: string }> = {
+                        manual: { label: 'Generator', className: 'bg-slate-100 text-slate-600' },
+                        booksy: { label: 'Booksy', className: 'bg-purple-100 text-purple-700' },
+                        audit: { label: 'Audyt', className: 'bg-amber-100 text-amber-700' },
+                      };
+                      const sourceInfo = sourceLabels[pricelist.source] || sourceLabels.manual;
 
-                    return (
-                      <React.Fragment key={pricelist._id}>
-                      <div className="px-5 py-4 hover:bg-slate-50/50 transition-colors">
-                        <div className="flex items-start gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-sm font-medium text-slate-900 truncate">
-                                {pricelist.name}
-                              </span>
-                              <span className={cn("text-xs px-1.5 py-0.5 rounded", sourceInfo.className)}>
-                                {sourceInfo.label}
-                              </span>
+                      return (
+                        <div
+                          key={pricelist._id}
+                          data-pricelist-id={pricelist._id}
+                          className={cn(
+                            "bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md",
+                            pricelist.isOptimized
+                              ? "border-amber-200 ring-1 ring-amber-100"
+                              : pricelist.optimizedVersionId
+                              ? "border-emerald-200 ring-1 ring-emerald-100"
+                              : "border-slate-200"
+                          )}
+                        >
+                          {/* Card header */}
+                          <div className="p-4">
+                            <div className="flex items-start justify-between gap-3 mb-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h3 className="text-sm font-semibold text-slate-900 truncate">
+                                    {pricelist.name}
+                                  </h3>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={cn("text-xs px-1.5 py-0.5 rounded", sourceInfo.className)}>
+                                    {sourceInfo.label}
+                                  </span>
+                                  {pricelist.isOptimized && (
+                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 flex items-center gap-1">
+                                      <IconSparkles size={10} />
+                                      AI
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              {/* Delete button */}
+                              <button
+                                onClick={async () => {
+                                  if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
+                                    await deletePricelist({ pricelistId: pricelist._id });
+                                  }
+                                }}
+                                className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                title="Usuń"
+                              >
+                                <IconTrash size={14} />
+                              </button>
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-slate-500">
+
+                            {/* Stats */}
+                            <div className="flex items-center gap-4 text-xs text-slate-500 mb-3">
                               <span>{formatDate(pricelist.createdAt)}</span>
                               {pricelist.categoriesCount !== undefined && pricelist.categoriesCount > 0 && (
-                                <span>{pricelist.categoriesCount} kategorii</span>
+                                <span>{pricelist.categoriesCount} kat.</span>
                               )}
                               {pricelist.servicesCount !== undefined && pricelist.servicesCount > 0 && (
-                                <span>{pricelist.servicesCount} usług</span>
+                                <span>{pricelist.servicesCount} usł.</span>
                               )}
                             </div>
+
+                            {/* Action buttons */}
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => window.open(`/preview?pricelist=${pricelist._id}`, '_blank')}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
+                                title="Podgląd"
+                              >
+                                <IconEye size={14} />
+                                Podgląd
+                              </button>
+                              <button
+                                onClick={() => handleEditPricelist(pricelist._id)}
+                                disabled={editingPricelist === pricelist._id}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
+                                title="Edytuj"
+                              >
+                                {editingPricelist === pricelist._id ? (
+                                  <IconLoader2 size={14} className="animate-spin" />
+                                ) : (
+                                  <IconEdit size={14} />
+                                )}
+                                Edytuj
+                              </button>
+                              <button
+                                onClick={() => handleCopyCode(pricelist)}
+                                disabled={copyingCode === pricelist._id}
+                                className={cn(
+                                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors",
+                                  copyingCode === pricelist._id
+                                    ? "text-emerald-600 bg-emerald-50"
+                                    : "text-slate-600 bg-slate-50 hover:bg-slate-100"
+                                )}
+                                title={copyingCode === pricelist._id ? "Skopiowano!" : "Kopiuj kod"}
+                              >
+                                {copyingCode === pricelist._id ? (
+                                  <>
+                                    <IconCheck size={14} />
+                                    OK!
+                                  </>
+                                ) : (
+                                  <>
+                                    <IconCode size={14} />
+                                    Kod
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-1">
-                            {/* Podgląd w nowej zakładce */}
-                            <button
-                              onClick={() => window.open(`/preview?pricelist=${pricelist._id}`, '_blank')}
-                              className="p-2 text-slate-400 hover:text-[#722F37] hover:bg-slate-100 rounded-lg transition-colors"
-                              title="Podgląd w nowej zakładce"
-                            >
-                              <IconEye size={16} />
-                            </button>
-                            {/* Edycja */}
-                            <button
-                              onClick={() => handleEditPricelist(pricelist._id)}
-                              disabled={editingPricelist === pricelist._id}
-                              className="p-2 text-slate-400 hover:text-[#722F37] hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-                              title="Edytuj"
-                            >
-                              {editingPricelist === pricelist._id ? (
-                                <IconLoader2 size={16} className="animate-spin" />
-                              ) : (
-                                <IconEdit size={16} />
-                              )}
-                            </button>
-                            {/* Optymalizacja AI */}
-                            {pricelist.isOptimized ? (
+
+                          {/* Optimization action or status */}
+                          {pricelist.isOptimized ? (
+                            <div className="px-4 py-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 border-t border-amber-200/50">
                               <button
                                 onClick={() => navigate(`/optimization-results?pricelist=${pricelist._id}`)}
-                                className="p-2 text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                                title="Zobacz wyniki optymalizacji"
+                                className="w-full flex items-center justify-between text-xs"
                               >
-                                <IconSparkles size={16} />
+                                <div className="flex items-center gap-2">
+                                  <IconSparkles size={14} className="text-amber-500" />
+                                  <span className="font-medium text-amber-700">
+                                    Zoptymalizowano {pricelist.optimizedAt ? formatDate(pricelist.optimizedAt) : ''}
+                                  </span>
+                                </div>
+                                <span className="text-amber-600 hover:text-amber-700">
+                                  Zobacz →
+                                </span>
                               </button>
-                            ) : (
+                            </div>
+                          ) : (
+                            <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100">
                               <button
                                 onClick={() => handleOptimizePricelist(pricelist._id)}
                                 disabled={optimizingPricelist === pricelist._id}
-                                className="p-2 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors disabled:opacity-50"
-                                title="Optymalizuj AI"
+                                className="w-full flex items-center justify-center gap-2 text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50"
                               >
                                 {optimizingPricelist === pricelist._id ? (
-                                  <IconLoader2 size={16} className="animate-spin" />
+                                  <IconLoader2 size={14} className="animate-spin" />
                                 ) : (
-                                  <IconSparkles size={16} />
+                                  <IconSparkles size={14} />
                                 )}
+                                Optymalizuj AI
                               </button>
-                            )}
-                            {/* Kopiuj kod */}
-                            <button
-                              onClick={() => handleCopyCode(pricelist)}
-                              disabled={copyingCode === pricelist._id}
-                              className={cn(
-                                "p-2 rounded-lg transition-colors",
-                                copyingCode === pricelist._id
-                                  ? "text-emerald-600 bg-emerald-50"
-                                  : "text-slate-400 hover:text-[#722F37] hover:bg-slate-100"
-                              )}
-                              title={copyingCode === pricelist._id ? "Skopiowano!" : "Kopiuj kod HTML"}
-                            >
-                              {copyingCode === pricelist._id ? (
-                                <IconCheck size={16} />
-                              ) : (
-                                <IconCode size={16} />
-                              )}
-                            </button>
-                            {/* Usuń */}
-                            <button
-                              onClick={async () => {
-                                if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
-                                  await deletePricelist({ pricelistId: pricelist._id });
-                                }
-                              }}
-                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                              title="Usuń"
-                            >
-                              <IconTrash size={16} />
-                            </button>
-                          </div>
+                            </div>
+                          )}
+
+                          {/* Link to original (for optimized versions) */}
+                          {pricelist.isOptimized && pricelist.optimizedFromPricelistId && (
+                            <div className="px-4 py-2 bg-gradient-to-r from-blue-50 to-sky-50 border-t border-blue-200/50">
+                              <button
+                                onClick={() => {
+                                  const originalEl = document.querySelector(`[data-pricelist-id="${pricelist.optimizedFromPricelistId}"]`);
+                                  if (originalEl) {
+                                    originalEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    originalEl.classList.add('ring-2', 'ring-blue-400');
+                                    setTimeout(() => originalEl.classList.remove('ring-2', 'ring-blue-400'), 2000);
+                                  }
+                                }}
+                                className="w-full flex items-center justify-between text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <IconLink size={12} className="text-blue-500" />
+                                  <span className="text-blue-600">Wersja zoptymalizowana</span>
+                                </div>
+                                <span className="text-blue-500 hover:text-blue-600">Oryginał ↑</span>
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Link to optimized (for original pricelists) */}
+                          {!pricelist.isOptimized && pricelist.optimizedVersionId && (
+                            <div className="px-4 py-2 bg-gradient-to-r from-emerald-50 to-green-50 border-t border-emerald-200/50">
+                              <button
+                                onClick={() => {
+                                  const optimizedEl = document.querySelector(`[data-pricelist-id="${pricelist.optimizedVersionId}"]`);
+                                  if (optimizedEl) {
+                                    optimizedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    optimizedEl.classList.add('ring-2', 'ring-emerald-400');
+                                    setTimeout(() => optimizedEl.classList.remove('ring-2', 'ring-emerald-400'), 2000);
+                                  }
+                                }}
+                                className="w-full flex items-center justify-between text-xs"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <IconLink size={12} className="text-emerald-500" />
+                                  <span className="text-emerald-600">Wersja oryginalna</span>
+                                </div>
+                                <span className="text-emerald-500 hover:text-emerald-600">Zoptymalizowany ↓</span>
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                      {/* Golden optimization bar for optimized pricelists */}
-                      {pricelist.isOptimized && (
-                        <div className="px-5 py-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 border-t border-amber-200/50 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <IconSparkles size={14} className="text-amber-500" />
-                            <span className="text-xs font-medium text-amber-700">
-                              Zoptymalizowano {pricelist.optimizedAt ? formatDate(pricelist.optimizedAt) : formatDate(pricelist.createdAt)}
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => navigate(`/optimization-results?pricelist=${pricelist._id}`)}
-                            className="text-xs font-medium text-amber-600 hover:text-amber-700 hover:underline transition-colors"
-                          >
-                            Zobacz wyniki optymalizacji →
-                          </button>
-                        </div>
-                      )}
-                      {/* Blue bar showing link to original pricelist (for optimized versions) */}
-                      {pricelist.isOptimized && pricelist.optimizedFromPricelistId && (
-                        <div className="px-5 py-2 bg-gradient-to-r from-blue-50 to-sky-50 border-t border-blue-200/50 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <IconLink size={14} className="text-blue-500" />
-                            <span className="text-xs text-blue-700">
-                              Wersja zoptymalizowana
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => window.open(`/preview?pricelist=${pricelist.optimizedFromPricelistId}`, '_blank')}
-                            className="text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline transition-colors"
-                          >
-                            Zobacz oryginalną wersję →
-                          </button>
-                        </div>
-                      )}
-                      {/* Blue bar showing link to optimized version (for original pricelists) */}
-                      {!pricelist.isOptimized && pricelist.optimizedVersionId && (
-                        <div className="px-5 py-2 bg-gradient-to-r from-emerald-50 to-green-50 border-t border-emerald-200/50 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <IconLink size={14} className="text-emerald-500" />
-                            <span className="text-xs text-emerald-700">
-                              Wersja oryginalna
-                            </span>
-                          </div>
-                          <button
-                            onClick={() => window.open(`/preview?pricelist=${pricelist.optimizedVersionId}`, '_blank')}
-                            className="text-xs font-medium text-emerald-600 hover:text-emerald-700 hover:underline transition-colors"
-                          >
-                            Zobacz zoptymalizowaną wersję →
-                          </button>
-                        </div>
-                      )}
-                      </React.Fragment>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 ) : (
-                  <div className="px-5 py-12 text-center">
-                    <IconList className="w-10 h-10 text-slate-200 mx-auto mb-3" />
+                  <div className="py-12 text-center">
+                    <IconList className="w-12 h-12 text-slate-200 mx-auto mb-3" />
                     <p className="text-sm text-slate-500 mb-1">Brak zapisanych cenników</p>
                     <p className="text-xs text-slate-400 mb-4">
                       Stwórz cennik za darmo używając generatora lub kup audyt Booksy
