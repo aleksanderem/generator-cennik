@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy, Edit3, X, Tag, Clock, DollarSign, FileText, Layers, ExternalLink, Loader2, Zap } from 'lucide-react';
+import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy, Edit3, X, Tag, Clock, DollarSign, FileText, Layers, ExternalLink, Loader2, Zap, Download } from 'lucide-react';
+import { exportToPDF } from '../utils/pdfExport';
 import { SketchPicker, ColorResult } from 'react-color';
 import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../../../types';
 import {
@@ -216,7 +217,9 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   const [showCode, setShowCode] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   // Stan dla edycji treści
   const [selectedDataItem, setSelectedDataItem] = useState<SelectedDataItem>(null);
@@ -293,6 +296,21 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, [pricingData, theme]);
+
+  const handleExportPDF = useCallback(async () => {
+    if (!previewRef.current || isExportingPDF) return;
+
+    setIsExportingPDF(true);
+    try {
+      const salonName = pricingData.salonName || 'cennik';
+      const filename = salonName.toLowerCase().replace(/\s+/g, '-');
+      await exportToPDF(previewRef.current, { filename });
+    } catch (error) {
+      console.error('PDF export failed:', error);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  }, [pricingData.salonName, isExportingPDF]);
 
   // Funkcja do aktualizacji nazwy kategorii
   const handleUpdateCategoryName = useCallback((categoryIndex: number, newName: string) => {
@@ -682,8 +700,29 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
             </div>
           )}
 
+          {/* PDF Download Button */}
+          <div className="mb-4 flex justify-end">
+            <button
+              onClick={handleExportPDF}
+              disabled={isExportingPDF}
+              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            >
+              {isExportingPDF ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  Generowanie PDF...
+                </>
+              ) : (
+                <>
+                  <Download size={16} />
+                  Pobierz PDF
+                </>
+              )}
+            </button>
+          </div>
+
           {/* Podgląd cennika z obsługą hover/click dla trybu text */}
-          <div className="bg-white rounded-xl shadow-lg">
+          <div ref={previewRef} className="bg-white rounded-xl shadow-lg">
             {editMode === 'text' ? (
               <div className="p-6">
                 {pricingData.categories.map((category, catIndex) => (
