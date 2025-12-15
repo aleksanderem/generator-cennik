@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Check, RotateCcw, Palette, Type, Eye, EyeOff, ChevronDown, Sparkles, Code, Copy, Edit3, X, Tag, Clock, DollarSign, FileText, Layers, ExternalLink, Loader2, Zap, Download } from 'lucide-react';
-import { exportToPDF } from '../utils/pdfExport';
+import { exportToPDFFromData } from '../utils/pdfExport';
 import { SketchPicker, ColorResult } from 'react-color';
 import { ThemeConfig, DEFAULT_THEME, FONT_OPTIONS } from '../../../types';
 import {
@@ -311,19 +311,19 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   }, [pricingData, theme, pricelistId, generateEmbedSnippet]);
 
   const handleExportPDF = useCallback(async () => {
-    if (!previewRef.current || isExportingPDF) return;
+    if (isExportingPDF) return;
 
     setIsExportingPDF(true);
     try {
       const salonName = pricingData.salonName || 'cennik';
       const filename = salonName.toLowerCase().replace(/\s+/g, '-');
-      await exportToPDF(previewRef.current, { filename });
+      await exportToPDFFromData(pricingData, { filename });
     } catch (error) {
       console.error('PDF export failed:', error);
     } finally {
       setIsExportingPDF(false);
     }
-  }, [pricingData.salonName, isExportingPDF]);
+  }, [pricingData, isExportingPDF]);
 
   // Funkcja do aktualizacji nazwy kategorii
   const handleUpdateCategoryName = useCallback((categoryIndex: number, newName: string) => {
@@ -391,302 +391,320 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
       {/* Sidebar - Controls */}
       <div className="w-full lg:w-80 flex-shrink-0 space-y-4">
         {/* Template Selector */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <button
-            onClick={() => setShowTemplates(!showTemplates)}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Palette size={16} className="text-slate-400" />
-              <span className="text-sm font-medium text-slate-700">Szablon</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500">{template.metadata.name}</span>
-              <ChevronDown
-                size={16}
-                className={`text-slate-400 transition-transform ${showTemplates ? 'rotate-180' : ''}`}
-              />
-            </div>
-          </button>
+        <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+          <div className="relative z-10 overflow-hidden rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+            <button
+              onClick={() => setShowTemplates(!showTemplates)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Palette size={16} className="text-[#D4A574]" />
+                <span className="text-sm font-medium text-slate-700">Szablon</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">{template.metadata.name}</span>
+                <ChevronDown
+                  size={16}
+                  className={`text-slate-400 transition-transform ${showTemplates ? 'rotate-180' : ''}`}
+                />
+              </div>
+            </button>
 
-          {showTemplates && (
-            <div className="border-t border-slate-200 p-2 space-y-1">
-              {allTemplates.map((t) => (
-                <button
-                  key={t.metadata.id}
-                  onClick={() => handleTemplateSelect(t.metadata.id)}
-                  className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
-                    templateId === t.metadata.id
-                      ? 'bg-[#722F37]/10 text-[#722F37]'
-                      : 'hover:bg-slate-50 text-slate-700'
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{t.metadata.name}</div>
-                    <div className="text-xs text-slate-500">{t.metadata.description}</div>
-                  </div>
-                  {templateId === t.metadata.id && <Check size={16} />}
-                </button>
-              ))}
-            </div>
-          )}
+            {showTemplates && (
+              <div className="border-t border-slate-200 p-2 space-y-1">
+                {allTemplates.map((t) => (
+                  <button
+                    key={t.metadata.id}
+                    onClick={() => handleTemplateSelect(t.metadata.id)}
+                    className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left transition-colors ${
+                      templateId === t.metadata.id
+                        ? 'bg-[#D4A574]/10 text-[#D4A574]'
+                        : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex-1">
+                      <div className="text-sm font-medium">{t.metadata.name}</div>
+                      <div className="text-xs text-slate-500">{t.metadata.description}</div>
+                    </div>
+                    {templateId === t.metadata.id && <Check size={16} />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Presets */}
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <button
-            onClick={() => setShowPresets(!showPresets)}
-            className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
-          >
-            <div className="flex items-center gap-2">
-              <Sparkles size={16} className="text-slate-400" />
-              <span className="text-sm font-medium text-slate-700">Gotowe style</span>
-            </div>
-            <ChevronDown
-              size={16}
-              className={`text-slate-400 transition-transform ${showPresets ? 'rotate-180' : ''}`}
-            />
-          </button>
+        <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+          <div className="relative z-10 overflow-hidden rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+            <button
+              onClick={() => setShowPresets(!showPresets)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-[#D4A574]" />
+                <span className="text-sm font-medium text-slate-700">Gotowe style</span>
+              </div>
+              <ChevronDown
+                size={16}
+                className={`text-slate-400 transition-transform ${showPresets ? 'rotate-180' : ''}`}
+              />
+            </button>
 
-          {showPresets && (
-            <div className="border-t border-slate-200 p-2 max-h-64 overflow-y-auto space-y-1">
-              {recommendedPresets.map((preset) => (
-                <button
-                  key={preset.id}
-                  onClick={() => handlePresetApply(preset)}
-                  className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-slate-50 transition-colors"
-                >
-                  {/* Color preview dots */}
-                  <div className="flex -space-x-1">
-                    <div
-                      className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                      style={{ backgroundColor: preset.colors.primaryColor }}
-                    />
-                    <div
-                      className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                      style={{ backgroundColor: preset.colors.secondaryColor }}
-                    />
-                    <div
-                      className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
-                      style={{ backgroundColor: preset.colors.textColor || '#333' }}
-                    />
-                  </div>
-                  <div className="flex-1">
-                    <div className="text-sm font-medium text-slate-700">{preset.name}</div>
-                    {preset.description && (
-                      <div className="text-xs text-slate-500">{preset.description}</div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+            {showPresets && (
+              <div className="border-t border-slate-200 p-2 max-h-64 overflow-y-auto space-y-1">
+                {recommendedPresets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => handlePresetApply(preset)}
+                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left hover:bg-slate-50 transition-colors"
+                  >
+                    {/* Color preview dots */}
+                    <div className="flex -space-x-1">
+                      <div
+                        className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                        style={{ backgroundColor: preset.colors.primaryColor }}
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                        style={{ backgroundColor: preset.colors.secondaryColor }}
+                      />
+                      <div
+                        className="w-4 h-4 rounded-full border-2 border-white shadow-sm"
+                        style={{ backgroundColor: preset.colors.textColor || '#333' }}
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-slate-700">{preset.name}</div>
+                      {preset.description && (
+                        <div className="text-xs text-slate-500">{preset.description}</div>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Active Zone Editor */}
         {activeZoneData && (
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm font-medium text-slate-700">
-                Edytujesz: {activeZoneData.label}
-              </h4>
-              <button
-                onClick={() => setActiveZone(null)}
-                className="text-xs text-slate-500 hover:text-slate-700"
-              >
-                Zamknij
-              </button>
-            </div>
-
-            {/* Font Size slider */}
-            {activeZoneData.type === 'fontSize' ? (
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-slate-500">Rozmiar fontu</span>
-                  <span className="text-sm font-mono text-slate-700">
-                    {theme[activeZoneData.themeKey] as number}px
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="32"
-                  step="1"
-                  value={theme[activeZoneData.themeKey] as number}
-                  onChange={(e) => handleThemeChange(activeZoneData.themeKey, parseInt(e.target.value))}
-                  className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#722F37]"
-                />
-                <div className="flex justify-between text-xs text-slate-400">
-                  <span>10px</span>
-                  <span>32px</span>
-                </div>
+          <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+            <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-medium text-slate-700">
+                  Edytujesz: {activeZoneData.label}
+                </h4>
+                <button
+                  onClick={() => setActiveZone(null)}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Zamknij
+                </button>
               </div>
-            ) : activeZoneData.themeKey === 'fontHeading' || activeZoneData.themeKey === 'fontBody' ? (
-              /* Font family selector */
-              <select
-                value={theme[activeZoneData.themeKey] as string}
-                onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                style={{ fontFamily: theme[activeZoneData.themeKey] as string }}
-              >
-                {(activeZoneData.themeKey === 'fontHeading' ? FONT_OPTIONS.headings : FONT_OPTIONS.body).map((f) => (
-                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              /* Color picker with react-color */
-              <div className="relative" ref={colorPickerRef}>
-                <div className="flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setShowColorPicker(!showColorPicker)}
-                    className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer shadow-sm hover:shadow transition-shadow"
-                    style={{ backgroundColor: theme[activeZoneData.themeKey] as string }}
-                    title="Kliknij aby otworzyć paletę kolorów"
-                  />
+
+              {/* Font Size slider */}
+              {activeZoneData.type === 'fontSize' ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-slate-500">Rozmiar fontu</span>
+                    <span className="text-sm font-mono text-slate-700">
+                      {theme[activeZoneData.themeKey] as number}px
+                    </span>
+                  </div>
                   <input
-                    type="text"
-                    value={theme[activeZoneData.themeKey] as string}
-                    onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
-                    className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
+                    type="range"
+                    min="10"
+                    max="32"
+                    step="1"
+                    value={theme[activeZoneData.themeKey] as number}
+                    onChange={(e) => handleThemeChange(activeZoneData.themeKey, parseInt(e.target.value))}
+                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#D4A574]"
                   />
+                  <div className="flex justify-between text-xs text-slate-400">
+                    <span>10px</span>
+                    <span>32px</span>
+                  </div>
                 </div>
-                {showColorPicker && (
-                  <div className="absolute z-50 mt-2 left-0">
-                    <SketchPicker
-                      color={theme[activeZoneData.themeKey] as string}
-                      onChange={(color: ColorResult) => handleThemeChange(activeZoneData.themeKey, color.hex)}
-                      disableAlpha={true}
-                      presetColors={[
-                        '#722F37', '#8B4513', '#2F4F4F', '#191970', '#800020',
-                        '#D4AF37', '#228B22', '#4169E1', '#DC143C', '#FF8C00',
-                        '#333333', '#666666', '#999999', '#CCCCCC', '#F5F5F5',
-                        '#FFFFFF', '#000000', '#F8F4E8', '#FFF5E6', '#E8F4F8',
-                      ]}
+              ) : activeZoneData.themeKey === 'fontHeading' || activeZoneData.themeKey === 'fontBody' ? (
+                /* Font family selector */
+                <select
+                  value={theme[activeZoneData.themeKey] as string}
+                  onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  style={{ fontFamily: theme[activeZoneData.themeKey] as string }}
+                >
+                  {(activeZoneData.themeKey === 'fontHeading' ? FONT_OPTIONS.headings : FONT_OPTIONS.body).map((f) => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                /* Color picker with react-color */
+                <div className="relative" ref={colorPickerRef}>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowColorPicker(!showColorPicker)}
+                      className="w-12 h-10 rounded-lg border border-slate-200 cursor-pointer shadow-sm hover:shadow transition-shadow"
+                      style={{ backgroundColor: theme[activeZoneData.themeKey] as string }}
+                      title="Kliknij aby otworzyć paletę kolorów"
+                    />
+                    <input
+                      type="text"
+                      value={theme[activeZoneData.themeKey] as string}
+                      onChange={(e) => handleThemeChange(activeZoneData.themeKey, e.target.value)}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574]"
                     />
                   </div>
-                )}
-              </div>
-            )}
+                  {showColorPicker && (
+                    <div className="absolute z-50 mt-2 left-0">
+                      <SketchPicker
+                        color={theme[activeZoneData.themeKey] as string}
+                        onChange={(color: ColorResult) => handleThemeChange(activeZoneData.themeKey, color.hex)}
+                        disableAlpha={true}
+                        presetColors={[
+                          '#D4A574', '#8B4513', '#2F4F4F', '#191970', '#800020',
+                          '#D4AF37', '#228B22', '#4169E1', '#DC143C', '#FF8C00',
+                          '#333333', '#666666', '#999999', '#CCCCCC', '#F5F5F5',
+                          '#FFFFFF', '#000000', '#F8F4E8', '#FFF5E6', '#E8F4F8',
+                        ]}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
         {/* All Colors Grid */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2">
-              <Palette size={14} />
-              Wszystkie kolory
-            </h4>
-            <button
-              onClick={handleResetTheme}
-              className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
-            >
-              <RotateCcw size={12} />
-              Reset
-            </button>
-          </div>
+        <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+          <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2">
+                <Palette size={14} className="text-[#D4A574]" />
+                Wszystkie kolory
+              </h4>
+              <button
+                onClick={handleResetTheme}
+                className="text-xs text-slate-500 hover:text-slate-700 flex items-center gap-1"
+              >
+                <RotateCcw size={12} />
+                Reset
+              </button>
+            </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {template.colorZones
-              .filter(z => !['fontHeading', 'fontBody'].includes(z.themeKey))
-              .slice(0, 8)
-              .map((zone) => (
-                <button
-                  key={zone.id}
-                  onClick={() => setActiveZone(zone.id)}
-                  className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
-                    activeZone === zone.id
-                      ? 'border-[#722F37] bg-[#722F37]/5'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  <div
-                    className="w-6 h-6 rounded border border-slate-200"
-                    style={{ backgroundColor: theme[zone.themeKey] as string }}
-                  />
-                  <span className="text-xs text-slate-600 truncate">{zone.label}</span>
-                </button>
-              ))}
+            <div className="grid grid-cols-2 gap-2">
+              {template.colorZones
+                .filter(z => !['fontHeading', 'fontBody'].includes(z.themeKey))
+                .slice(0, 8)
+                .map((zone) => (
+                  <button
+                    key={zone.id}
+                    onClick={() => setActiveZone(zone.id)}
+                    className={`flex items-center gap-2 p-2 rounded-lg border transition-all ${
+                      activeZone === zone.id
+                        ? 'border-[#D4A574] bg-[#D4A574]/5'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div
+                      className="w-6 h-6 rounded border border-slate-200"
+                      style={{ backgroundColor: theme[zone.themeKey] as string }}
+                    />
+                    <span className="text-xs text-slate-600 truncate">{zone.label}</span>
+                  </button>
+                ))}
+            </div>
           </div>
         </div>
 
         {/* Typography */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-4">
-            <Type size={14} />
-            Typografia
-          </h4>
+        <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+          <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+            <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-4">
+              <Type size={14} className="text-[#D4A574]" />
+              Typografia
+            </h4>
 
-          <div className="space-y-3">
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Nagłówki</label>
-              <select
-                value={theme.fontHeading}
-                onChange={(e) => handleThemeChange('fontHeading', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                style={{ fontFamily: theme.fontHeading }}
-              >
-                {FONT_OPTIONS.headings.map((f) => (
-                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-slate-500 mb-1">Treść</label>
-              <select
-                value={theme.fontBody}
-                onChange={(e) => handleThemeChange('fontBody', e.target.value)}
-                className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
-                style={{ fontFamily: theme.fontBody }}
-              >
-                {FONT_OPTIONS.body.map((f) => (
-                  <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
-                    {f.label}
-                  </option>
-                ))}
-              </select>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Nagłówki</label>
+                <select
+                  value={theme.fontHeading}
+                  onChange={(e) => handleThemeChange('fontHeading', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  style={{ fontFamily: theme.fontHeading }}
+                >
+                  {FONT_OPTIONS.headings.map((f) => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">Treść</label>
+                <select
+                  value={theme.fontBody}
+                  onChange={(e) => handleThemeChange('fontBody', e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm"
+                  style={{ fontFamily: theme.fontBody }}
+                >
+                  {FONT_OPTIONS.body.map((f) => (
+                    <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
         {/* Font Sizes */}
-        <div className="bg-white rounded-xl border border-slate-200 p-4">
-          <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-4">
-            <Type size={14} />
-            Rozmiary fontów
-          </h4>
+        <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+          <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+          <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+            <h4 className="text-sm font-medium text-slate-700 flex items-center gap-2 mb-4">
+              <Type size={14} className="text-[#D4A574]" />
+              Rozmiary fontów
+            </h4>
 
-          <div className="space-y-4">
-            {[
-              { key: 'fontSizeCategory', label: 'Kategoria' },
-              { key: 'fontSizeServiceName', label: 'Nazwa usługi' },
-              { key: 'fontSizeDescription', label: 'Opis' },
-              { key: 'fontSizePrice', label: 'Cena' },
-              { key: 'fontSizeDuration', label: 'Czas trwania' },
-            ].map(({ key, label }) => (
-              <div key={key}>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="text-xs text-slate-500">{label}</label>
-                  <span className="text-xs font-mono text-slate-600">
-                    {theme[key as keyof ThemeConfig] as number}px
-                  </span>
+            <div className="space-y-4">
+              {[
+                { key: 'fontSizeCategory', label: 'Kategoria' },
+                { key: 'fontSizeServiceName', label: 'Nazwa usługi' },
+                { key: 'fontSizeDescription', label: 'Opis' },
+                { key: 'fontSizePrice', label: 'Cena' },
+                { key: 'fontSizeDuration', label: 'Czas trwania' },
+              ].map(({ key, label }) => (
+                <div key={key}>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-xs text-slate-500">{label}</label>
+                    <span className="text-xs font-mono text-slate-600">
+                      {theme[key as keyof ThemeConfig] as number}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="10"
+                    max="32"
+                    step="1"
+                    value={theme[key as keyof ThemeConfig] as number}
+                    onChange={(e) => handleThemeChange(key as keyof ThemeConfig, parseInt(e.target.value))}
+                    className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#D4A574]"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="32"
-                  step="1"
-                  value={theme[key as keyof ThemeConfig] as number}
-                  onChange={(e) => handleThemeChange(key as keyof ThemeConfig, parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-[#722F37]"
-                />
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
 
@@ -712,27 +730,6 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               ✏️ Najedź na element i kliknij aby edytować tekst
             </div>
           )}
-
-          {/* PDF Download Button */}
-          <div className="mb-4 flex justify-end">
-            <button
-              onClick={handleExportPDF}
-              disabled={isExportingPDF}
-              className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-            >
-              {isExportingPDF ? (
-                <>
-                  <Loader2 size={16} className="animate-spin" />
-                  Generowanie PDF...
-                </>
-              ) : (
-                <>
-                  <Download size={16} />
-                  Pobierz PDF
-                </>
-              )}
-            </button>
-          </div>
 
           {/* Podgląd cennika z obsługą hover/click dla trybu text */}
           <div ref={previewRef} className="bg-white rounded-xl shadow-lg">
@@ -877,54 +874,68 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
           {/* Embed Code Section - tylko gdy NIE ma enableDataEditing (bo wtedy jest po prawej) */}
           {!enableDataEditing && (
-            <div className="mt-6 bg-slate-900 rounded-xl overflow-hidden shadow-xl border border-slate-700">
-              <button
-                onClick={() => setShowCode(!showCode)}
-                className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 hover:bg-slate-750 transition-colors"
-              >
-                <div className="flex items-center gap-2 text-slate-300">
-                  <Code size={18} />
-                  <span className="text-sm font-medium">Kod do osadzenia</span>
-                  <ChevronDown
-                    size={16}
-                    className={`transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
-                  />
+            <div className="mt-6 group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+              <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+              <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    onClick={() => setShowCode(!showCode)}
+                    className="flex items-center gap-2"
+                  >
+                    <Code size={16} className="text-[#D4A574]" />
+                    <span className="text-xs text-slate-400 uppercase tracking-wide">Kod do osadzenia</span>
+                    <ChevronDown
+                      size={14}
+                      className={`text-slate-400 transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                  <button
+                    onClick={handleCopyCode}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={14} className="text-emerald-500" />
+                        <span className="text-emerald-600">Skopiowano</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={14} />
+                        <span>Kopiuj</span>
+                      </>
+                    )}
+                  </button>
                 </div>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCopyCode();
-                  }}
-                  className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#722F37] text-white hover:bg-[#5a252c] transition-colors z-10"
-                >
-                  {copied ? <Check size={14} /> : <Copy size={14} />}
-                  {copied ? 'Skopiowano!' : 'Kopiuj'}
-                </button>
-              </button>
 
-              {showCode && (
-                <div className="p-4 overflow-x-auto max-h-96">
-                  {pricelistId ? (
-                    <>
-                      <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap rounded-lg bg-rose-50/20 border-l-4 border-rose-400/50 p-4">
-                        <code>
-                          <span className="text-blue-400">&lt;script</span>{'\n'}
-                          {'  '}<span className="text-purple-400">src</span>=<span className="text-emerald-400">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
-                          {'  '}<span className="text-purple-400">data-pricelist</span>=<span className="text-emerald-400">"{pricelistId}"</span>&gt;{'\n'}
-                          <span className="text-blue-400">&lt;/script&gt;</span>
-                        </code>
-                      </pre>
-                      <p className="text-xs text-slate-500 mt-3">
-                        Wklej ten kod na swojej stronie internetowej, w miejscu gdzie chcesz wyświetlić cennik.
-                      </p>
-                    </>
-                  ) : (
-                    <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
-                      <code>{generateEmbedHTML(pricingData, theme)}</code>
-                    </pre>
-                  )}
-                </div>
-              )}
+                {showCode && (
+                  <>
+                    {pricelistId ? (
+                      <div className="rounded-lg bg-rose-50/50 border-l-4 border-rose-300 p-4 overflow-hidden">
+                        <pre className="text-xs leading-relaxed">
+                          <code className="font-mono text-slate-700 whitespace-pre">
+                            <span className="text-blue-600">&lt;script</span>{'\n'}
+                            {'  '}<span className="text-purple-600">src</span>=<span className="text-emerald-600">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
+                            {'  '}<span className="text-purple-600">data-pricelist</span>=<span className="text-emerald-600">"{pricelistId}"</span>&gt;{'\n'}
+                            <span className="text-blue-600">&lt;/script&gt;</span>
+                          </code>
+                        </pre>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 overflow-x-auto max-h-96">
+                        <pre className="text-xs text-slate-600 font-mono leading-relaxed whitespace-pre-wrap">
+                          <code>{generateEmbedHTML(pricingData, theme)}</code>
+                        </pre>
+                      </div>
+                    )}
+                    <p className="text-xs text-slate-500 mt-3">
+                      {pricelistId
+                        ? 'Wklej ten kod na swojej stronie internetowej, w miejscu gdzie chcesz wyświetlić cennik.'
+                        : 'Wklej ten kod HTML na swojej stronie internetowej.'}
+                    </p>
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -934,212 +945,253 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
       {enableDataEditing && (
         <div className="w-full lg:w-80 flex-shrink-0 space-y-4">
           {/* 3-stanowy switch trybu edycji */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4">
-            <label className="block text-xs font-medium text-slate-600 mb-3">Tryb edycji</label>
-            <div className="flex rounded-lg bg-slate-100 p-1">
-              <button
-                onClick={() => { setEditMode('off'); setSelectedDataItem(null); }}
-                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
-                  editMode === 'off'
-                    ? 'bg-white shadow text-slate-900'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <EyeOff size={14} className="mx-auto mb-1" />
-                Wył.
-              </button>
-              <button
-                onClick={() => { setEditMode('visual'); setSelectedDataItem(null); }}
-                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
-                  editMode === 'visual'
-                    ? 'bg-white shadow text-[#722F37]'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Palette size={14} className="mx-auto mb-1" />
-                Wizualna
-              </button>
-              <button
-                onClick={() => { setEditMode('text'); setSelectedDataItem(null); }}
-                className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
-                  editMode === 'text'
-                    ? 'bg-white shadow text-amber-600'
-                    : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Edit3 size={14} className="mx-auto mb-1" />
-                Tekst
-              </button>
-            </div>
-            <p className="text-xs text-slate-500 mt-3">
-              {editMode === 'off' && 'Tryb podglądu - bez edycji'}
-              {editMode === 'visual' && 'Kliknij element aby zmienić kolory'}
-              {editMode === 'text' && 'Najedź i kliknij aby edytować tekst'}
-            </p>
+          <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+            <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+              <label className="block text-xs font-medium text-slate-600 mb-3">Tryb edycji</label>
+              <div className="flex rounded-lg bg-slate-100 p-1">
+                <button
+                  onClick={() => { setEditMode('off'); setSelectedDataItem(null); }}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
+                    editMode === 'off'
+                      ? 'bg-white shadow text-slate-900'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <EyeOff size={14} className="mx-auto mb-1" />
+                  Wył.
+                </button>
+                <button
+                  onClick={() => { setEditMode('visual'); setSelectedDataItem(null); }}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
+                    editMode === 'visual'
+                      ? 'bg-white shadow text-[#D4A574]'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Palette size={14} className="mx-auto mb-1" />
+                  Wizualna
+                </button>
+                <button
+                  onClick={() => { setEditMode('text'); setSelectedDataItem(null); }}
+                  className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-all ${
+                    editMode === 'text'
+                      ? 'bg-white shadow text-amber-600'
+                      : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <Edit3 size={14} className="mx-auto mb-1" />
+                  Tekst
+                </button>
+              </div>
+              <p className="text-xs text-slate-500 mt-3">
+                {editMode === 'off' && 'Tryb podglądu - bez edycji'}
+                {editMode === 'visual' && 'Kliknij element aby zmienić kolory'}
+                {editMode === 'text' && 'Najedź i kliknij aby edytować tekst'}
+              </p>
 
-            {/* Przycisk otwierania podglądu w nowej zakładce */}
-            {draftId && (
+              {/* Przycisk otwierania podglądu w nowej zakładce */}
+              {draftId && (
+                <button
+                  onClick={() => window.open(`/preview?draft=${draftId}`, '_blank')}
+                  className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  <ExternalLink size={16} />
+                  Otwórz podgląd
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* PDF Export Card */}
+          <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+            <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Download size={16} className="text-[#D4A574]" />
+                  <span className="text-sm font-medium text-slate-700">Eksport</span>
+                </div>
+              </div>
               <button
-                onClick={() => window.open(`/preview?draft=${draftId}`, '_blank')}
-                className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
+                onClick={handleExportPDF}
+                disabled={isExportingPDF}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-[#D4A574] text-[#D4A574] hover:bg-[#D4A574]/10 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <ExternalLink size={16} />
-                Otwórz podgląd
+                {isExportingPDF ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Generowanie PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download size={16} />
+                    Pobierz PDF
+                  </>
+                )}
               </button>
-            )}
+              <p className="text-xs text-slate-500 mt-2 text-center">
+                Eksportuj cennik do pliku PDF
+              </p>
+            </div>
           </div>
 
           {/* Panel edycji wybranego elementu - tylko w trybie text */}
           {editMode === 'text' && selectedDataItem && (
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                <span className="text-sm font-medium text-slate-700">
-                  {selectedDataItem.type === 'category' ? 'Edytuj kategorię' : 'Edytuj usługę'}
-                </span>
-                <button
-                  onClick={() => setSelectedDataItem(null)}
-                  className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
-                >
-                  <X size={16} />
-                </button>
-              </div>
+            <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+              <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+              <div className="relative z-10 overflow-hidden rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                  <span className="text-sm font-medium text-slate-700">
+                    {selectedDataItem.type === 'category' ? 'Edytuj kategorię' : 'Edytuj usługę'}
+                  </span>
+                  <button
+                    onClick={() => setSelectedDataItem(null)}
+                    className="p-1 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
 
-              <div className="p-4 space-y-3">
-                {selectedDataItem.type === 'category' ? (
-                  /* Edycja kategorii */
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                      Nazwa kategorii
-                    </label>
-                    <input
-                      type="text"
-                      value={pricingData.categories[selectedDataItem.categoryIndex].categoryName}
-                      onChange={(e) => handleUpdateCategoryName(selectedDataItem.categoryIndex, e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                      autoFocus
-                    />
-                  </div>
-                ) : (
-                  /* Edycja usługi */
-                  <>
-                    {/* Nazwa */}
+                <div className="p-4 space-y-3">
+                  {selectedDataItem.type === 'category' ? (
+                    /* Edycja kategorii */
                     <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
-                        <FileText size={12} />
-                        Nazwa
+                      <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                        Nazwa kategorii
                       </label>
                       <input
                         type="text"
-                        value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].name}
-                        onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { name: e.target.value })}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
+                        value={pricingData.categories[selectedDataItem.categoryIndex].categoryName}
+                        onChange={(e) => handleUpdateCategoryName(selectedDataItem.categoryIndex, e.target.value)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574]"
                         autoFocus
                       />
                     </div>
-
-                    {/* Cena */}
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
-                        <DollarSign size={12} />
-                        Cena
-                      </label>
-                      <input
-                        type="text"
-                        value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].price}
-                        onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { price: e.target.value })}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                      />
-                    </div>
-
-                    {/* Opis */}
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
-                        <FileText size={12} />
-                        Opis
-                      </label>
-                      <textarea
-                        value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].description || ''}
-                        onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { description: e.target.value || undefined })}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37] resize-none"
-                        rows={2}
-                        placeholder="Krótki opis..."
-                      />
-                    </div>
-
-                    {/* Czas trwania */}
-                    <div>
-                      <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
-                        <Clock size={12} />
-                        Czas
-                      </label>
-                      <input
-                        type="text"
-                        value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].duration || ''}
-                        onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { duration: e.target.value || undefined })}
-                        className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#722F37]/20 focus:border-[#722F37]"
-                        placeholder="np. 60 min"
-                      />
-                    </div>
-
-                    {/* Promocja i Tagi */}
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs font-medium text-slate-600">Promo</label>
-                        <button
-                          onClick={() => handleUpdateService(
-                            selectedDataItem.categoryIndex,
-                            selectedDataItem.serviceIndex,
-                            { isPromo: !pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo }
-                          )}
-                          className={`relative w-9 h-5 rounded-full transition-colors ${
-                            pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo
-                              ? 'bg-[#722F37]'
-                              : 'bg-slate-200'
-                          }`}
-                        >
-                          <span
-                            className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
-                              pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo
-                                ? 'translate-x-4'
-                                : 'translate-x-0'
-                            }`}
-                          />
-                        </button>
-                      </div>
-
-                      <div className="flex-1">
+                  ) : (
+                    /* Edycja usługi */
+                    <>
+                      {/* Nazwa */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
+                          <FileText size={12} />
+                          Nazwa
+                        </label>
                         <input
                           type="text"
-                          value={(pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].tags || []).join(', ')}
-                          onChange={(e) => {
-                            const tagsString = e.target.value;
-                            const tags = tagsString
-                              .split(',')
-                              .map(t => t.trim())
-                              .filter(t => t.length > 0);
-                            handleUpdateService(
-                              selectedDataItem.categoryIndex,
-                              selectedDataItem.serviceIndex,
-                              { tags: tags.length > 0 ? tags : undefined }
-                            );
-                          }}
-                          className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#722F37]/20"
-                          placeholder="Tagi (przecinki)"
+                          value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].name}
+                          onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { name: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574]"
+                          autoFocus
                         />
                       </div>
-                    </div>
-                  </>
-                )}
+
+                      {/* Cena */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
+                          <DollarSign size={12} />
+                          Cena
+                        </label>
+                        <input
+                          type="text"
+                          value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].price}
+                          onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { price: e.target.value })}
+                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574]"
+                        />
+                      </div>
+
+                      {/* Opis */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
+                          <FileText size={12} />
+                          Opis
+                        </label>
+                        <textarea
+                          value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].description || ''}
+                          onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { description: e.target.value || undefined })}
+                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574] resize-none"
+                          rows={2}
+                          placeholder="Krótki opis..."
+                        />
+                      </div>
+
+                      {/* Czas trwania */}
+                      <div>
+                        <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 mb-1">
+                          <Clock size={12} />
+                          Czas
+                        </label>
+                        <input
+                          type="text"
+                          value={pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].duration || ''}
+                          onChange={(e) => handleUpdateService(selectedDataItem.categoryIndex, selectedDataItem.serviceIndex, { duration: e.target.value || undefined })}
+                          className="w-full px-3 py-1.5 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#D4A574]/20 focus:border-[#D4A574]"
+                          placeholder="np. 60 min"
+                        />
+                      </div>
+
+                      {/* Promocja i Tagi */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <label className="text-xs font-medium text-slate-600">Promo</label>
+                          <button
+                            onClick={() => handleUpdateService(
+                              selectedDataItem.categoryIndex,
+                              selectedDataItem.serviceIndex,
+                              { isPromo: !pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo }
+                            )}
+                            className={`relative w-9 h-5 rounded-full transition-colors ${
+                              pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo
+                                ? 'bg-[#D4A574]'
+                                : 'bg-slate-200'
+                            }`}
+                          >
+                            <span
+                              className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${
+                                pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].isPromo
+                                  ? 'translate-x-4'
+                                  : 'translate-x-0'
+                              }`}
+                            />
+                          </button>
+                        </div>
+
+                        <div className="flex-1">
+                          <input
+                            type="text"
+                            value={(pricingData.categories[selectedDataItem.categoryIndex].services[selectedDataItem.serviceIndex].tags || []).join(', ')}
+                            onChange={(e) => {
+                              const tagsString = e.target.value;
+                              const tags = tagsString
+                                .split(',')
+                                .map(t => t.trim())
+                                .filter(t => t.length > 0);
+                              handleUpdateService(
+                                selectedDataItem.categoryIndex,
+                                selectedDataItem.serviceIndex,
+                                { tags: tags.length > 0 ? tags : undefined }
+                              );
+                            }}
+                            className="w-full px-2 py-1 border border-slate-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-[#D4A574]/20"
+                            placeholder="Tagi (przecinki)"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
           {/* Podpowiedź gdy nie wybrano elementu w trybie text */}
           {editMode === 'text' && !selectedDataItem && (
-            <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
-              <p className="text-sm text-amber-700">
-                Kliknij na kategorię lub usługę w podglądzie, aby edytować jej treść.
-              </p>
+            <div className="group relative rounded-2xl border border-amber-200 bg-amber-50/50 p-2 transition-all duration-300 hover:border-amber-300 overflow-hidden">
+              <div className="relative z-10 overflow-hidden rounded-xl bg-amber-50 p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04)]">
+                <p className="text-sm text-amber-700">
+                  Kliknij na kategorię lub usługę w podglądzie, aby edytować jej treść.
+                </p>
+              </div>
             </div>
           )}
 
@@ -1236,54 +1288,68 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
           )}
 
           {/* Embed Code Section - w pełnym edytorze po prawej */}
-          <div className="bg-slate-900 rounded-xl overflow-hidden shadow-xl border border-slate-700">
-            <button
-              onClick={() => setShowCode(!showCode)}
-              className="w-full flex items-center justify-between px-4 py-3 bg-slate-800 border-b border-slate-700 hover:bg-slate-750 transition-colors"
-            >
-              <div className="flex items-center gap-2 text-slate-300">
-                <Code size={18} />
-                <span className="text-sm font-medium">Kod do osadzenia</span>
-                <ChevronDown
-                  size={16}
-                  className={`transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
-                />
+          <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+            <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+            <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+            <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+              <div className="flex items-center justify-between mb-3">
+                <button
+                  onClick={() => setShowCode(!showCode)}
+                  className="flex items-center gap-2"
+                >
+                  <Code size={16} className="text-[#D4A574]" />
+                  <span className="text-xs text-slate-400 uppercase tracking-wide">Kod do osadzenia</span>
+                  <ChevronDown
+                    size={14}
+                    className={`text-slate-400 transition-transform duration-300 ${showCode ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                <button
+                  onClick={handleCopyCode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors"
+                >
+                  {copied ? (
+                    <>
+                      <Check size={14} className="text-emerald-500" />
+                      <span className="text-emerald-600">Skopiowano</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy size={14} />
+                      <span>Kopiuj</span>
+                    </>
+                  )}
+                </button>
               </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleCopyCode();
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg bg-[#722F37] text-white hover:bg-[#5a252c] transition-colors z-10"
-              >
-                {copied ? <Check size={14} /> : <Copy size={14} />}
-                {copied ? 'Skopiowano!' : 'Kopiuj'}
-              </button>
-            </button>
 
-            {showCode && (
-              <div className="p-3 overflow-x-auto max-h-64">
-                {pricelistId ? (
-                  <>
-                    <pre className="text-xs font-mono leading-relaxed whitespace-pre-wrap rounded-lg bg-rose-50/20 border-l-4 border-rose-400/50 p-3">
-                      <code>
-                        <span className="text-blue-400">&lt;script</span>{'\n'}
-                        {'  '}<span className="text-purple-400">src</span>=<span className="text-emerald-400">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
-                        {'  '}<span className="text-purple-400">data-pricelist</span>=<span className="text-emerald-400">"{pricelistId}"</span>&gt;{'\n'}
-                        <span className="text-blue-400">&lt;/script&gt;</span>
-                      </code>
-                    </pre>
-                    <p className="text-xs text-slate-500 mt-2">
-                      Wklej ten kod na swojej stronie, gdzie chcesz wyświetlić cennik.
-                    </p>
-                  </>
-                ) : (
-                  <pre className="text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
-                    <code>{generateEmbedHTML(pricingData, theme)}</code>
-                  </pre>
-                )}
-              </div>
-            )}
+              {showCode && (
+                <>
+                  {pricelistId ? (
+                    <div className="rounded-lg bg-rose-50/50 border-l-4 border-rose-300 p-4 overflow-hidden">
+                      <pre className="text-xs leading-relaxed">
+                        <code className="font-mono text-slate-700 whitespace-pre">
+                          <span className="text-blue-600">&lt;script</span>{'\n'}
+                          {'  '}<span className="text-purple-600">src</span>=<span className="text-emerald-600">"https://app.beautyaudit.pl/embed.js"</span>{'\n'}
+                          {'  '}<span className="text-purple-600">data-pricelist</span>=<span className="text-emerald-600">"{pricelistId}"</span>&gt;{'\n'}
+                          <span className="text-blue-600">&lt;/script&gt;</span>
+                        </code>
+                      </pre>
+                    </div>
+                  ) : (
+                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-4 overflow-x-auto max-h-64">
+                      <pre className="text-xs text-slate-600 font-mono leading-relaxed whitespace-pre-wrap">
+                        <code>{generateEmbedHTML(pricingData, theme)}</code>
+                      </pre>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-500 mt-3">
+                    {pricelistId
+                      ? 'Wklej ten kod na swojej stronie, gdzie chcesz wyświetlić cennik.'
+                      : 'Wklej ten kod HTML na swojej stronie.'}
+                  </p>
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
