@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -8,7 +8,7 @@ import { cn } from '../../lib/utils';
 import { ThemeConfig, DEFAULT_THEME, PricingData } from '../../types';
 import { TemplateEditor, SAMPLE_PRICING_DATA, getTemplate, generateEmbedHTML } from '../../lib/pricelist-templates';
 import type { Id } from '../../convex/_generated/dataModel';
-import { IconChevronDown } from '@tabler/icons-react';
+import { IconChevronDown, IconDotsVertical } from '@tabler/icons-react';
 import {
   IconSettings,
   IconLogout,
@@ -92,6 +92,19 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   optimizingPricelist,
 }) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdownId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Group pricelists: OPTIMIZED versions on top, originals as expandable sub-rows
   const { mainPricelists, linkedMap } = useMemo(() => {
@@ -163,64 +176,122 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
     );
   };
 
-  // Action buttons for a pricelist row
-  const ActionButtons = ({ pricelist, isNested = false }: { pricelist: Pricelist; isNested?: boolean }) => (
-    <div className="flex items-center gap-0.5">
-      <button
-        className="p-1.5 text-slate-400 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors"
-        title="Podgląd"
-        onClick={(e) => { e.stopPropagation(); onPreview(pricelist._id); }}
-      >
-        <IconEye size={16} />
-      </button>
-      <button
-        className="p-1.5 text-slate-400 hover:text-[#722F37] hover:bg-[#722F37]/5 rounded transition-colors disabled:opacity-50"
-        title="Edytuj"
-        disabled={editingPricelist === pricelist._id}
-        onClick={(e) => { e.stopPropagation(); onEdit(pricelist._id); }}
-      >
-        {editingPricelist === pricelist._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
-      </button>
-      <button
-        className={cn(
-          "p-1.5 rounded transition-colors",
-          copyingCode === pricelist._id
-            ? "text-emerald-600 bg-emerald-50"
-            : "text-slate-400 hover:text-[#722F37] hover:bg-[#722F37]/5"
+  // Action dropdown menu for a pricelist row
+  const ActionDropdown = ({ pricelist, isNested = false }: { pricelist: Pricelist; isNested?: boolean }) => {
+    const isOpen = openDropdownId === pricelist._id;
+
+    const handleAction = (action: () => void) => {
+      action();
+      setOpenDropdownId(null);
+    };
+
+    return (
+      <div className="relative" ref={isOpen ? dropdownRef : undefined}>
+        <button
+          className={cn(
+            "p-1.5 rounded-lg transition-colors",
+            isOpen ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpenDropdownId(isOpen ? null : pricelist._id);
+          }}
+        >
+          <IconDotsVertical size={18} />
+        </button>
+
+        {isOpen && (
+          <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+            {/* Preview */}
+            <button
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+              onClick={(e) => { e.stopPropagation(); handleAction(() => onPreview(pricelist._id)); }}
+            >
+              <IconEye size={16} className="text-slate-400" />
+              Podgląd
+            </button>
+
+            {/* Edit */}
+            <button
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors disabled:opacity-50"
+              disabled={editingPricelist === pricelist._id}
+              onClick={(e) => { e.stopPropagation(); handleAction(() => onEdit(pricelist._id)); }}
+            >
+              {editingPricelist === pricelist._id ? (
+                <IconLoader2 size={16} className="text-slate-400 animate-spin" />
+              ) : (
+                <IconEdit size={16} className="text-slate-400" />
+              )}
+              Edytuj
+            </button>
+
+            {/* Copy code */}
+            <button
+              className={cn(
+                "w-full flex items-center gap-3 px-3 py-2 text-sm transition-colors",
+                copyingCode === pricelist._id
+                  ? "text-emerald-600 bg-emerald-50"
+                  : "text-slate-700 hover:bg-slate-50"
+              )}
+              disabled={copyingCode === pricelist._id}
+              onClick={(e) => { e.stopPropagation(); handleAction(() => onCopyCode(pricelist)); }}
+            >
+              {copyingCode === pricelist._id ? (
+                <>
+                  <IconCheck size={16} className="text-emerald-500" />
+                  Skopiowano!
+                </>
+              ) : (
+                <>
+                  <IconCode size={16} className="text-slate-400" />
+                  Kopiuj kod HTML
+                </>
+              )}
+            </button>
+
+            {/* Divider */}
+            <div className="my-1 border-t border-slate-100" />
+
+            {/* AI Optimize or View Results */}
+            {pricelist.isOptimized ? (
+              <button
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors"
+                onClick={(e) => { e.stopPropagation(); handleAction(() => onViewResults(pricelist._id)); }}
+              >
+                <IconSparkles size={16} className="text-[#D4A574]" />
+                Zobacz wyniki AI
+              </button>
+            ) : !pricelist.optimizedVersionId && !isNested && (
+              <button
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors disabled:opacity-50"
+                disabled={optimizingPricelist === pricelist._id}
+                onClick={(e) => { e.stopPropagation(); handleAction(() => onOptimize(pricelist._id)); }}
+              >
+                {optimizingPricelist === pricelist._id ? (
+                  <IconLoader2 size={16} className="text-[#D4A574] animate-spin" />
+                ) : (
+                  <IconSparkles size={16} className="text-[#D4A574]" />
+                )}
+                Optymalizuj AI
+              </button>
+            )}
+
+            {/* Divider */}
+            <div className="my-1 border-t border-slate-100" />
+
+            {/* Delete */}
+            <button
+              className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+              onClick={(e) => { e.stopPropagation(); handleAction(() => onDelete(pricelist._id)); }}
+            >
+              <IconTrash size={16} />
+              Usuń cennik
+            </button>
+          </div>
         )}
-        title={copyingCode === pricelist._id ? "Skopiowano!" : "Kopiuj kod"}
-        disabled={copyingCode === pricelist._id}
-        onClick={(e) => { e.stopPropagation(); onCopyCode(pricelist); }}
-      >
-        {copyingCode === pricelist._id ? <IconCheck size={16} /> : <IconCode size={16} />}
-      </button>
-      {pricelist.isOptimized ? (
-        <button
-          className="p-1.5 text-[#D4A574] hover:text-[#996B3D] hover:bg-[#D4A574]/10 rounded transition-colors"
-          title="Zobacz wyniki optymalizacji"
-          onClick={(e) => { e.stopPropagation(); onViewResults(pricelist._id); }}
-        >
-          <IconSparkles size={16} />
-        </button>
-      ) : !pricelist.optimizedVersionId && !isNested && (
-        <button
-          className="p-1.5 text-slate-400 hover:text-[#D4A574] hover:bg-[#D4A574]/10 rounded transition-colors disabled:opacity-50"
-          title="Optymalizuj AI"
-          disabled={optimizingPricelist === pricelist._id}
-          onClick={(e) => { e.stopPropagation(); onOptimize(pricelist._id); }}
-        >
-          {optimizingPricelist === pricelist._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconSparkles size={16} />}
-        </button>
-      )}
-      <button
-        className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-        title="Usuń"
-        onClick={(e) => { e.stopPropagation(); onDelete(pricelist._id); }}
-      >
-        <IconTrash size={16} />
-      </button>
-    </div>
-  );
+      </div>
+    );
+  };
 
   // Single pricelist row
   const PricelistRow = ({ pricelist, isNested = false }: { pricelist: Pricelist; isNested?: boolean }) => {
@@ -284,8 +355,8 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
             </div>
           </div>
 
-          {/* Actions */}
-          <ActionButtons pricelist={pricelist} isNested={isNested} />
+          {/* Actions dropdown */}
+          <ActionDropdown pricelist={pricelist} isNested={isNested} />
         </div>
 
         {/* Nested child (original version) */}
