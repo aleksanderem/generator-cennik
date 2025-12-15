@@ -21,6 +21,7 @@ import MetaAdsPage from './components/pages/MetaAdsPage';
 import GoogleAdsPage from './components/pages/GoogleAdsPage';
 import PreviewPage from './components/pages/PreviewPage';
 import DevMenu from './components/dev/DevMenu';
+import Footer from './components/ui/Footer';
 import { StickyBanner } from './components/ui/sticky-banner';
 import { useUser, SignInButton } from '@clerk/clerk-react';
 import { ChevronRight } from 'lucide-react';
@@ -443,11 +444,7 @@ const App: React.FC = () => {
 
       {/* Footer only for non-landing/success/start-audit pages (Landing has its own) */}
       {currentPage !== 'home' && currentPage !== 'success' && currentPage !== 'start-audit' && (
-        <footer className="py-8 text-center border-t border-slate-100 mt-auto bg-white relative z-10">
-          <p className="text-slate-400 text-sm flex items-center justify-center gap-1 font-medium">
-            Best Ideas by Alex Miesak
-          </p>
-        </footer>
+        <Footer showContactCTA={currentPage === 'optimization-results'} />
       )}
 
       {/* Dev Menu - only in development */}

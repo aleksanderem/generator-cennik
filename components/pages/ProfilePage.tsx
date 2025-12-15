@@ -163,12 +163,21 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   };
 
   // Source badge renderer
-  const SourceBadge = ({ source, isOptimized }: { source: string; isOptimized?: boolean }) => {
+  const SourceBadge = ({ source, isOptimized, hasPendingOptimization }: { source: string; isOptimized?: boolean; hasPendingOptimization?: boolean }) => {
     if (isOptimized) {
       return (
         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#D4A574]/20 text-[#996B3D]">
           <IconSparkles size={12} />
           AuditorAI®
+        </span>
+      );
+    }
+    // Paid for optimization but not yet optimized
+    if (hasPendingOptimization) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-700">
+          <IconLoader2 size={12} className="animate-spin" />
+          Oczekuje na optymalizację
         </span>
       );
     }
@@ -271,6 +280,15 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
                 <IconSparkles size={16} className="text-[#D4A574] flex-shrink-0" />
                 Zobacz wyniki AuditorAI®
               </button>
+            ) : pricelist.purchaseId ? (
+              // Paid but not yet optimized - continue optimization
+              <button
+                className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left text-amber-700 hover:bg-amber-50 transition-colors"
+                onClick={(e) => { e.stopPropagation(); handleAction(() => onViewResults(pricelist._id)); }}
+              >
+                <IconSparkles size={16} className="text-amber-600 flex-shrink-0" />
+                Kontynuuj optymalizację
+              </button>
             ) : !pricelist.optimizedVersionId && !isNested && (
               <button
                 className="w-full flex items-center gap-3 px-3 py-2 text-sm text-left text-[#996B3D] hover:bg-[#D4A574]/10 transition-colors disabled:opacity-50"
@@ -367,7 +385,11 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
               )}>
                 {pricelist.name}
               </span>
-              <SourceBadge source={pricelist.source} isOptimized={pricelist.isOptimized} />
+              <SourceBadge
+                source={pricelist.source}
+                isOptimized={pricelist.isOptimized}
+                hasPendingOptimization={!!pricelist.purchaseId && !pricelist.isOptimized}
+              />
               {isNested && (
                 <span className="text-xs text-slate-400">podstawowy</span>
               )}
@@ -431,7 +453,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
           return (
             <div className="ml-12 mb-2">
               {/* Header */}
-              <div className="text-sm text-slate-400 uppercase tracking-wider mb-2 pl-8 pt-3">
+              <div className="text-[11px] text-slate-400 uppercase tracking-wider mb-2 pl-8 pt-3">
                 Powiązane elementy
               </div>
 
@@ -441,7 +463,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
                 <div className="absolute left-0 -top-9 bottom-[25px] w-px bg-slate-200" />
 
                 {/* Items */}
-                <div className="space-y-1">
+                <div className="space-y-3">
                   {items.map((item, index) => (
                     <div key={item.key} className="relative">
                       {/* Horizontal branch from vertical line */}
@@ -612,7 +634,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="flex flex-col" style={{ gap: '11px' }}>
       {mainPricelists.map((pricelist) => (
         <PricelistRow key={pricelist._id} pricelist={pricelist} />
       ))}
@@ -695,7 +717,6 @@ const ProfilePage: React.FC = () => {
 
   const updateSalonData = useMutation(api.users.updateSalonData);
   const updatePricelistTheme = useMutation(api.pricelists.updatePricelistTheme);
-  const createDraftFromPricelist = useMutation(api.pricelistDrafts.createDraftFromPricelist);
 
   // Theme/colors state (for price list customization)
   const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
@@ -845,41 +866,36 @@ const ProfilePage: React.FC = () => {
     }
   }, []);
 
-  // Funkcja edycji cennika - tworzy draft i przekierowuje do edytora
-  const handleEditPricelist = useCallback(async (pricelistId: Id<"pricelists">) => {
+  // Funkcja edycji cennika - przekierowuje bezpośrednio do edytora
+  const handleEditPricelist = useCallback((pricelistId: Id<"pricelists">) => {
     setEditingPricelist(pricelistId);
-    try {
-      const draftId = await createDraftFromPricelist({ pricelistId });
-      navigate(`/start-generator?draft=${draftId}`);
-    } catch (error) {
-      console.error('Error creating draft:', error);
-      setEditingPricelist(null);
-    }
-  }, [createDraftFromPricelist, navigate]);
+    navigate(`/start-generator?pricelist=${pricelistId}`);
+  }, [navigate]);
 
-  // Funkcja optymalizacji cennika AI - tworzy draft i przekierowuje do Stripe checkout
+  // Funkcja optymalizacji cennika AI - przekierowuje do Stripe checkout
   const handleOptimizePricelist = useCallback(async (pricelistId: Id<"pricelists">) => {
+    console.log('[ProfilePage] Starting optimization for pricelist:', pricelistId);
     setOptimizingPricelist(pricelistId);
     try {
-      // Najpierw utwórz draft z cennika
-      const draftId = await createDraftFromPricelist({ pricelistId });
-
-      // Następnie przekieruj do Stripe checkout
+      // Przekieruj do Stripe checkout z pricelistId
+      console.log('[ProfilePage] Creating checkout session...');
       const result = await createCheckoutSession({
         product: 'pricelist_optimization',
-        successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
+        successUrl: `${window.location.origin}/optimization-results?pricelist=${pricelistId}`,
         cancelUrl: `${window.location.origin}/profil`,
-        draftId: draftId,
+        pricelistId: pricelistId,
       });
+      console.log('[ProfilePage] Checkout session created:', result.url ? 'success' : 'no URL');
 
       if (result.url) {
+        console.log('[ProfilePage] Redirecting to Stripe...');
         window.location.href = result.url;
       }
     } catch (error) {
-      console.error('Error starting optimization:', error);
+      console.error('[ProfilePage] Error starting optimization:', error);
       setOptimizingPricelist(null);
     }
-  }, [createDraftFromPricelist, createCheckoutSession]);
+  }, [createCheckoutSession]);
 
   // Initialize company form when user data loads
   React.useEffect(() => {
@@ -956,11 +972,17 @@ const ProfilePage: React.FC = () => {
   };
 
   const formatDate = (timestamp: number) => {
-    return new Date(timestamp).toLocaleDateString('pl-PL', {
+    const date = new Date(timestamp);
+    const dateStr = date.toLocaleDateString('pl-PL', {
       day: 'numeric',
       month: 'short',
       year: 'numeric',
     });
+    const timeStr = date.toLocaleTimeString('pl-PL', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    return `${dateStr}, ${timeStr}`;
   };
 
   const formatPrice = (amount: number) => {
@@ -1958,14 +1980,27 @@ const ProfilePage: React.FC = () => {
                     {salonSubTab === 'identity' && (
                       <div className="p-4 min-h-[600px]">
                         {/* Template Editor */}
-                        <TemplateEditor
-                          initialTemplateId={selectedTemplateId}
-                          initialTheme={themeConfig}
-                          data={selectedPricelistData || SAMPLE_PRICING_DATA}
-                          onThemeChange={handleFullThemeChange}
-                          onTemplateChange={handleTemplateChange}
-                          pricelistId={selectedPricelistId}
-                        />
+                        {(() => {
+                          const selectedPricelist = pricelists?.find(p => p._id === selectedPricelistId);
+                          const isOptimized = selectedPricelist?.isOptimized ?? false;
+                          const hasOptimizedVersion = !!selectedPricelist?.optimizedVersionId;
+                          // Show optimization card only for base pricelists that don't have optimized version yet
+                          const shouldShowOptimizationCard = !isOptimized && !hasOptimizedVersion;
+                          return (
+                            <TemplateEditor
+                              initialTemplateId={selectedTemplateId}
+                              initialTheme={themeConfig}
+                              data={selectedPricelistData || SAMPLE_PRICING_DATA}
+                              onThemeChange={handleFullThemeChange}
+                              onTemplateChange={handleTemplateChange}
+                              pricelistId={selectedPricelistId}
+                              showOptimizationCard={shouldShowOptimizationCard}
+                              onOptimizeClick={selectedPricelistId ? () => handleOptimizePricelist(selectedPricelistId) : undefined}
+                              optimizationPrice="29,90 zł"
+                              isOptimizing={optimizingPricelist === selectedPricelistId}
+                            />
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
