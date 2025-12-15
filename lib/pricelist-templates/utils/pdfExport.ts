@@ -8,39 +8,85 @@ interface PDFExportOptions {
 }
 
 /**
- * Convert oklch and other modern color functions to rgb
- * html2canvas doesn't support oklch, so we need to convert colors
+ * Inline all computed styles on elements and remove stylesheets
+ * This works around html2canvas not supporting modern CSS color functions like oklch()
  */
-const convertColorsToRgb = (clonedDoc: Document) => {
-  const allElements = clonedDoc.querySelectorAll('*');
+const inlineAllStyles = (clonedDoc: Document, clonedElement: HTMLElement) => {
+  // First, inline all computed styles on elements within the target
+  const allElements = clonedElement.querySelectorAll('*');
+  const elementsToProcess = [clonedElement, ...Array.from(allElements)];
 
-  allElements.forEach((el) => {
+  elementsToProcess.forEach((el) => {
     if (!(el instanceof HTMLElement)) return;
 
+    // Get the original element from the main document for computed styles
     const computedStyle = window.getComputedStyle(el);
 
-    // List of color properties to convert
-    const colorProperties = [
+    // Critical style properties to inline
+    const properties = [
       'color',
-      'backgroundColor',
-      'borderColor',
-      'borderTopColor',
-      'borderRightColor',
-      'borderBottomColor',
-      'borderLeftColor',
-      'outlineColor',
-      'textDecorationColor',
-      'boxShadow',
+      'background-color',
+      'background-image',
+      'background',
+      'border-color',
+      'border-top-color',
+      'border-right-color',
+      'border-bottom-color',
+      'border-left-color',
+      'border-width',
+      'border-style',
+      'border-radius',
+      'outline-color',
+      'text-decoration-color',
+      'box-shadow',
+      'fill',
+      'stroke',
+      'font-family',
+      'font-size',
+      'font-weight',
+      'line-height',
+      'letter-spacing',
+      'text-align',
+      'padding',
+      'margin',
+      'width',
+      'height',
+      'max-width',
+      'max-height',
+      'min-width',
+      'min-height',
+      'display',
+      'flex-direction',
+      'justify-content',
+      'align-items',
+      'gap',
+      'position',
+      'top',
+      'right',
+      'bottom',
+      'left',
+      'z-index',
+      'overflow',
+      'opacity',
+      'transform',
+      'transition',
     ];
 
-    colorProperties.forEach((prop) => {
-      const value = computedStyle.getPropertyValue(prop.replace(/([A-Z])/g, '-$1').toLowerCase());
-      if (value && value !== 'none' && value !== 'transparent') {
-        // getComputedStyle returns rgb/rgba values, which html2canvas can parse
-        el.style.setProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase(), value);
+    properties.forEach((prop) => {
+      try {
+        const value = computedStyle.getPropertyValue(prop);
+        if (value && value !== 'none' && value !== 'initial' && value !== 'inherit') {
+          el.style.setProperty(prop, value, 'important');
+        }
+      } catch (e) {
+        // Ignore errors for properties that can't be read
       }
     });
   });
+
+  // Remove all stylesheets to prevent html2canvas from parsing oklch values
+  const styleElements = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
+  styleElements.forEach((el) => el.remove());
 };
 
 /**
@@ -90,9 +136,9 @@ export const exportToPDF = async (
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
-      onclone: (clonedDoc) => {
-        // Convert modern color functions (oklch, etc.) to rgb
-        convertColorsToRgb(clonedDoc);
+      onclone: (clonedDoc, clonedElement) => {
+        // Inline all computed styles and remove stylesheets
+        inlineAllStyles(clonedDoc, clonedElement);
       },
     });
 
