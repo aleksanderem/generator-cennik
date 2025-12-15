@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useUser, useClerk } from '@clerk/clerk-react';
 import { useQuery, useMutation, useAction } from 'convex/react';
 import { api } from '../../convex/_generated/api';
@@ -8,6 +8,9 @@ import { cn } from '../../lib/utils';
 import { ThemeConfig, DEFAULT_THEME, PricingData } from '../../types';
 import { TemplateEditor, SAMPLE_PRICING_DATA, getTemplate, generateEmbedHTML } from '../../lib/pricelist-templates';
 import type { Id } from '../../convex/_generated/dataModel';
+import { DataTable } from 'primereact/datatable';
+import { Column } from 'primereact/column';
+import { Button } from 'primereact/button';
 import {
   IconSettings,
   IconLogout,
@@ -41,6 +44,274 @@ import {
 } from '@tabler/icons-react';
 
 type Tab = 'pricelists' | 'audits' | 'payments' | 'invoices' | 'company' | 'salon';
+
+// Type for pricelist from Convex
+type Pricelist = {
+  _id: Id<"pricelists">;
+  _creationTime: number;
+  userId: Id<"users">;
+  name: string;
+  source: "manual" | "booksy" | "audit";
+  pricingDataJson: string;
+  themeConfigJson?: string;
+  templateId?: string;
+  servicesCount?: number;
+  categoriesCount?: number;
+  isOptimized?: boolean;
+  optimizedFromPricelistId?: Id<"pricelists">;
+  optimizedVersionId?: Id<"pricelists">;
+  createdAt: number;
+  updatedAt?: number;
+};
+
+// Props for the DataTable component
+interface PricelistsDataTableProps {
+  pricelists: Pricelist[];
+  formatDate: (timestamp: number) => string;
+  onPreview: (id: Id<"pricelists">) => void;
+  onEdit: (id: Id<"pricelists">) => void;
+  onCopyCode: (pricelist: { _id: Id<"pricelists">; pricingDataJson: string; themeConfigJson?: string }) => void;
+  onOptimize: (id: Id<"pricelists">) => void;
+  onDelete: (id: Id<"pricelists">) => Promise<void>;
+  onViewResults: (id: Id<"pricelists">) => void;
+  editingPricelist: Id<"pricelists"> | null;
+  copyingCode: Id<"pricelists"> | null;
+  optimizingPricelist: Id<"pricelists"> | null;
+}
+
+// DataTable component for pricelists with row expansion
+const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
+  pricelists,
+  formatDate,
+  onPreview,
+  onEdit,
+  onCopyCode,
+  onOptimize,
+  onDelete,
+  onViewResults,
+  editingPricelist,
+  copyingCode,
+  optimizingPricelist,
+}) => {
+  const [expandedRows, setExpandedRows] = useState<Pricelist[]>([]);
+
+  // Group pricelists: main rows are originals (or orphan optimized), linked ones become expandable
+  const { mainPricelists, linkedMap } = useMemo(() => {
+    const linked = new Map<string, Pricelist>();
+    const main: Pricelist[] = [];
+
+    // First pass: identify optimized versions that have their original in the list
+    const optimizedIds = new Set<string>();
+    for (const p of pricelists) {
+      if (p.isOptimized && p.optimizedFromPricelistId) {
+        // Check if original exists in the list
+        const originalExists = pricelists.some(orig => orig._id === p.optimizedFromPricelistId);
+        if (originalExists) {
+          optimizedIds.add(p._id);
+          linked.set(p.optimizedFromPricelistId, p);
+        }
+      }
+    }
+
+    // Second pass: build main list (excluding linked optimized versions)
+    for (const p of pricelists) {
+      if (!optimizedIds.has(p._id)) {
+        main.push(p);
+      }
+    }
+
+    return { mainPricelists: main, linkedMap: linked };
+  }, [pricelists]);
+
+  // Source badge renderer
+  const sourceBadge = (source: string, isOptimized?: boolean) => {
+    if (isOptimized) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-700">
+          <IconSparkles size={12} />
+          AI
+        </span>
+      );
+    }
+    const configs: Record<string, { label: string; className: string }> = {
+      manual: { label: 'Ręczny', className: 'bg-slate-100 text-slate-600' },
+      booksy: { label: 'Booksy', className: 'bg-blue-100 text-blue-700' },
+      audit: { label: 'Audyt', className: 'bg-emerald-100 text-emerald-700' },
+    };
+    const config = configs[source] || configs.manual;
+    return (
+      <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium", config.className)}>
+        {config.label}
+      </span>
+    );
+  };
+
+  // Name column template
+  const nameTemplate = (rowData: Pricelist) => (
+    <div className="flex flex-col gap-0.5">
+      <span className="font-medium text-slate-900">{rowData.name}</span>
+      <span className="text-xs text-slate-500">{formatDate(rowData.createdAt)}</span>
+    </div>
+  );
+
+  // Source column template
+  const sourceTemplate = (rowData: Pricelist) => (
+    <div className="flex items-center gap-2">
+      {sourceBadge(rowData.source, rowData.isOptimized)}
+      {rowData.optimizedVersionId && !rowData.isOptimized && (
+        <span className="text-xs text-purple-600">→ ma AI</span>
+      )}
+    </div>
+  );
+
+  // Stats column template
+  const statsTemplate = (rowData: Pricelist) => (
+    <div className="text-sm text-slate-600">
+      {rowData.categoriesCount || 0} kat. / {rowData.servicesCount || 0} usł.
+    </div>
+  );
+
+  // Actions column template
+  const actionsTemplate = (rowData: Pricelist) => (
+    <div className="flex items-center gap-1 justify-end">
+      <Button
+        icon={<IconEye size={16} />}
+        className="p-button-text p-button-sm"
+        tooltip="Podgląd"
+        tooltipOptions={{ position: 'top' }}
+        onClick={() => onPreview(rowData._id)}
+      />
+      <Button
+        icon={editingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
+        className="p-button-text p-button-sm"
+        tooltip="Edytuj"
+        tooltipOptions={{ position: 'top' }}
+        disabled={editingPricelist === rowData._id}
+        onClick={() => onEdit(rowData._id)}
+      />
+      <Button
+        icon={copyingCode === rowData._id ? <IconCheck size={16} /> : <IconCode size={16} />}
+        className={cn("p-button-text p-button-sm", copyingCode === rowData._id && "text-emerald-600")}
+        tooltip={copyingCode === rowData._id ? "Skopiowano!" : "Kopiuj kod"}
+        tooltipOptions={{ position: 'top' }}
+        disabled={copyingCode === rowData._id}
+        onClick={() => onCopyCode(rowData)}
+      />
+      {rowData.isOptimized ? (
+        <Button
+          icon={<IconSparkles size={16} />}
+          className="p-button-text p-button-sm text-purple-600"
+          tooltip="Zobacz wyniki optymalizacji"
+          tooltipOptions={{ position: 'top' }}
+          onClick={() => onViewResults(rowData._id)}
+        />
+      ) : !rowData.optimizedVersionId && (
+        <Button
+          icon={optimizingPricelist === rowData._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconSparkles size={16} />}
+          className="p-button-text p-button-sm"
+          tooltip="Optymalizuj AI"
+          tooltipOptions={{ position: 'top' }}
+          disabled={optimizingPricelist === rowData._id}
+          onClick={() => onOptimize(rowData._id)}
+        />
+      )}
+      <Button
+        icon={<IconTrash size={16} />}
+        className="p-button-text p-button-sm p-button-danger"
+        tooltip="Usuń"
+        tooltipOptions={{ position: 'top' }}
+        onClick={() => onDelete(rowData._id)}
+      />
+    </div>
+  );
+
+  // Row expansion template (shows the linked optimized version)
+  const rowExpansionTemplate = (data: Pricelist) => {
+    const linkedPricelist = linkedMap.get(data._id);
+    if (!linkedPricelist) return null;
+
+    return (
+      <div className="p-3 bg-purple-50/50 border-l-4 border-purple-300">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <IconSparkles size={16} className="text-purple-600" />
+              <span className="font-medium text-slate-900">{linkedPricelist.name}</span>
+            </div>
+            {sourceBadge(linkedPricelist.source, linkedPricelist.isOptimized)}
+            <span className="text-sm text-slate-500">
+              {linkedPricelist.categoriesCount || 0} kat. / {linkedPricelist.servicesCount || 0} usł.
+            </span>
+            <span className="text-xs text-slate-400">{formatDate(linkedPricelist.createdAt)}</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              icon={<IconEye size={16} />}
+              className="p-button-text p-button-sm"
+              tooltip="Podgląd"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => onPreview(linkedPricelist._id)}
+            />
+            <Button
+              icon={editingPricelist === linkedPricelist._id ? <IconLoader2 size={16} className="animate-spin" /> : <IconEdit size={16} />}
+              className="p-button-text p-button-sm"
+              tooltip="Edytuj"
+              tooltipOptions={{ position: 'top' }}
+              disabled={editingPricelist === linkedPricelist._id}
+              onClick={() => onEdit(linkedPricelist._id)}
+            />
+            <Button
+              icon={copyingCode === linkedPricelist._id ? <IconCheck size={16} /> : <IconCode size={16} />}
+              className={cn("p-button-text p-button-sm", copyingCode === linkedPricelist._id && "text-emerald-600")}
+              tooltip={copyingCode === linkedPricelist._id ? "Skopiowano!" : "Kopiuj kod"}
+              tooltipOptions={{ position: 'top' }}
+              disabled={copyingCode === linkedPricelist._id}
+              onClick={() => onCopyCode(linkedPricelist)}
+            />
+            <Button
+              icon={<IconSparkles size={16} />}
+              className="p-button-text p-button-sm text-purple-600"
+              tooltip="Zobacz wyniki optymalizacji"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => onViewResults(linkedPricelist._id)}
+            />
+            <Button
+              icon={<IconTrash size={16} />}
+              className="p-button-text p-button-sm p-button-danger"
+              tooltip="Usuń"
+              tooltipOptions={{ position: 'top' }}
+              onClick={() => onDelete(linkedPricelist._id)}
+            />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Check if row is expandable (has linked optimized version)
+  const allowExpansion = (rowData: Pricelist) => linkedMap.has(rowData._id);
+
+  return (
+    <DataTable
+      value={mainPricelists}
+      expandedRows={expandedRows}
+      onRowToggle={(e) => setExpandedRows(e.data as Pricelist[])}
+      rowExpansionTemplate={rowExpansionTemplate}
+      dataKey="_id"
+      stripedRows
+      size="small"
+      emptyMessage="Brak cenników"
+      className="text-sm"
+      rowClassName={(data) => linkedMap.has(data._id) ? 'cursor-pointer' : ''}
+    >
+      <Column expander={allowExpansion} style={{ width: '3rem' }} />
+      <Column field="name" header="Nazwa" body={nameTemplate} sortable />
+      <Column field="source" header="Źródło" body={sourceTemplate} style={{ width: '140px' }} />
+      <Column field="servicesCount" header="Usługi" body={statsTemplate} style={{ width: '140px' }} />
+      <Column body={actionsTemplate} style={{ width: '220px' }} />
+    </DataTable>
+  );
+};
 
 const ProfilePage: React.FC = () => {
   const { user: clerkUser, isLoaded: isClerkLoaded } = useUser();
@@ -629,209 +900,25 @@ const ProfilePage: React.FC = () => {
 
             {/* Tab: Pricelists */}
             {activeTab === 'pricelists' && (
-              <div className="p-5">
+              <div className="p-4">
                 {pricelists && pricelists.length > 0 ? (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {pricelists.map((pricelist) => {
-                      const sourceLabels: Record<string, { label: string; className: string }> = {
-                        manual: { label: 'Generator', className: 'bg-slate-100 text-slate-600' },
-                        booksy: { label: 'Booksy', className: 'bg-purple-100 text-purple-700' },
-                        audit: { label: 'Audyt', className: 'bg-amber-100 text-amber-700' },
-                      };
-                      const sourceInfo = sourceLabels[pricelist.source] || sourceLabels.manual;
-
-                      return (
-                        <div
-                          key={pricelist._id}
-                          data-pricelist-id={pricelist._id}
-                          className={cn(
-                            "bg-white border rounded-xl overflow-hidden transition-all hover:shadow-md",
-                            pricelist.isOptimized
-                              ? "border-amber-200 ring-1 ring-amber-100"
-                              : pricelist.optimizedVersionId
-                              ? "border-emerald-200 ring-1 ring-emerald-100"
-                              : "border-slate-200"
-                          )}
-                        >
-                          {/* Card header */}
-                          <div className="p-4">
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <h3 className="text-sm font-semibold text-slate-900 truncate">
-                                    {pricelist.name}
-                                  </h3>
-                                </div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className={cn("text-xs px-1.5 py-0.5 rounded", sourceInfo.className)}>
-                                    {sourceInfo.label}
-                                  </span>
-                                  {pricelist.isOptimized && (
-                                    <span className="text-xs px-1.5 py-0.5 rounded bg-gradient-to-r from-amber-100 to-yellow-100 text-amber-700 flex items-center gap-1">
-                                      <IconSparkles size={10} />
-                                      AI
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                              {/* Delete button */}
-                              <button
-                                onClick={async () => {
-                                  if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
-                                    await deletePricelist({ pricelistId: pricelist._id });
-                                  }
-                                }}
-                                className="p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                                title="Usuń"
-                              >
-                                <IconTrash size={14} />
-                              </button>
-                            </div>
-
-                            {/* Stats */}
-                            <div className="flex items-center gap-4 text-xs text-slate-500 mb-3">
-                              <span>{formatDate(pricelist.createdAt)}</span>
-                              {pricelist.categoriesCount !== undefined && pricelist.categoriesCount > 0 && (
-                                <span>{pricelist.categoriesCount} kat.</span>
-                              )}
-                              {pricelist.servicesCount !== undefined && pricelist.servicesCount > 0 && (
-                                <span>{pricelist.servicesCount} usł.</span>
-                              )}
-                            </div>
-
-                            {/* Action buttons */}
-                            <div className="flex items-center gap-1.5">
-                              <button
-                                onClick={() => window.open(`/preview?pricelist=${pricelist._id}`, '_blank')}
-                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors"
-                                title="Podgląd"
-                              >
-                                <IconEye size={14} />
-                                Podgląd
-                              </button>
-                              <button
-                                onClick={() => handleEditPricelist(pricelist._id)}
-                                disabled={editingPricelist === pricelist._id}
-                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-lg transition-colors disabled:opacity-50"
-                                title="Edytuj"
-                              >
-                                {editingPricelist === pricelist._id ? (
-                                  <IconLoader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <IconEdit size={14} />
-                                )}
-                                Edytuj
-                              </button>
-                              <button
-                                onClick={() => handleCopyCode(pricelist)}
-                                disabled={copyingCode === pricelist._id}
-                                className={cn(
-                                  "flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors",
-                                  copyingCode === pricelist._id
-                                    ? "text-emerald-600 bg-emerald-50"
-                                    : "text-slate-600 bg-slate-50 hover:bg-slate-100"
-                                )}
-                                title={copyingCode === pricelist._id ? "Skopiowano!" : "Kopiuj kod"}
-                              >
-                                {copyingCode === pricelist._id ? (
-                                  <>
-                                    <IconCheck size={14} />
-                                    OK!
-                                  </>
-                                ) : (
-                                  <>
-                                    <IconCode size={14} />
-                                    Kod
-                                  </>
-                                )}
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Optimization action or status */}
-                          {pricelist.isOptimized ? (
-                            <div className="px-4 py-2.5 bg-gradient-to-r from-amber-50 to-yellow-50 border-t border-amber-200/50">
-                              <button
-                                onClick={() => navigate(`/optimization-results?pricelist=${pricelist._id}`)}
-                                className="w-full flex items-center justify-between text-xs"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <IconSparkles size={14} className="text-amber-500" />
-                                  <span className="font-medium text-amber-700">
-                                    Zoptymalizowano {pricelist.optimizedAt ? formatDate(pricelist.optimizedAt) : ''}
-                                  </span>
-                                </div>
-                                <span className="text-amber-600 hover:text-amber-700">
-                                  Zobacz →
-                                </span>
-                              </button>
-                            </div>
-                          ) : (
-                            <div className="px-4 py-2.5 bg-slate-50 border-t border-slate-100">
-                              <button
-                                onClick={() => handleOptimizePricelist(pricelist._id)}
-                                disabled={optimizingPricelist === pricelist._id}
-                                className="w-full flex items-center justify-center gap-2 text-xs font-medium text-amber-600 hover:text-amber-700 disabled:opacity-50"
-                              >
-                                {optimizingPricelist === pricelist._id ? (
-                                  <IconLoader2 size={14} className="animate-spin" />
-                                ) : (
-                                  <IconSparkles size={14} />
-                                )}
-                                Optymalizuj AI
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Link to original (for optimized versions) */}
-                          {pricelist.isOptimized && pricelist.optimizedFromPricelistId && (
-                            <div className="px-4 py-2 bg-gradient-to-r from-blue-50 to-sky-50 border-t border-blue-200/50">
-                              <button
-                                onClick={() => {
-                                  const originalEl = document.querySelector(`[data-pricelist-id="${pricelist.optimizedFromPricelistId}"]`);
-                                  if (originalEl) {
-                                    originalEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    originalEl.classList.add('ring-2', 'ring-blue-400');
-                                    setTimeout(() => originalEl.classList.remove('ring-2', 'ring-blue-400'), 2000);
-                                  }
-                                }}
-                                className="w-full flex items-center justify-between text-xs"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <IconLink size={12} className="text-blue-500" />
-                                  <span className="text-blue-600">Wersja zoptymalizowana</span>
-                                </div>
-                                <span className="text-blue-500 hover:text-blue-600">Oryginał ↑</span>
-                              </button>
-                            </div>
-                          )}
-
-                          {/* Link to optimized (for original pricelists) */}
-                          {!pricelist.isOptimized && pricelist.optimizedVersionId && (
-                            <div className="px-4 py-2 bg-gradient-to-r from-emerald-50 to-green-50 border-t border-emerald-200/50">
-                              <button
-                                onClick={() => {
-                                  const optimizedEl = document.querySelector(`[data-pricelist-id="${pricelist.optimizedVersionId}"]`);
-                                  if (optimizedEl) {
-                                    optimizedEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    optimizedEl.classList.add('ring-2', 'ring-emerald-400');
-                                    setTimeout(() => optimizedEl.classList.remove('ring-2', 'ring-emerald-400'), 2000);
-                                  }
-                                }}
-                                className="w-full flex items-center justify-between text-xs"
-                              >
-                                <div className="flex items-center gap-2">
-                                  <IconLink size={12} className="text-emerald-500" />
-                                  <span className="text-emerald-600">Wersja oryginalna</span>
-                                </div>
-                                <span className="text-emerald-500 hover:text-emerald-600">Zoptymalizowany ↓</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <PricelistsDataTable
+                    pricelists={pricelists}
+                    formatDate={formatDate}
+                    onPreview={(id) => window.open(`/preview?pricelist=${id}`, '_blank')}
+                    onEdit={handleEditPricelist}
+                    onCopyCode={handleCopyCode}
+                    onOptimize={handleOptimizePricelist}
+                    onDelete={async (id) => {
+                      if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
+                        await deletePricelist({ pricelistId: id });
+                      }
+                    }}
+                    onViewResults={(id) => navigate(`/optimization-results?pricelist=${id}`)}
+                    editingPricelist={editingPricelist}
+                    copyingCode={copyingCode}
+                    optimizingPricelist={optimizingPricelist}
+                  />
                 ) : (
                   <div className="py-12 text-center">
                     <IconList className="w-12 h-12 text-slate-200 mx-auto mb-3" />
