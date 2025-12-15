@@ -26,7 +26,9 @@ import {
   Trash2,
   HelpCircle,
   X,
+  Download,
 } from 'lucide-react';
+import { exportToPDF } from '../../lib/pricelist-templates/utils/pdfExport';
 import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME } from '../../types';
 import { RainbowButton } from '../ui/rainbow-button';
 import { HeroHighlight } from '../ui/hero-highlight';
@@ -262,6 +264,10 @@ const OptimizationResultsPage: React.FC = () => {
   const optimizationTriggered = useRef(false);
   const pricelistSaved = useRef(false);
   const actionsDropdownRef = useRef<HTMLDivElement>(null);
+  const originalPricelistRef = useRef<HTMLDivElement>(null);
+  const optimizedPricelistRef = useRef<HTMLDivElement>(null);
+  const [isExportingOriginalPDF, setIsExportingOriginalPDF] = useState(false);
+  const [isExportingOptimizedPDF, setIsExportingOptimizedPDF] = useState(false);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -470,6 +476,32 @@ const OptimizationResultsPage: React.FC = () => {
   // Handle go to profile - pricelists are now auto-saved
   const handleGoToProfile = () => {
     navigate('/profil');
+  };
+
+  // Handle PDF export for original pricelist
+  const handleExportOriginalPDF = async () => {
+    if (!originalPricelistRef.current || isExportingOriginalPDF) return;
+    setIsExportingOriginalPDF(true);
+    try {
+      const salonName = originalPricingData?.salonName || 'cennik-oryginalny';
+      const filename = salonName.toLowerCase().replace(/\s+/g, '-') + '-oryginalny';
+      await exportToPDF(originalPricelistRef.current, { filename });
+    } finally {
+      setIsExportingOriginalPDF(false);
+    }
+  };
+
+  // Handle PDF export for optimized pricelist
+  const handleExportOptimizedPDF = async () => {
+    if (!optimizedPricelistRef.current || isExportingOptimizedPDF) return;
+    setIsExportingOptimizedPDF(true);
+    try {
+      const salonName = optimizedPricingData?.salonName || 'cennik-zoptymalizowany';
+      const filename = salonName.toLowerCase().replace(/\s+/g, '-') + '-zoptymalizowany';
+      await exportToPDF(optimizedPricelistRef.current, { filename });
+    } finally {
+      setIsExportingOptimizedPDF(false);
+    }
   };
 
   // Error state
@@ -1115,7 +1147,7 @@ const OptimizationResultsPage: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
           >
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-2" ref={originalPricelistRef}>
                 <FullPricelistDisplay
                   data={originalPricingData}
                   theme={themeConfig}
@@ -1159,6 +1191,25 @@ const OptimizationResultsPage: React.FC = () => {
                             <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.secondaryColor }} />
                           </div>
                         </div>
+                        <div className="pt-2 border-t border-slate-100 mt-2">
+                          <button
+                            onClick={handleExportOriginalPDF}
+                            disabled={isExportingOriginalPDF}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isExportingOriginalPDF ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Eksportowanie...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4" />
+                                <span>Pobierz PDF</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1178,7 +1229,7 @@ const OptimizationResultsPage: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
           >
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2">
+              <div className="lg:col-span-2" ref={optimizedPricelistRef}>
                 <FullPricelistDisplay
                   data={optimizedPricingData}
                   theme={themeConfig}
@@ -1221,6 +1272,25 @@ const OptimizationResultsPage: React.FC = () => {
                             <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.primaryColor }} />
                             <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.secondaryColor }} />
                           </div>
+                        </div>
+                        <div className="pt-2 border-t border-slate-100 mt-2">
+                          <button
+                            onClick={handleExportOptimizedPDF}
+                            disabled={isExportingOptimizedPDF}
+                            className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium text-white bg-[#D4A574] hover:bg-[#C9956C] rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {isExportingOptimizedPDF ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Eksportowanie...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4" />
+                                <span>Pobierz PDF</span>
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
                     </div>
