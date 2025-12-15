@@ -37,8 +37,17 @@ import { getTemplate } from '../../lib/pricelist-templates';
 import type { Id } from '../../convex/_generated/dataModel';
 import Header from '../layout/Header';
 import { AnimatedCircularProgressBar } from '../ui/animated-circular-progress-bar';
+import EmbedCode from '../EmbedCode';
 
-type ViewMode = 'original' | 'optimized' | 'changes';
+type TabType = 'summary' | 'original' | 'optimized' | 'changes' | 'suggestions';
+
+const tabConfig: { id: TabType; label: string }[] = [
+  { id: 'summary', label: 'Podsumowanie' },
+  { id: 'original', label: 'Cennik oryginalny' },
+  { id: 'optimized', label: 'Cennik zoptymalizowany' },
+  { id: 'changes', label: 'Lista zmian' },
+  { id: 'suggestions', label: 'Sugestie' },
+];
 
 // Change type label mapping
 const changeTypeLabels: Record<string, { label: string; color: string }> = {
@@ -239,7 +248,7 @@ const OptimizationResultsPage: React.FC = () => {
 
   const isViewOnlyMode = !!pricelistId; // Viewing saved results vs new optimization
 
-  const [activeView, setActiveView] = useState<ViewMode>('optimized');
+  const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [originalPricingData, setOriginalPricingData] = useState<PricingData | null>(null);
@@ -277,13 +286,6 @@ const OptimizationResultsPage: React.FC = () => {
   const updateDraft = useMutation(api.pricelistDrafts.updateDraft);
   const convertDraftToPricelist = useMutation(api.pricelistDrafts.convertDraftToPricelist);
   const verifySession = useAction(api.stripe.verifySession);
-
-  // View options for right sidebar
-  const viewOptions: { id: ViewMode; label: string }[] = [
-    { id: 'original', label: 'Oryginalny' },
-    { id: 'optimized', label: 'Zoptymalizowany' },
-    { id: 'changes', label: 'Lista zmian' },
-  ];
 
   // Load pricelist data (view mode)
   useEffect(() => {
@@ -570,8 +572,8 @@ const OptimizationResultsPage: React.FC = () => {
   // Determine displayed data for comparison
   const displayedOptimizedData = optimizedPricingData || (optimizationResult?.optimizedPricingData);
 
-  // Get current pricelist data based on active view
-  const currentPricelistData = activeView === 'original' ? originalPricingData : displayedOptimizedData;
+  // Get current pricelist data based on active tab
+  const currentPricelistData = activeTab === 'original' ? originalPricingData : displayedOptimizedData;
 
   // Results view
   return (
@@ -606,54 +608,117 @@ const OptimizationResultsPage: React.FC = () => {
                 {optimizedPricingData?.salonName || existingPricelist?.name || 'Cennik'}
               </span>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Navigation Bar */}
+      <div className="bg-white border-b border-slate-200 sticky top-0 z-30">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between py-4">
+            {/* Tabs */}
+            <div className="flex items-center gap-1">
+              {tabConfig.map((tab) => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`
+                      relative px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-all rounded-lg
+                      ${isActive
+                        ? 'text-[#D4A574] bg-[#D4A574]/10'
+                        : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                      }
+                    `}
+                  >
+                    {tab.label}
+                    {tab.id === 'changes' && optimizationResult && (
+                      <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${isActive ? 'bg-[#D4A574]/20' : 'bg-slate-200'}`}>
+                        {optimizationResult.changes.length}
+                      </span>
+                    )}
+                    {tab.id === 'suggestions' && optimizationResult && (
+                      <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${isActive ? 'bg-[#D4A574]/20' : 'bg-slate-200'}`}>
+                        {optimizationResult.recommendations.length}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
 
             {/* Actions dropdown */}
             <div className="relative" ref={actionsDropdownRef}>
               <button
                 onClick={() => setIsActionsDropdownOpen(!isActionsDropdownOpen)}
-                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-600 transition-colors"
+                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors"
               >
                 Akcje
                 <ChevronDown className={`w-4 h-4 transition-transform ${isActionsDropdownOpen ? 'rotate-180' : ''}`} />
               </button>
 
               {isActionsDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-64 bg-slate-800 border border-slate-600 rounded-xl shadow-xl z-50 overflow-hidden">
-                  <button
-                    onClick={() => {
-                      setIsActionsDropdownOpen(false);
-                      // TODO: implement duplicate
-                      navigate(`/generator?duplicate=${draftId || pricelistId}`);
-                    }}
-                    className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-700 transition-colors"
-                  >
-                    <Copy className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="text-sm font-medium text-white block">Duplikuj cennik</span>
-                      <span className="text-xs text-slate-400">
-                        {activeView === 'original' ? 'oryginalny' : activeView === 'optimized' ? 'zoptymalizowany' : 'zoptymalizowany'}
-                      </span>
+                <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden">
+                  {/* Oryginalny cennik group */}
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-slate-400" />
+                      <span className="text-xs font-medium text-slate-500 uppercase tracking-wide">Cennik oryginalny</span>
                     </div>
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsActionsDropdownOpen(false);
-                      if (savedPricelistId) {
-                        navigate(`/generator?pricelist=${savedPricelistId}`);
-                      } else if (draftId) {
-                        navigate(`/generator?draft=${draftId}`);
-                      }
-                    }}
-                    className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-700 transition-colors border-t border-slate-700"
-                  >
-                    <Pencil className="w-4 h-4 text-slate-400 mt-0.5 shrink-0" />
-                    <div>
-                      <span className="text-sm font-medium text-white block">Edytuj cennik</span>
-                      <span className="text-xs text-slate-400">
-                        {activeView === 'original' ? 'oryginalny' : activeView === 'optimized' ? 'zoptymalizowany' : 'zoptymalizowany'}
-                      </span>
+                  </div>
+                  <div className="flex border-b border-slate-200">
+                    <button
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        // TODO: implement duplicate original
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 hover:bg-slate-50 transition-colors border-r border-slate-200"
+                    >
+                      <Copy className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm text-slate-700">Duplikuj</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        // TODO: implement edit original
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 hover:bg-slate-50 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm text-slate-700">Edytuj</span>
+                    </button>
+                  </div>
+
+                  {/* Zoptymalizowany cennik group */}
+                  <div className="px-3 py-2 bg-[#D4A574]/5 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-[#D4A574]" />
+                      <span className="text-xs font-medium text-[#D4A574] uppercase tracking-wide">Cennik zoptymalizowany</span>
                     </div>
-                  </button>
+                  </div>
+                  <div className="flex">
+                    <button
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        // TODO: implement duplicate optimized
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 hover:bg-[#D4A574]/5 transition-colors border-r border-slate-200"
+                    >
+                      <Copy className="w-4 h-4 text-[#D4A574]" />
+                      <span className="text-sm text-slate-700">Duplikuj</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setIsActionsDropdownOpen(false);
+                        // TODO: implement edit optimized
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 px-3 py-2.5 hover:bg-[#D4A574]/5 transition-colors"
+                    >
+                      <Pencil className="w-4 h-4 text-[#D4A574]" />
+                      <span className="text-sm text-slate-700">Edytuj</span>
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -664,12 +729,12 @@ const OptimizationResultsPage: React.FC = () => {
       {/* Page Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Summary Section - Above pricelist */}
-        {optimizationResult && (
+        {/* Summary Tab Content */}
+        {activeTab === 'summary' && optimizationResult && (
           <motion.div
+            key="summary"
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mb-8"
           >
             {/* Hero Charts Section */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
@@ -799,13 +864,13 @@ const OptimizationResultsPage: React.FC = () => {
                     </div>
                     <div className="bg-slate-50 rounded-xl p-2.5 text-center">
                       <p className="text-xl font-bold text-slate-800">
-                        {(activeView === 'original' ? originalPricingData : optimizedPricingData)?.categories.length || 0}
+                        {optimizedPricingData?.categories.length || 0}
                       </p>
                       <p className="text-[10px] text-slate-500">kategorii</p>
                     </div>
                     <div className="bg-slate-50 rounded-xl p-2.5 text-center">
                       <p className="text-xl font-bold text-slate-800">
-                        {(activeView === 'original' ? originalPricingData : optimizedPricingData)?.categories.reduce((acc, cat) => acc + cat.services.length, 0) || 0}
+                        {optimizedPricingData?.categories.reduce((acc, cat) => acc + cat.services.length, 0) || 0}
                       </p>
                       <p className="text-[10px] text-slate-500">usług</p>
                     </div>
@@ -1042,200 +1107,324 @@ const OptimizationResultsPage: React.FC = () => {
           </motion.div>
         )}
 
-        {/* Main content: Pricelist + Right sidebar */}
-        <div className="flex gap-6">
-          {/* Left: Pricelist display */}
-          <div className="flex-1 min-w-0">
-            <motion.div
-              key={activeView}
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              {activeView === 'changes' ? (
-                // Changes list view
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <div className="px-6 py-4 border-b border-slate-100">
-                    <h3 className="font-semibold text-slate-900 flex items-center gap-2">
-                      <FileText size={18} className="text-[#D4A574]" />
-                      Lista zmian
-                      {optimizationResult && (
-                        <span className="ml-2 px-2 py-0.5 text-xs font-medium bg-[#D4A574]/10 text-[#D4A574] rounded-full">
-                          {optimizationResult.changes.length}
-                        </span>
-                      )}
-                    </h3>
+        {/* Original Pricelist Tab Content */}
+        {activeTab === 'original' && originalPricingData && (
+          <motion.div
+            key="original"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <FullPricelistDisplay
+                  data={originalPricingData}
+                  theme={themeConfig}
+                  templateId={templateId}
+                  label="Oryginalny cennik"
+                  variant="original"
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <div className="sticky top-24 space-y-4">
+                  {/* Pricelist Info Card */}
+                  <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+                    <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+                    <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+                    <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <FileText className="w-4 h-4 text-slate-400" />
+                        <span className="text-xs text-slate-400 uppercase tracking-wide">Informacje o cenniku</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Nazwa</span>
+                          <span className="font-medium text-slate-800 truncate max-w-[150px]">{originalPricingData.salonName || 'Cennik'}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Data</span>
+                          <span className="font-medium text-slate-800">{new Date().toLocaleDateString('pl-PL')}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">ID</span>
+                          <span className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{(savedPricelistId || pricelistId || draftId || '—').toString().slice(-8)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Szablon</span>
+                          <span className="font-medium text-slate-800 capitalize">{templateId}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Kolorystyka</span>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.primaryColor }} />
+                            <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.secondaryColor }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <EmbedCode data={originalPricingData} theme={themeConfig} />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Optimized Pricelist Tab Content */}
+        {activeTab === 'optimized' && optimizedPricingData && (
+          <motion.div
+            key="optimized"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2">
+                <FullPricelistDisplay
+                  data={optimizedPricingData}
+                  theme={themeConfig}
+                  templateId={templateId}
+                  label="Zoptymalizowany cennik"
+                  variant="optimized"
+                />
+              </div>
+              <div className="lg:col-span-1">
+                <div className="sticky top-24 space-y-4">
+                  {/* Pricelist Info Card */}
+                  <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden">
+                    <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+                    <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+                    <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <Sparkles className="w-4 h-4 text-[#D4A574]" />
+                        <span className="text-xs text-slate-400 uppercase tracking-wide">Cennik zoptymalizowany</span>
+                      </div>
+                      <div className="space-y-2.5">
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Nazwa</span>
+                          <span className="font-medium text-slate-800 truncate max-w-[150px]">{optimizedPricingData.salonName || 'Cennik'}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Data</span>
+                          <span className="font-medium text-slate-800">{new Date().toLocaleDateString('pl-PL')}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">ID</span>
+                          <span className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded">{(savedPricelistId || pricelistId || draftId || '—').toString().slice(-8)}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Szablon</span>
+                          <span className="font-medium text-slate-800 capitalize">{templateId}</span>
+                        </div>
+                        <div className="flex justify-between items-center text-sm">
+                          <span className="text-slate-500">Kolorystyka</span>
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.primaryColor }} />
+                            <div className="w-4 h-4 rounded-full border border-slate-200" style={{ backgroundColor: themeConfig.secondaryColor }} />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <EmbedCode data={optimizedPricingData} theme={themeConfig} />
+
+                  {/* Save CTA */}
+                  {!isViewOnlyMode && optimizationResult && (
+                    <RainbowButton onClick={handleGoToProfile} className="w-full h-11 text-sm">
+                      Zapisz cennik
+                      <ArrowRight size={16} />
+                    </RainbowButton>
+                  )}
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Changes List Tab Content */}
+        {activeTab === 'changes' && optimizationResult && (
+          <motion.div
+            key="changes"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            {optimizationResult.changes.length === 0 ? (
+              <div className="group relative h-full rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3">
+                <div className="relative z-10 flex h-full flex-col overflow-hidden rounded-xl bg-white p-12 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)] text-center">
+                  <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="w-8 h-8 text-emerald-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                    Cennik jest już zoptymalizowany!
+                  </h3>
+                  <p className="text-slate-600 max-w-md mx-auto">
+                    Nie znaleźliśmy żadnych elementów wymagających poprawy w Twoim cenniku.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Group changes by criteria */}
+                {[
+                  { key: 'descriptions', label: 'Język korzyści w opisach', types: ['description_added', 'description_improved'], icon: MessageSquareText },
+                  { key: 'seo', label: 'Słowa kluczowe SEO', types: ['name_improved'], icon: Type },
+                  { key: 'categories', label: 'Struktura kategorii', types: ['category_renamed', 'category_reordered'], icon: Layers },
+                  { key: 'order', label: 'Kolejność usług', types: ['service_reordered'], icon: Layers },
+                  { key: 'prices', label: 'Formatowanie cen', types: ['price_formatted'], icon: FileText },
+                  { key: 'duplicates', label: 'Duplikaty i błędy', types: ['duplicate_merged', 'typo_fixed'], icon: Trash2 },
+                  { key: 'duration', label: 'Szacowanie czasu', types: ['duration_estimated'], icon: RefreshCw },
+                  { key: 'tags', label: 'Tagi i oznaczenia', types: ['tag_added'], icon: Sparkles },
+                ].map(({ key, label, types, icon: Icon }) => {
+                  const groupChanges = optimizationResult.changes.filter(c => types.includes(c.type));
+                  if (groupChanges.length === 0) return null;
+
+                  return (
+                    <motion.div
+                      key={key}
+                      initial={{ opacity: 0, filter: 'blur(4px)' }}
+                      animate={{ opacity: 1, filter: 'blur(0px)' }}
+                      className="group relative h-full rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden"
+                    >
+                      <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+                      <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+                      <div className="relative z-10 flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                        <div className="px-6 py-4 border-b border-slate-100">
+                          <div className="flex items-start justify-between">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-[#D4A574]/10 flex items-center justify-center">
+                                <Icon className="w-5 h-5 text-[#D4A574]" />
+                              </div>
+                              <div>
+                                <h3 className="font-semibold text-lg text-slate-900">{label}</h3>
+                                <p className="text-xs text-slate-500 mt-0.5 max-w-md leading-relaxed">
+                                  {criterionExplanations[key]?.description}
+                                </p>
+                              </div>
+                            </div>
+                            <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full shrink-0">
+                              {groupChanges.length} {groupChanges.length === 1 ? 'zmiana' : groupChanges.length < 5 ? 'zmiany' : 'zmian'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="p-4">
+                          <div className="space-y-2">
+                            {groupChanges.map((change, idx) => {
+                              const typeInfo = changeTypeLabels[change.type] || { label: change.type, color: '#6B7280' };
+                              return (
+                                <div
+                                  key={idx}
+                                  className="p-3 rounded-xl bg-slate-50 border border-slate-100"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <div
+                                      className="px-2 py-0.5 rounded text-xs font-medium shrink-0"
+                                      style={{
+                                        backgroundColor: `${typeInfo.color}15`,
+                                        color: typeInfo.color,
+                                      }}
+                                    >
+                                      {typeInfo.label}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 text-sm flex-wrap">
+                                        <span className="text-slate-400 line-through">
+                                          {change.originalValue || '(brak)'}
+                                        </span>
+                                        <ArrowRight size={14} className="text-slate-300 shrink-0" />
+                                        <span className="text-slate-900 font-medium">
+                                          {change.newValue}
+                                        </span>
+                                      </div>
+                                      {change.reason && (
+                                        <p className="text-xs text-slate-500 mt-1.5 italic">
+                                          {change.reason}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* Suggestions Tab Content */}
+        {activeTab === 'suggestions' && optimizationResult && (
+          <motion.div
+            key="suggestions"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            {optimizationResult.recommendations.length === 0 ? (
+              <div className="group relative h-full rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3">
+                <div className="relative z-10 flex h-full flex-col overflow-hidden rounded-xl bg-white p-12 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)] text-center">
+                  <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Check className="w-8 h-8 text-emerald-600" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
+                    Brak dodatkowych sugestii
+                  </h3>
+                  <p className="text-slate-600 max-w-md mx-auto">
+                    Twój cennik jest w pełni zoptymalizowany. Wszystkie automatyczne poprawki zostały już zastosowane.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <motion.div
+                initial={{ opacity: 0, filter: 'blur(4px)' }}
+                animate={{ opacity: 1, filter: 'blur(0px)' }}
+                className="group relative h-full rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 hover:border-[#D4A574]/30 overflow-hidden"
+              >
+                <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
+                <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
+                <div className="relative z-10 flex h-full flex-col overflow-hidden rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
+                  <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-100 flex items-center justify-center">
+                      <Lightbulb className="w-5 h-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold text-lg text-slate-900">Dodatkowe rekomendacje</h3>
+                      <p className="text-sm text-slate-500">
+                        Sugestie, które mogą jeszcze bardziej ulepszyć Twój cennik
+                      </p>
+                    </div>
+                    <span className="ml-auto px-3 py-1 bg-amber-100 text-amber-700 text-sm font-bold rounded-full">
+                      {optimizationResult.recommendations.length} {optimizationResult.recommendations.length === 1 ? 'sugestia' : optimizationResult.recommendations.length < 5 ? 'sugestie' : 'sugestii'}
+                    </span>
                   </div>
 
                   <div className="p-6">
-                    {optimizationResult?.changes.length === 0 ? (
-                      <div className="text-center py-12">
-                        <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                          <Check className="w-7 h-7 text-emerald-600" />
-                        </div>
-                        <h4 className="text-lg font-semibold text-slate-900 mb-2">
-                          Cennik jest już zoptymalizowany!
-                        </h4>
-                        <p className="text-slate-600 text-sm max-w-sm mx-auto">
-                          Nie znaleźliśmy żadnych elementów wymagających poprawy.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {optimizationResult?.changes.map((change, idx) => {
-                          const typeInfo = changeTypeLabels[change.type] || {
-                            label: change.type,
-                            color: '#6B7280',
-                          };
-
-                          return (
-                            <div
-                              key={idx}
-                              className="p-4 rounded-xl border border-slate-100 hover:border-slate-200 transition-colors"
-                            >
-                              <div className="flex items-start gap-3">
-                                <div
-                                  className="px-2 py-0.5 rounded text-xs font-medium shrink-0"
-                                  style={{
-                                    backgroundColor: `${typeInfo.color}10`,
-                                    color: typeInfo.color,
-                                  }}
-                                >
-                                  {typeInfo.label}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center gap-3 text-sm">
-                                    <span className="text-slate-400 line-through truncate">
-                                      {change.originalValue || '(brak)'}
-                                    </span>
-                                    <ArrowRight size={14} className="text-slate-300 shrink-0" />
-                                    <span className="text-slate-900 font-medium truncate">
-                                      {change.newValue}
-                                    </span>
-                                  </div>
-                                  {change.reason && (
-                                    <p className="text-xs text-slate-500 mt-2 italic">
-                                      {change.reason}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Recommendations */}
-                  {optimizationResult && optimizationResult.recommendations.length > 0 && (
-                    <div className="px-6 py-4 bg-amber-50/50 border-t border-amber-100">
-                      <h4 className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-3">
-                        Dodatkowe rekomendacje
-                      </h4>
-                      <div className="space-y-2">
-                        {optimizationResult.recommendations.map((rec, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <ChevronRight size={14} className="text-amber-600 mt-0.5 shrink-0" />
-                            <p className="text-sm text-amber-900">{rec}</p>
+                    <div className="space-y-4">
+                      {optimizationResult.recommendations.map((rec, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-start gap-4 p-4 rounded-xl bg-amber-50/50 border border-amber-100"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                            <span className="text-sm font-bold text-amber-700">{idx + 1}</span>
                           </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                // Pricelist view (original or optimized)
-                currentPricelistData && (
-                  <FullPricelistDisplay
-                    data={currentPricelistData}
-                    theme={themeConfig}
-                    templateId={templateId}
-                    label={activeView === 'original' ? 'Oryginalny cennik' : 'Zoptymalizowany cennik'}
-                    variant={activeView}
-                  />
-                )
-              )}
-            </motion.div>
-          </div>
-
-          {/* Right sidebar: View switches */}
-          <div className="w-72 shrink-0">
-            <div className="sticky top-24 space-y-3">
-              {/* View toggle */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <div className="px-4 py-3 border-b border-slate-100">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Widok</p>
-                </div>
-                <div className="p-2">
-                  {viewOptions.map((option) => {
-                    const isActive = activeView === option.id;
-                    const Icon = option.id === 'changes' ? FileText : option.id === 'optimized' ? TrendingUp : null;
-
-                    return (
-                      <button
-                        key={option.id}
-                        onClick={() => setActiveView(option.id)}
-                        className={`
-                          w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all
-                          ${isActive
-                            ? 'bg-[#D4A574]/10 text-[#D4A574]'
-                            : 'text-slate-600 hover:bg-slate-50'
-                          }
-                        `}
-                      >
-                        {option.id === 'original' && (
-                          <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#D4A574]' : 'bg-slate-300'}`} />
-                        )}
-                        {option.id === 'optimized' && (
-                          <div className={`w-2 h-2 rounded-full ${isActive ? 'bg-[#D4A574]' : 'bg-slate-300'}`} />
-                        )}
-                        {Icon && <Icon size={16} />}
-                        {option.label}
-                        {option.id === 'changes' && optimizationResult && (
-                          <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${isActive ? 'bg-[#D4A574]/20' : 'bg-slate-100'}`}>
-                            {optimizationResult.changes.length}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Quick stats card */}
-              {optimizationResult && activeView !== 'changes' && (
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                  <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">
-                    {activeView === 'original' ? 'Przed optymalizacją' : 'Po optymalizacji'}
-                  </p>
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Kategorii</span>
-                      <span className="font-medium text-slate-900">
-                        {currentPricelistData?.categories.length || 0}
-                      </span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-slate-500">Usług</span>
-                      <span className="font-medium text-slate-900">
-                        {currentPricelistData?.categories.reduce((acc, cat) => acc + cat.services.length, 0) || 0}
-                      </span>
+                          <div className="flex-1">
+                            <p className="text-slate-700 leading-relaxed">{rec}</p>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </div>
-              )}
+              </motion.div>
+            )}
+          </motion.div>
+        )}
 
-              {/* CTA button for non-view mode */}
-              {!isViewOnlyMode && optimizationResult && (
-                <RainbowButton onClick={handleGoToProfile} className="w-full h-11 text-sm">
-                  Zapisz cennik
-                  <ArrowRight size={16} />
-                </RainbowButton>
-              )}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
