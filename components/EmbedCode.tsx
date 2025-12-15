@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { AlertCircle, Code2 } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import { Id } from '../convex/_generated/dataModel';
 import { CodeBlock } from './ui/code-block';
 
@@ -40,14 +40,9 @@ const EmbedCode: React.FC<EmbedCodeProps> = ({ pricelistId }) => {
       <div className="pointer-events-none absolute inset-0 rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(400px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.4), transparent 40%)' }} />
       <div className="pointer-events-none absolute inset-[1px] rounded-[inherit] transition-opacity duration-300 opacity-0 group-hover:opacity-100" style={{ background: 'radial-gradient(600px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(212, 165, 116, 0.15), transparent 40%)' }} />
       <div className="relative z-10 overflow-hidden rounded-xl bg-white p-4 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
-        <div className="flex items-center gap-2 mb-3">
-          <Code2 className="w-4 h-4 text-[#D4A574]" />
-          <span className="text-xs text-slate-400 uppercase tracking-wide">Kod do osadzenia</span>
-        </div>
         <CodeBlock
           code={generateSnippet()}
-          language="html"
-          filename="embed-code.html"
+          title="Kod do osadzenia"
         />
         <p className="text-xs text-slate-500 mt-3">
           Wklej ten kod na swojej stronie internetowej, w miejscu gdzie chcesz wyswietlic cennik.
