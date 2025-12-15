@@ -8,6 +8,42 @@ interface PDFExportOptions {
 }
 
 /**
+ * Convert oklch and other modern color functions to rgb
+ * html2canvas doesn't support oklch, so we need to convert colors
+ */
+const convertColorsToRgb = (clonedDoc: Document) => {
+  const allElements = clonedDoc.querySelectorAll('*');
+
+  allElements.forEach((el) => {
+    if (!(el instanceof HTMLElement)) return;
+
+    const computedStyle = window.getComputedStyle(el);
+
+    // List of color properties to convert
+    const colorProperties = [
+      'color',
+      'backgroundColor',
+      'borderColor',
+      'borderTopColor',
+      'borderRightColor',
+      'borderBottomColor',
+      'borderLeftColor',
+      'outlineColor',
+      'textDecorationColor',
+      'boxShadow',
+    ];
+
+    colorProperties.forEach((prop) => {
+      const value = computedStyle.getPropertyValue(prop.replace(/([A-Z])/g, '-$1').toLowerCase());
+      if (value && value !== 'none' && value !== 'transparent') {
+        // getComputedStyle returns rgb/rgba values, which html2canvas can parse
+        el.style.setProperty(prop.replace(/([A-Z])/g, '-$1').toLowerCase(), value);
+      }
+    });
+  });
+};
+
+/**
  * Export an element to PDF
  * Automatically expands all accordions before taking screenshot
  */
@@ -47,13 +83,17 @@ export const exportToPDF = async (
   await new Promise(resolve => setTimeout(resolve, 350));
 
   try {
-    // Generate canvas
+    // Generate canvas with onclone to fix oklch colors
     const canvas = await html2canvas(element, {
       scale,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
+      onclone: (clonedDoc) => {
+        // Convert modern color functions (oklch, etc.) to rgb
+        convertColorsToRgb(clonedDoc);
+      },
     });
 
     // Calculate PDF dimensions
