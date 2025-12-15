@@ -1,4 +1,4 @@
-import html2canvas from 'html2canvas';
+import html2canvas from 'html2canvas-pro';
 import jsPDF from 'jspdf';
 
 interface PDFExportOptions {
@@ -8,89 +8,8 @@ interface PDFExportOptions {
 }
 
 /**
- * Inline all computed styles on elements and remove stylesheets
- * This works around html2canvas not supporting modern CSS color functions like oklch()
- */
-const inlineAllStyles = (clonedDoc: Document, clonedElement: HTMLElement) => {
-  // First, inline all computed styles on elements within the target
-  const allElements = clonedElement.querySelectorAll('*');
-  const elementsToProcess = [clonedElement, ...Array.from(allElements)];
-
-  elementsToProcess.forEach((el) => {
-    if (!(el instanceof HTMLElement)) return;
-
-    // Get the original element from the main document for computed styles
-    const computedStyle = window.getComputedStyle(el);
-
-    // Critical style properties to inline
-    const properties = [
-      'color',
-      'background-color',
-      'background-image',
-      'background',
-      'border-color',
-      'border-top-color',
-      'border-right-color',
-      'border-bottom-color',
-      'border-left-color',
-      'border-width',
-      'border-style',
-      'border-radius',
-      'outline-color',
-      'text-decoration-color',
-      'box-shadow',
-      'fill',
-      'stroke',
-      'font-family',
-      'font-size',
-      'font-weight',
-      'line-height',
-      'letter-spacing',
-      'text-align',
-      'padding',
-      'margin',
-      'width',
-      'height',
-      'max-width',
-      'max-height',
-      'min-width',
-      'min-height',
-      'display',
-      'flex-direction',
-      'justify-content',
-      'align-items',
-      'gap',
-      'position',
-      'top',
-      'right',
-      'bottom',
-      'left',
-      'z-index',
-      'overflow',
-      'opacity',
-      'transform',
-      'transition',
-    ];
-
-    properties.forEach((prop) => {
-      try {
-        const value = computedStyle.getPropertyValue(prop);
-        if (value && value !== 'none' && value !== 'initial' && value !== 'inherit') {
-          el.style.setProperty(prop, value, 'important');
-        }
-      } catch (e) {
-        // Ignore errors for properties that can't be read
-      }
-    });
-  });
-
-  // Remove all stylesheets to prevent html2canvas from parsing oklch values
-  const styleElements = clonedDoc.querySelectorAll('style, link[rel="stylesheet"]');
-  styleElements.forEach((el) => el.remove());
-};
-
-/**
  * Export an element to PDF
+ * Uses html2canvas-pro which supports modern CSS including oklch colors
  * Automatically expands all accordions before taking screenshot
  */
 export const exportToPDF = async (
@@ -129,17 +48,13 @@ export const exportToPDF = async (
   await new Promise(resolve => setTimeout(resolve, 350));
 
   try {
-    // Generate canvas with onclone to fix oklch colors
+    // Generate canvas using html2canvas-pro (supports oklch and other modern CSS)
     const canvas = await html2canvas(element, {
       scale,
       useCORS: true,
       allowTaint: true,
       backgroundColor: '#ffffff',
       logging: false,
-      onclone: (clonedDoc, clonedElement) => {
-        // Inline all computed styles and remove stylesheets
-        inlineAllStyles(clonedDoc, clonedElement);
-      },
     });
 
     // Calculate PDF dimensions
