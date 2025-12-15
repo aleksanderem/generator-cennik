@@ -300,7 +300,7 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
     const linkedPricelist = linkedMap.get(pricelist._id);
 
     return (
-      <div className={cn(isNested && "ml-6 border-l-2 border-[#D4A574]/30")}>
+      <div>
         <div
           className={cn(
             "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors",
@@ -359,10 +359,17 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
           <ActionDropdown pricelist={pricelist} isNested={isNested} />
         </div>
 
-        {/* Nested child (original version) */}
+        {/* Nested child (original version) with tree connector */}
         {hasChild && isExpanded && linkedPricelist && (
-          <div className="mt-1 mb-2">
-            <PricelistRow pricelist={linkedPricelist} isNested />
+          <div className="relative ml-[22px] mt-1 mb-2">
+            {/* Tree connector line - vertical then horizontal */}
+            <div
+              className="absolute left-0 top-0 w-4 border-l-2 border-b-2 border-[#D4A574]/40 rounded-bl-lg"
+              style={{ height: '50%' }}
+            />
+            <div className="ml-5">
+              <PricelistRow pricelist={linkedPricelist} isNested />
+            </div>
           </div>
         )}
       </div>
