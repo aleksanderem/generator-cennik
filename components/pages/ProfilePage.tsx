@@ -168,9 +168,6 @@ const PricelistsDataTable: React.FC<PricelistsDataTableProps> = ({
   const sourceTemplate = (rowData: Pricelist) => (
     <div className="flex items-center gap-2">
       {sourceBadge(rowData.source, rowData.isOptimized)}
-      {linkedMap.has(rowData._id) && rowData.isOptimized && (
-        <span className="text-xs text-[#D4A574]">← oryginał</span>
-      )}
     </div>
   );
 
