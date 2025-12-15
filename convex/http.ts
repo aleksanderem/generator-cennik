@@ -1,8 +1,78 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { internal, api } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 const http = httpRouter();
+
+// Public API endpoint for embedded pricelist data
+http.route({
+  path: "/api/pricelist",
+  method: "GET",
+  handler: httpAction(async (ctx, req) => {
+    const url = new URL(req.url);
+    const pricelistId = url.searchParams.get("id");
+
+    if (!pricelistId) {
+      return new Response(JSON.stringify({ error: "Missing pricelist id" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+
+    try {
+      const pricelist = await ctx.runQuery(api.pricelists.getPricelistPublic, {
+        pricelistId: pricelistId as Id<"pricelists">,
+      });
+
+      if (!pricelist) {
+        return new Response(JSON.stringify({ error: "Pricelist not found" }), {
+          status: 404,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        });
+      }
+
+      return new Response(JSON.stringify(pricelist), {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "public, max-age=60",
+        },
+      });
+    } catch (error) {
+      return new Response(JSON.stringify({ error: "Invalid pricelist id" }), {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      });
+    }
+  }),
+});
+
+// CORS preflight for pricelist API
+http.route({
+  path: "/api/pricelist",
+  method: "OPTIONS",
+  handler: httpAction(async () => {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+      },
+    });
+  }),
+});
 
 // Stripe Webhook endpoint
 http.route({

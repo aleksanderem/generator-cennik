@@ -1163,7 +1163,7 @@ const OptimizationResultsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <EmbedCode data={originalPricingData} theme={themeConfig} />
+                  <EmbedCode pricelistId={savedPricelistId || pricelistId} />
                 </div>
               </div>
             </div>
@@ -1226,7 +1226,7 @@ const OptimizationResultsPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <EmbedCode data={optimizedPricingData} theme={themeConfig} />
+                  <EmbedCode pricelistId={savedPricelistId || pricelistId} />
 
                   {/* Save CTA */}
                   {!isViewOnlyMode && optimizationResult && (

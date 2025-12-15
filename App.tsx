@@ -5,7 +5,6 @@ import { AppState, PricingData, ThemeConfig, DEFAULT_THEME } from './types';
 import { parsePricingData } from './services/geminiService';
 import InputSection from './components/InputSection';
 import Accordion from './components/Accordion';
-import EmbedCode from './components/EmbedCode';
 import ConfigPanel from './components/ConfigPanel';
 import TerminalLoader from './components/TerminalLoader';
 import BooksyOptimizer from './components/BooksyOptimizer';
