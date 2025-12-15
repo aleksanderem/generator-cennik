@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
 
 // Validator dla cennika
 const pricelistValidator = v.object({
@@ -7,6 +7,7 @@ const pricelistValidator = v.object({
   _creationTime: v.number(),
   userId: v.id("users"),
   auditId: v.optional(v.id("audits")),
+  purchaseId: v.optional(v.id("purchases")),
   name: v.string(),
   source: v.union(
     v.literal("manual"),
@@ -23,6 +24,7 @@ const pricelistValidator = v.object({
   optimizedVersionId: v.optional(v.id("pricelists")),
   originalPricingDataJson: v.optional(v.string()),
   optimizationResultJson: v.optional(v.string()),
+  categoryConfigJson: v.optional(v.string()),
   optimizedAt: v.optional(v.number()),
   createdAt: v.number(),
   updatedAt: v.optional(v.number()),
@@ -343,5 +345,38 @@ export const savePricelistFromAudit = internalMutation({
       categoriesCount,
       createdAt: Date.now(),
     });
+  },
+});
+
+// Internal: Link purchase to pricelist (for testing/admin)
+export const linkPurchaseToPricelist = internalMutation({
+  args: {
+    pricelistId: v.id("pricelists"),
+    purchaseId: v.id("purchases"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.pricelistId, { purchaseId: args.purchaseId });
+    return null;
+  },
+});
+
+// Internal: List all pricelists (for admin/debugging)
+export const listAllPricelists = internalQuery({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("pricelists"),
+    name: v.string(),
+    isOptimized: v.optional(v.boolean()),
+    purchaseId: v.optional(v.id("purchases")),
+  })),
+  handler: async (ctx) => {
+    const pricelists = await ctx.db.query("pricelists").collect();
+    return pricelists.map(p => ({
+      _id: p._id,
+      name: p.name,
+      isOptimized: p.isOptimized,
+      purchaseId: p.purchaseId,
+    }));
   },
 });

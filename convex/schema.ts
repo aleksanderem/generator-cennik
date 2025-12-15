@@ -115,6 +115,9 @@ export default defineSchema({
     // Opcjonalne powiązanie z źródłowym cennikiem (jeśli edytujemy istniejący)
     sourcePricelistId: v.optional(v.id("pricelists")),
 
+    // Powiązanie z zakupem (jeśli draft pochodzi z płatnej optymalizacji)
+    purchaseId: v.optional(v.id("purchases")),
+
     // Dane cennika jako JSON string (PricingData)
     pricingDataJson: v.string(),
 
@@ -140,6 +143,10 @@ export default defineSchema({
     // Wyniki optymalizacji AI (jako JSON string z OptimizationResult)
     optimizationResultJson: v.optional(v.string()),
 
+    // Konfiguracja kategorii (jako JSON string z PricelistCategoryConfig)
+    // Używane przed optymalizacją (user konfiguruje kategorie) i po optymalizacji (edycja)
+    categoryConfigJson: v.optional(v.string()),
+
     createdAt: v.number(),
     updatedAt: v.optional(v.number()),
 
@@ -154,6 +161,7 @@ export default defineSchema({
   pricelists: defineTable({
     userId: v.id("users"),
     auditId: v.optional(v.id("audits")), // Jeśli cennik pochodzi z audytu
+    purchaseId: v.optional(v.id("purchases")), // Powiązanie z zakupem (dla zoptymalizowanych cenników)
 
     // Metadane
     name: v.string(), // Nazwa cennika (np. "Cennik główny", "Cennik z audytu 12.12.2024")
@@ -190,6 +198,10 @@ export default defineSchema({
 
     // Wyniki optymalizacji AI (jako JSON string z OptimizationResult)
     optimizationResultJson: v.optional(v.string()),
+
+    // Konfiguracja kategorii (jako JSON string z PricelistCategoryConfig)
+    // Zawiera kolejność kategorii, agregacje (Promocje/Bestsellery) i przypisania usług
+    categoryConfigJson: v.optional(v.string()),
 
     // Data optymalizacji
     optimizedAt: v.optional(v.number()),

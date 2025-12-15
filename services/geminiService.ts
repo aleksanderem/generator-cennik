@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { PricingData, AuditResult, Category, ServiceItem, IntegrationMode, OptimizationResult, OptimizationChange } from "../types";
+import { PricingData, AuditResult, Category, ServiceItem, IntegrationMode, OptimizationResult, OptimizationChange, CategorySuggestionsResult, CategorySuggestion } from "../types";
 
 // Simple string hash function for cache keys
 const simpleHash = (str: string): string => {
@@ -710,4 +710,155 @@ Twój output MUSI mieć DOKŁADNIE tyle samo kategorii i usług!
   }
 };
 
-export { parsePricingData, optimizeBooksyContent, optimizePricelist };
+// --- CATEGORY SUGGESTIONS ---
+// Funkcja analizuje usługi i sugeruje możliwe kategorie do wykorzystania
+
+const SUGGESTIONS_CACHE_PREFIX = 'bp_cat_suggest_v2_no_emoji_';
+
+const suggestCategories = async (
+  pricingData: PricingData,
+  onProgress?: (msg: string) => void
+): Promise<CategorySuggestionsResult> => {
+  const inputJson = JSON.stringify(pricingData);
+  const cacheKey = SUGGESTIONS_CACHE_PREFIX + simpleHash(inputJson);
+
+  // Check cache
+  const cachedResult = localStorage.getItem(cacheKey);
+  if (cachedResult) {
+    console.log("Returning cached category suggestions");
+    if (onProgress) onProgress("Wczytano sugestie z pamięci podręcznej.");
+    try {
+      return JSON.parse(cachedResult) as CategorySuggestionsResult;
+    } catch (e) {
+      localStorage.removeItem(cacheKey);
+    }
+  }
+
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("Brak klucza API. Upewnij się, że environment variable API_KEY jest ustawiony.");
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  if (onProgress) onProgress("Analizuję usługi...");
+
+  // Schema for structured output
+  const suggestionsSchema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      suggestions: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            name: { type: Type.STRING, description: "Nazwa kategorii BEZ emoji (np. 'Zabiegi na Twarz', 'Depilacja Laserowa')" },
+            description: { type: Type.STRING, description: "Krótki opis dlaczego ta kategoria ma sens" },
+            matchingServices: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+              description: "Lista nazw usług które pasują do tej kategorii"
+            },
+            priority: {
+              type: Type.STRING,
+              enum: ['high', 'medium', 'low'],
+              description: "Priorytet: high (>10 usług), medium (5-10), low (<5)"
+            }
+          },
+          required: ["name", "description", "matchingServices", "priority"]
+        }
+      },
+      analysisNotes: {
+        type: Type.STRING,
+        description: "Ogólne uwagi o strukturze cennika"
+      },
+      currentIssues: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+        description: "Lista problemów z obecną strukturą kategorii"
+      }
+    },
+    required: ["suggestions", "analysisNotes", "currentIssues"]
+  };
+
+  const systemPrompt = `
+Jesteś ekspertem UX w branży beauty/wellness. Analizujesz cenniki salonów i sugerujesz optymalne kategorie.
+
+TWOJE ZADANIE: Przeanalizuj wszystkie usługi i zasugeruj MOŻLIWE KATEGORIE które użytkownik może wykorzystać do reorganizacji cennika.
+
+ZASADY ANALIZY:
+1. Przejrzyj WSZYSTKIE usługi w cenniku
+2. Zidentyfikuj naturalne grupy usług (np. wszystkie depilacje, wszystkie masaże, zabiegi na twarz)
+3. Zaproponuj nazwy kategorii BEZ EMOJI - czyste, profesjonalne nazwy (np. "Depilacja Laserowa", "Zabiegi na Twarz")
+4. Dla każdej sugestii wypisz konkretne usługi które do niej pasują
+
+TYPY KATEGORII DO ROZWAŻENIA:
+- Według części ciała (Twarz, Ciało, Dłonie/Stopy)
+- Według technologii (Laser, Peeling, Mezoterapia)
+- Według celu (Odmładzanie, Odchudzanie, Relaks)
+- Według grupy docelowej (Dla Kobiet, Dla Mężczyzn, Pakiety)
+- Specjalne (Promocje, Bestsellery, Nowości)
+
+UWAGI:
+- Możesz proponować kategorie nawet z 1 usługą jeśli to sensowna nisza
+- Wskaż problemy z obecną strukturą (np. "Kategoria 'Usługi' jest zbyt ogólna")
+- Bądź konkretny - używaj polskich nazw
+- NIE UŻYWAJ EMOJI W NAZWACH KATEGORII
+- Priority: high = >10 usług, medium = 5-10 usług, low = <5 usług
+
+WAŻNE: Sugestie mają POMÓC użytkownikowi zrozumieć jakie kategorie warto stworzyć.
+Nie narzucaj jednego rozwiązania - pokaż możliwości.
+`;
+
+  const prompt = `
+${systemPrompt}
+
+OBECNA STRUKTURA CENNIKA:
+${inputJson}
+
+Obecne kategorie: ${pricingData.categories.map(c => c.categoryName).join(', ')}
+Łączna liczba usług: ${pricingData.categories.reduce((acc, cat) => acc + cat.services.length, 0)}
+`;
+
+  if (onProgress) onProgress("Generuję sugestie kategorii...");
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: suggestionsSchema
+      }
+    });
+
+    if (!response.text) {
+      throw new Error("Otrzymano pustą odpowiedź od AI.");
+    }
+
+    const parsed = JSON.parse(response.text);
+
+    if (onProgress) onProgress("Gotowe!");
+
+    const result: CategorySuggestionsResult = {
+      suggestions: parsed.suggestions || [],
+      analysisNotes: parsed.analysisNotes || "",
+      currentIssues: parsed.currentIssues || []
+    };
+
+    // Cache result
+    try {
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+    } catch (e) {
+      console.warn("Could not save suggestions to cache", e);
+    }
+
+    return result;
+
+  } catch (error) {
+    console.error("Category suggestions error:", error);
+    throw new Error("Błąd podczas analizy kategorii. Spróbuj ponownie.");
+  }
+};
+
+export { parsePricingData, optimizeBooksyContent, optimizePricelist, suggestCategories };

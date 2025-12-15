@@ -29,7 +29,7 @@ import {
   Download,
 } from 'lucide-react';
 import { exportToPDFFromData } from '../../lib/pricelist-templates/utils/pdfExport';
-import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME } from '../../types';
+import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME, PricelistCategoryConfig } from '../../types';
 import { RainbowButton } from '../ui/rainbow-button';
 import { HeroHighlight } from '../ui/hero-highlight';
 import { BlurFade } from '../ui/blur-fade';
@@ -40,6 +40,8 @@ import type { Id } from '../../convex/_generated/dataModel';
 import Header from '../layout/Header';
 import { AnimatedCircularProgressBar } from '../ui/animated-circular-progress-bar';
 import EmbedCode from '../EmbedCode';
+import CategoryConfigStep from '../CategoryConfigStep';
+import { applyConfigToPricingData, serializeCategoryConfig } from '../../lib/categoryUtils';
 
 type TabType = 'summary' | 'original' | 'optimized' | 'changes' | 'suggestions';
 
@@ -250,6 +252,10 @@ const OptimizationResultsPage: React.FC = () => {
 
   const isViewOnlyMode = !!pricelistId; // Viewing saved results vs new optimization
 
+  // Step flow: configure (category setup) -> optimizing (AI running) -> results (display)
+  const [flowStep, setFlowStep] = useState<'configure' | 'optimizing' | 'results'>('configure');
+  const [categoryConfig, setCategoryConfig] = useState<PricelistCategoryConfig | null>(null);
+
   const [activeTab, setActiveTab] = useState<TabType>('summary');
   const [isOptimizing, setIsOptimizing] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
@@ -332,6 +338,22 @@ const OptimizationResultsPage: React.FC = () => {
 
   // Load draft data (optimization mode)
   useEffect(() => {
+    // Debug logging
+    console.log('[OptimizationResults] Draft loading state:', {
+      isViewOnlyMode,
+      draftId,
+      existingDraft: existingDraft === undefined ? 'loading' : existingDraft === null ? 'not found' : 'found',
+      hasPricingData: existingDraft?.pricingDataJson ? 'yes' : 'no',
+    });
+
+    // Handle draft not found (query completed but returned null)
+    // BUT: Don't show error if we've already saved the pricelist (draft was intentionally deleted)
+    if (!isViewOnlyMode && draftId && existingDraft === null && !savedPricelistId && !pricelistSaved.current) {
+      console.error('[OptimizationResults] Draft not found:', draftId);
+      setError('Nie znaleziono draftu cennika. Możliwe, że wygasł lub został usunięty.');
+      return;
+    }
+
     if (!isViewOnlyMode && existingDraft) {
       try {
         // If draft is already optimized, load both original and optimized data
@@ -358,90 +380,116 @@ const OptimizationResultsPage: React.FC = () => {
         if (existingDraft.templateId) {
           setTemplateId(existingDraft.templateId);
         }
+
+        console.log('[OptimizationResults] Draft data loaded successfully');
       } catch (e) {
         console.error('Error parsing draft data:', e);
         setError('Błąd wczytywania danych cennika');
       }
     }
-  }, [isViewOnlyMode, existingDraft]);
+  }, [isViewOnlyMode, existingDraft, draftId, savedPricelistId]);
 
-  // Verify payment and run optimization
+  // Verify payment - only verify, don't run optimization yet
+  const [paymentVerified, setPaymentVerified] = useState(false);
   useEffect(() => {
-    // Skip if already optimized (data loaded from draft), in view mode, or missing required data
-    if (isViewOnlyMode || !sessionId || !draftId || !originalPricingData || optimizationTriggered.current) {
+    // Skip if in view mode, no session, or already verified
+    if (isViewOnlyMode || !sessionId || !draftId || paymentVerified) {
       return;
     }
 
-    // If draft is already optimized, don't run optimization again
-    if (existingDraft?.isOptimized && optimizationResult) {
+    // If draft is already optimized, skip to results
+    if (existingDraft?.isOptimized) {
+      setFlowStep('results');
+      setPaymentVerified(true);
       return;
     }
 
-    const runOptimization = async () => {
-      optimizationTriggered.current = true;
-      setIsOptimizing(true);
-
+    const verifyPayment = async () => {
       try {
-        // Verify Stripe session
         const verification = await verifySession({ sessionId });
-
-        if (!verification.success) {
+        if (verification.success) {
+          setPaymentVerified(true);
+          // Stay on 'configure' step to let user configure categories
+        } else {
           setError('Płatność nie została zweryfikowana. Spróbuj ponownie.');
-          setIsOptimizing(false);
-          return;
         }
-
-        // Run AI optimization
-        console.log('[Optimization] Starting AI optimization...');
-        const result = await optimizePricelist(originalPricingData);
-        console.log('[Optimization] Completed with', result.changes.length, 'changes');
-
-        setOptimizationResult(result);
-        setOptimizedPricingData(result.optimizedPricingData);
-
-        // Update draft with optimized data AND store original for comparison
-        await updateDraft({
-          draftId,
-          pricingDataJson: JSON.stringify(result.optimizedPricingData),
-          isOptimized: true,
-          originalPricingDataJson: JSON.stringify(originalPricingData),
-          optimizationResultJson: JSON.stringify(result),
-        });
-
-        // Auto-save pricelists (original + optimized) after optimization completes
-        if (!pricelistSaved.current) {
-          pricelistSaved.current = true;
-          try {
-            console.log('[Optimization] Auto-saving pricelists...');
-            const newPricelistId = await convertDraftToPricelist({
-              draftId,
-              name: existingDraft?.sourcePricelistId ? 'Zaktualizowany cennik' : 'Nowy cennik',
-            });
-            setSavedPricelistId(newPricelistId);
-            console.log('[Optimization] Pricelists saved successfully:', newPricelistId);
-          } catch (saveError) {
-            console.error('[Optimization] Error saving pricelists:', saveError);
-            // Don't fail the optimization if save fails - user can still see results
-          }
-        }
-
-        // Fire confetti on success
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 }
-        });
-
       } catch (e) {
-        console.error('[Optimization] Error:', e);
-        setError('Wystąpił błąd podczas optymalizacji. Spróbuj ponownie.');
-      } finally {
-        setIsOptimizing(false);
+        console.error('[Payment] Verification error:', e);
+        setError('Błąd weryfikacji płatności.');
       }
     };
 
-    runOptimization();
-  }, [isViewOnlyMode, sessionId, draftId, originalPricingData, verifySession, updateDraft, convertDraftToPricelist, existingDraft?.sourcePricelistId]);
+    verifyPayment();
+  }, [isViewOnlyMode, sessionId, draftId, paymentVerified, existingDraft?.isOptimized, verifySession]);
+
+  // Handle category configuration complete - run optimization
+  const handleCategoryConfigComplete = async (config: PricelistCategoryConfig) => {
+    if (!originalPricingData || !draftId) return;
+
+    setCategoryConfig(config);
+    setFlowStep('optimizing');
+    setIsOptimizing(true);
+    optimizationTriggered.current = true;
+
+    try {
+      // Apply category configuration to pricing data before optimization
+      const configuredData = applyConfigToPricingData(originalPricingData, config);
+
+      // Run AI optimization on configured data
+      console.log('[Optimization] Starting AI optimization with category config...');
+      const result = await optimizePricelist(configuredData);
+      console.log('[Optimization] Completed with', result.changes.length, 'changes');
+
+      setOptimizationResult(result);
+      setOptimizedPricingData(result.optimizedPricingData);
+      setFlowStep('results');
+
+      // Update draft with optimized data AND store original for comparison
+      await updateDraft({
+        draftId,
+        pricingDataJson: JSON.stringify(result.optimizedPricingData),
+        isOptimized: true,
+        originalPricingDataJson: JSON.stringify(originalPricingData),
+        optimizationResultJson: JSON.stringify(result),
+        categoryConfigJson: serializeCategoryConfig(config),
+      });
+
+      // Auto-save pricelists (original + optimized) after optimization completes
+      if (!pricelistSaved.current) {
+        pricelistSaved.current = true;
+        try {
+          console.log('[Optimization] Auto-saving pricelists...');
+          const newPricelistId = await convertDraftToPricelist({
+            draftId,
+            name: existingDraft?.sourcePricelistId ? 'Zaktualizowany cennik' : 'Nowy cennik',
+          });
+          setSavedPricelistId(newPricelistId);
+          console.log('[Optimization] Pricelists saved successfully:', newPricelistId);
+        } catch (saveError) {
+          console.error('[Optimization] Error saving pricelists:', saveError);
+        }
+      }
+
+      // Fire confetti on success
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 }
+      });
+
+    } catch (e) {
+      console.error('[Optimization] Error:', e);
+      setError('Wystąpił błąd podczas optymalizacji. Spróbuj ponownie.');
+      setFlowStep('configure'); // Go back to configure step on error
+    } finally {
+      setIsOptimizing(false);
+    }
+  };
+
+  // Handle cancel from category config
+  const handleCategoryConfigCancel = () => {
+    navigate('/start-generator' + (draftId ? `?draft=${draftId}` : ''));
+  };
 
   // Auto-save pricelists when draft is already optimized but pricelists not yet saved
   // This handles the case when user refreshes the page after optimization completed
@@ -528,9 +576,10 @@ const OptimizationResultsPage: React.FC = () => {
   }
 
   // Loading state
+  // In non-view mode: don't show loading if we've already saved the pricelist (draft was intentionally deleted)
   const isLoading = isViewOnlyMode
     ? !existingPricelist || !originalPricingData
-    : !existingDraft || !originalPricingData;
+    : (!existingDraft && !savedPricelistId && !pricelistSaved.current) || !originalPricingData;
 
   if (isLoading) {
     return (
@@ -598,6 +647,19 @@ const OptimizationResultsPage: React.FC = () => {
           </div>
         </HeroHighlight>
       </div>
+    );
+  }
+
+  // Category Configuration Step (shown after payment verification, before optimization)
+  // Only show for new optimizations (not view-only mode) when payment is verified
+  if (!isViewOnlyMode && paymentVerified && flowStep === 'configure' && originalPricingData) {
+    return (
+      <CategoryConfigStep
+        pricingData={originalPricingData}
+        onConfigComplete={handleCategoryConfigComplete}
+        onCancel={handleCategoryConfigCancel}
+        isLoading={isOptimizing}
+      />
     );
   }
 

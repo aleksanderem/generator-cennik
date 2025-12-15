@@ -190,3 +190,59 @@ export interface OptimizationResult {
   // Score jakości cennika (0-100)
   qualityScore: number;
 }
+
+// --- CATEGORY CONFIGURATION INTERFACES ---
+
+/**
+ * Konfiguracja pojedynczej kategorii (używana przed/po optymalizacji)
+ */
+export interface CategoryConfig {
+  categoryName: string;
+  order: number;                    // kolejność wyświetlania (0 = góra)
+  originalIndex: number;            // oryginalny indeks w PricingData
+  isAggregation: boolean;           // true jeśli to specjalna agregacja (Promocje/Bestsellery)
+  aggregationType?: 'promotions' | 'bestsellers'; // typ agregacji
+}
+
+/**
+ * Przypisanie usługi do kategorii (dla multi-category assignment)
+ */
+export interface ServiceAssignment {
+  serviceId: string;                // unikalny identyfikator usługi (categoryIndex_serviceIndex)
+  serviceName: string;              // nazwa usługi dla wyświetlania
+  originalCategoryIndex: number;    // skąd pochodzi usługa
+  originalServiceIndex: number;     // indeks usługi w oryginalnej kategorii
+  assignedCategoryIndices: number[]; // do których kategorii przypisana
+}
+
+/**
+ * Konfiguracja całego cennika (kategorie + agregacje)
+ */
+export interface PricelistCategoryConfig {
+  categories: CategoryConfig[];
+  enablePromotions: boolean;        // switch "Promocje" [on/off]
+  enableBestsellers: boolean;       // switch "Bestsellery" [on/off]
+  aggregationMode: 'copy' | 'move'; // tryb agregacji (kopiuj/przenieś)
+  serviceAssignments?: ServiceAssignment[]; // przypisania usług do kategorii (post-opta)
+}
+
+// --- AI CATEGORY SUGGESTIONS ---
+
+/**
+ * Pojedyncza sugestia kategorii od AI
+ */
+export interface CategorySuggestion {
+  name: string;               // Nazwa sugerowanej kategorii (np. "✨ Zabiegi na Twarz")
+  description: string;        // Dlaczego ta kategoria (np. "Grupuje 15 usług związanych z peelingami, mezoterapią...")
+  matchingServices: string[]; // Nazwy usług które pasują do tej kategorii
+  priority: 'high' | 'medium' | 'low'; // Priorytet (ile usług pasuje)
+}
+
+/**
+ * Wynik analizy AI dla sugestii kategorii
+ */
+export interface CategorySuggestionsResult {
+  suggestions: CategorySuggestion[];
+  analysisNotes: string;      // Ogólne uwagi AI o strukturze cennika
+  currentIssues: string[];    // Problemy z obecną strukturą (np. "Zbyt ogólna kategoria 'Usługi'")
+}
