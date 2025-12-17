@@ -758,3 +758,101 @@ describe("pricelists - updatePricelistTheme", () => {
     ).rejects.toThrow("Cennik nie znaleziony");
   });
 });
+
+describe("pricelists - optimization fields validation", () => {
+  test("powinien zwrócić cennik z polami optimizationJobId i optimizationStatus", async () => {
+    const t = convexTest(schema, modules);
+
+    // Create user
+    const userId = await t.run(async (ctx) => {
+      return await ctx.db.insert("users", {
+        clerkId: "optimization_fields_user",
+        email: "optfields@example.com",
+        credits: 0,
+        createdAt: Date.now(),
+      });
+    });
+
+    // First create the pricelist (without job reference)
+    const pricelistId = await t.run(async (ctx) => {
+      return await ctx.db.insert("pricelists", {
+        userId,
+        name: "Cennik z optymalizacją",
+        source: "manual",
+        pricingDataJson: samplePricingData,
+        createdAt: Date.now(),
+      });
+    });
+
+    // Create optimization job with pricelist reference
+    const jobId = await t.run(async (ctx) => {
+      return await ctx.db.insert("optimizationJobs", {
+        userId,
+        pricelistId,
+        status: "processing",
+        progress: 50,
+        progressMessage: "Processing...",
+        inputPricingDataJson: samplePricingData,
+        createdAt: Date.now(),
+      });
+    });
+
+    // Update pricelist with optimization fields (simulating what startOptimization does)
+    await t.run(async (ctx) => {
+      await ctx.db.patch(pricelistId, {
+        optimizationJobId: jobId,
+        optimizationStatus: "processing",
+      });
+    });
+
+    const asUser = t.withIdentity({
+      subject: "optimization_fields_user",
+      issuer: "https://clerk.dev",
+    });
+
+    // This test ensures that getPricelist validator includes optimizationJobId and optimizationStatus
+    const pricelist = await asUser.query(api.pricelists.getPricelist, { pricelistId });
+
+    expect(pricelist).not.toBeNull();
+    expect(pricelist?.optimizationJobId).toBe(jobId);
+    expect(pricelist?.optimizationStatus).toBe("processing");
+  });
+
+  test("powinien zwrócić listę cenników z polami optymalizacji", async () => {
+    const t = convexTest(schema, modules);
+
+    const userId = await t.run(async (ctx) => {
+      return await ctx.db.insert("users", {
+        clerkId: "optimization_list_user",
+        email: "optlist@example.com",
+        credits: 0,
+        createdAt: Date.now(),
+      });
+    });
+
+    // Create pricelist with completed optimization
+    await t.run(async (ctx) => {
+      await ctx.db.insert("pricelists", {
+        userId,
+        name: "Cennik zoptymalizowany",
+        source: "manual",
+        pricingDataJson: samplePricingData,
+        isOptimized: true,
+        optimizationStatus: "completed",
+        createdAt: Date.now(),
+      });
+    });
+
+    const asUser = t.withIdentity({
+      subject: "optimization_list_user",
+      issuer: "https://clerk.dev",
+    });
+
+    // This test ensures that getUserPricelists validator includes optimization fields
+    const pricelists = await asUser.query(api.pricelists.getUserPricelists, {});
+
+    expect(pricelists.length).toBe(1);
+    expect(pricelists[0].isOptimized).toBe(true);
+    expect(pricelists[0].optimizationStatus).toBe("completed");
+  });
+});

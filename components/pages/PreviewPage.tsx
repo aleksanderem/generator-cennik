@@ -1,54 +1,28 @@
 "use client";
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { useQuery } from 'convex/react';
 import { api } from '../../convex/_generated/api';
-import { Loader2 } from 'lucide-react';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { PricingData, ThemeConfig, DEFAULT_THEME } from '../../types';
 import { getTemplate, DEFAULT_TEMPLATE_ID } from '../../lib/pricelist-templates';
 import { Id } from '../../convex/_generated/dataModel';
 
 const PreviewPage: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const draftId = searchParams.get('draft');
   const pricelistId = searchParams.get('pricelist');
+  const oldDraftId = searchParams.get('draft'); // For showing error on old draft URLs
 
   const [pricingData, setPricingData] = useState<PricingData | null>(null);
   const [themeConfig, setThemeConfig] = useState<ThemeConfig>(DEFAULT_THEME);
   const [templateId, setTemplateId] = useState<string>(DEFAULT_TEMPLATE_ID);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch draft from Convex (for ?draft=...)
-  const draft = useQuery(
-    api.pricelistDrafts.getDraft,
-    draftId ? { draftId } : "skip"
-  );
-
-  // Fetch pricelist from Convex (for ?pricelist=...)
+  // Fetch pricelist from Convex (public access)
   const pricelist = useQuery(
     api.pricelists.getPricelistPublic,
     pricelistId ? { pricelistId: pricelistId as Id<"pricelists"> } : "skip"
   );
-
-  // Handle draft data
-  useEffect(() => {
-    if (draft) {
-      try {
-        const data = JSON.parse(draft.pricingDataJson);
-        setPricingData(data);
-
-        if (draft.themeConfigJson) {
-          setThemeConfig(JSON.parse(draft.themeConfigJson));
-        }
-        if (draft.templateId) {
-          setTemplateId(draft.templateId);
-        }
-      } catch (e) {
-        console.error('Error parsing draft:', e);
-        setError('Nie udało się załadować cennika.');
-      }
-    }
-  }, [draft]);
 
   // Handle pricelist data
   useEffect(() => {
@@ -70,21 +44,46 @@ const PreviewPage: React.FC = () => {
     }
   }, [pricelist]);
 
+  // Old draft URL - show error message
+  if (oldDraftId) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center">
+        <div className="text-center max-w-md px-4">
+          <div className="w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <AlertCircle className="w-8 h-8 text-amber-600" />
+          </div>
+          <h2 className="text-xl font-semibold text-slate-800 mb-2">
+            Link wygasł
+          </h2>
+          <p className="text-slate-600 mb-4">
+            Tymczasowe linki do cenników nie są już obsługiwane.
+            Zaloguj się, aby utworzyć i udostępnić swój cennik.
+          </p>
+          <Link
+            to="/sign-in"
+            className="inline-flex items-center justify-center px-4 py-2 bg-[#D4A574] hover:bg-[#C9956C] text-white font-medium rounded-lg transition-colors"
+          >
+            Zaloguj się
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   // No ID provided
-  if (!draftId && !pricelistId) {
+  if (!pricelistId) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center">
           <p className="text-slate-600">Brak ID cennika w URL.</p>
-          <p className="text-sm text-slate-500 mt-2">Użyj linku z parametrem ?draft=... lub ?pricelist=...</p>
+          <p className="text-sm text-slate-500 mt-2">Użyj linku z parametrem ?pricelist=...</p>
         </div>
       </div>
     );
   }
 
   // Loading state
-  const isLoading = (draftId && draft === undefined) || (pricelistId && pricelist === undefined);
-  if (isLoading) {
+  if (pricelist === undefined) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="flex items-center gap-3 text-slate-600">
@@ -96,12 +95,11 @@ const PreviewPage: React.FC = () => {
   }
 
   // Not found
-  const notFound = (draftId && draft === null) || (pricelistId && pricelist === null);
-  if (notFound || error) {
+  if (pricelist === null || error) {
     return (
       <div className="min-h-screen bg-slate-100 flex items-center justify-center">
         <div className="text-center">
-          <p className="text-red-600">{error || 'Cennik nie został znaleziony lub wygasł.'}</p>
+          <p className="text-red-600">{error || 'Cennik nie został znaleziony.'}</p>
         </div>
       </div>
     );

@@ -22,6 +22,7 @@ import {
 import { IconBrandMeta, IconBrandGoogle } from '@tabler/icons-react';
 import { AuroraText } from '../ui/aurora-text';
 import { PulsatingButton } from '../ui/pulsating-button';
+import NotificationBell from '../NotificationBell';
 
 type Page = 'home' | 'generator' | 'audit' | 'optimization' | 'campaigns-meta' | 'campaigns-google' | 'agency' | 'profile';
 
@@ -249,6 +250,13 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
               </div>
             )}
 
+            {/* Notifications Bell */}
+            {isSignedIn && (
+              <div className="hidden sm:block">
+                <NotificationBell />
+              </div>
+            )}
+
             {/* Profile Link */}
             {isSignedIn && (
               <Link
@@ -399,6 +407,13 @@ const Header: React.FC<HeaderProps> = ({ currentPage, onNavigate, onOpenPaywall 
                   <User size={20} />
                   <span className="font-medium">Profil</span>
                 </Link>
+              )}
+
+              {/* Mobile: Notifications */}
+              {isSignedIn && (
+                <div className="px-4 py-2">
+                  <NotificationBell />
+                </div>
               )}
 
               {!isSignedIn && isLoaded && (

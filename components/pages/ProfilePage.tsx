@@ -662,6 +662,51 @@ const ProfilePage: React.FC = () => {
   // Stan akcji
   const [copyingCode, setCopyingCode] = useState<Id<"pricelists"> | null>(null);
   const [editingPricelist, setEditingPricelist] = useState<Id<"pricelists"> | null>(null);
+
+  // Audit expand/collapse state
+  const [expandedAuditIds, setExpandedAuditIds] = useState<Set<string>>(new Set());
+  const [openAuditDropdownId, setOpenAuditDropdownId] = useState<string | null>(null);
+  const [openLinkedItemDropdownId, setOpenLinkedItemDropdownId] = useState<string | null>(null);
+  const auditDropdownRef = useRef<HTMLDivElement>(null);
+  const linkedItemDropdownRef = useRef<HTMLDivElement>(null);
+
+  const toggleAuditExpand = (id: string) => {
+    setExpandedAuditIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  // Close audit dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (auditDropdownRef.current && !auditDropdownRef.current.contains(event.target as Node)) {
+        setOpenAuditDropdownId(null);
+      }
+    };
+    if (openAuditDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openAuditDropdownId]);
+
+  // Close linked item dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (linkedItemDropdownRef.current && !linkedItemDropdownRef.current.contains(event.target as Node)) {
+        setOpenLinkedItemDropdownId(null);
+      }
+    };
+    if (openLinkedItemDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [openLinkedItemDropdownId]);
   const [optimizingPricelist, setOptimizingPricelist] = useState<Id<"pricelists"> | null>(null);
 
   // Form state for company data
@@ -680,6 +725,7 @@ const ProfilePage: React.FC = () => {
   const pricelists = useQuery(api.pricelists.getUserPricelists);
   const updateCompanyData = useMutation(api.users.updateCompanyData);
   const deletePricelist = useMutation(api.pricelists.deletePricelist);
+  const deleteAudit = useMutation(api.dev.deleteAudit);
   const createPortalSession = useAction(api.stripe.createCustomerPortalSession);
   const syncStripeCustomer = useAction(api.stripe.syncStripeCustomer);
   const getInvoices = useAction(api.stripe.getInvoices);
@@ -958,14 +1004,18 @@ const ProfilePage: React.FC = () => {
     const configs: Record<string, { label: string; className: string; icon: typeof IconClock }> = {
       pending: { label: 'Oczekuje', className: 'bg-amber-100 text-amber-700', icon: IconClock },
       processing: { label: 'W trakcie', className: 'bg-blue-100 text-blue-700', icon: IconLoader2 },
+      scraping: { label: 'Pobieranie', className: 'bg-blue-100 text-blue-700', icon: IconLoader2 },
+      scraping_retry: { label: 'Ponowne pobieranie', className: 'bg-orange-100 text-orange-700', icon: IconLoader2 },
+      analyzing: { label: 'Analiza AI', className: 'bg-purple-100 text-purple-700', icon: IconLoader2 },
       completed: { label: 'Zakończony', className: 'bg-emerald-100 text-emerald-700', icon: IconCircleCheck },
       failed: { label: 'Błąd', className: 'bg-red-100 text-red-700', icon: IconAlertCircle },
     };
     const config = configs[status] || configs.pending;
     const Icon = config.icon;
+    const spinningStatuses = ['processing', 'scraping', 'scraping_retry', 'analyzing'];
     return (
       <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium", config.className)}>
-        <Icon size={12} className={status === 'processing' ? 'animate-spin' : ''} />
+        <Icon size={12} className={spinningStatuses.includes(status) ? 'animate-spin' : ''} />
         {config.label}
       </span>
     );
@@ -1274,78 +1324,502 @@ const ProfilePage: React.FC = () => {
             {activeTab === 'audits' && (
               <div>
                 {/* Active audit */}
-                {activeAudit && (
-                  <div className="px-5 py-4 bg-amber-50/50 border-b border-amber-100">
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          {activeAudit.status === 'processing' && (
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                {activeAudit && (() => {
+                  const activeStatuses = ['processing', 'scraping', 'scraping_retry', 'analyzing'];
+                  const isInProgress = activeStatuses.includes(activeAudit.status);
+                  const progress = activeAudit.progress ?? 0;
+
+                  return (
+                    <div className="px-5 py-4 bg-amber-50/50 border-b border-amber-100">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            {isInProgress && (
+                              <span className="relative flex h-2 w-2">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+                              </span>
+                            )}
+                            <span className="text-sm font-medium text-slate-900">
+                              {activeAudit.salonName || (activeAudit.status === 'pending' ? 'Oczekujący audyt' : 'Audyt w trakcie')}
                             </span>
+                            {getStatusBadge(activeAudit.status)}
+                          </div>
+
+                          {/* Progress bar for in-progress audits */}
+                          {isInProgress && progress > 0 && (
+                            <div className="mb-2">
+                              <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                                <div
+                                  className="h-full bg-gradient-to-r from-[#D4A574] to-[#B8860B] transition-all duration-500"
+                                  style={{ width: `${progress}%` }}
+                                />
+                              </div>
+                            </div>
                           )}
-                          <span className="text-sm font-medium text-slate-900">
-                            {activeAudit.status === 'pending' ? 'Oczekujący audyt' : 'Audyt w trakcie'}
-                          </span>
-                          {getStatusBadge(activeAudit.status)}
+
+                          <p className="text-xs text-slate-500 truncate">
+                            {activeAudit.progressMessage || activeAudit.sourceUrl || 'Brak URL - kliknij aby dodać'}
+                          </p>
                         </div>
-                        <p className="text-xs text-slate-500 truncate">
-                          {activeAudit.sourceUrl || 'Brak URL - kliknij aby dodać'}
-                        </p>
+                        {activeAudit.status === 'pending' && (
+                          <Link
+                            to="/success"
+                            className="flex-shrink-0 px-3 py-1.5 bg-[#722F37] text-white text-xs font-medium rounded-lg hover:bg-[#5a252c] transition-colors"
+                          >
+                            Rozpocznij
+                          </Link>
+                        )}
                       </div>
-                      {activeAudit.status === 'pending' && (
-                        <Link
-                          to="/success"
-                          className="flex-shrink-0 px-3 py-1.5 bg-[#722F37] text-white text-xs font-medium rounded-lg hover:bg-[#5a252c] transition-colors"
-                        >
-                          Rozpocznij
-                        </Link>
-                      )}
                     </div>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Audits list */}
                 <div className="divide-y divide-slate-100">
                   {completedAudits.length > 0 ? (
-                    completedAudits.map((audit) => (
-                      <div key={audit._id} className="px-5 py-3 hover:bg-slate-50/50 transition-colors">
-                        <div className="flex items-center gap-4">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center gap-2 mb-0.5">
-                              <span className="text-sm font-medium text-slate-900 truncate">
-                                {audit.sourceUrl ? audit.sourceUrl.replace(/^https?:\/\//, '').slice(0, 40) : 'Audyt profilu'}
-                              </span>
-                              {getStatusBadge(audit.status)}
+                    completedAudits.map((audit) => {
+                      const hasLinkedItems = audit.status === 'completed' && (audit.basePricelistId || audit.proPricelistId || audit.purchaseId);
+                      const isExpanded = expandedAuditIds.has(audit._id);
+
+                      // Build list of linked items
+                      const linkedItems: Array<{ type: 'invoice' | 'basePricelist' | 'proPricelist'; key: string }> = [];
+                      if (audit.purchaseId) linkedItems.push({ type: 'invoice', key: 'invoice' });
+                      if (audit.basePricelistId) linkedItems.push({ type: 'basePricelist', key: 'base' });
+                      if (audit.proPricelistId) linkedItems.push({ type: 'proPricelist', key: 'pro' });
+
+                      // Find linked pricelists
+                      const basePricelist = audit.basePricelistId ? pricelists?.find(p => p._id === audit.basePricelistId) : null;
+                      const proPricelist = audit.proPricelistId ? pricelists?.find(p => p._id === audit.proPricelistId) : null;
+                      const linkedPurchase = audit.purchaseId ? purchases?.find(p => p._id === audit.purchaseId) : null;
+
+                      return (
+                        <div key={audit._id}>
+                          <div
+                            className={cn(
+                              "px-3 py-2.5 transition-colors group flex items-center gap-3 rounded-lg mx-2 my-1",
+                              hasLinkedItems && "cursor-pointer",
+                              isExpanded ? "bg-slate-50" : "hover:bg-slate-50"
+                            )}
+                            onClick={() => hasLinkedItems && toggleAuditExpand(audit._id)}
+                          >
+                            {/* Expand/Collapse Arrow */}
+                            <div className={cn(
+                              "w-5 h-5 flex items-center justify-center flex-shrink-0 transition-transform",
+                              isExpanded && "rotate-90"
+                            )}>
+                              {hasLinkedItems ? (
+                                <IconChevronRight size={16} className="text-slate-400" />
+                              ) : (
+                                <div className="w-4" />
+                              )}
                             </div>
-                            <div className="flex items-center gap-3 text-xs text-slate-500">
-                              <span>{formatDate(audit.completedAt || audit.createdAt)}</span>
-                              {audit.overallScore !== undefined && (
-                                <span className={cn(
-                                  "font-medium",
-                                  audit.overallScore >= 80 ? 'text-emerald-600' :
-                                  audit.overallScore >= 60 ? 'text-amber-600' : 'text-red-600'
-                                )}>
-                                  Wynik: {audit.overallScore}/100
+
+                            {/* Salon Logo */}
+                            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 bg-slate-100 border border-slate-200">
+                              {audit.salonLogoUrl ? (
+                                <img
+                                  src={audit.salonLogoUrl}
+                                  alt={audit.salonName || 'Salon'}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <div className="w-full h-full flex items-center justify-center text-slate-300">
+                                  <IconPhoto size={14} />
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Audit Info */}
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-slate-900 truncate">
+                                  {audit.salonName || (audit.sourceUrl ? audit.sourceUrl.replace(/^https?:\/\//, '').split('/')[0] : 'Audyt profilu')}
                                 </span>
+                                {getStatusBadge(audit.status)}
+                                {audit.overallScore !== undefined && (
+                                  <span className={cn(
+                                    "text-xs font-medium px-2 py-0.5 rounded-full",
+                                    audit.overallScore >= 80 ? 'text-emerald-700 bg-emerald-50' :
+                                    audit.overallScore >= 60 ? 'text-amber-700 bg-amber-50' : 'text-red-700 bg-red-50'
+                                  )}>
+                                    {audit.overallScore}/100
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                                <span>
+                                  {(() => {
+                                    // Use scraped counts if available, otherwise try to parse from JSON
+                                    if (audit.scrapedCategoriesCount && audit.scrapedServicesCount) {
+                                      return `${audit.scrapedCategoriesCount} kat. / ${audit.scrapedServicesCount} usł.`;
+                                    }
+                                    // Fallback: parse from scrapedDataJson (new system) or rawData (old system)
+                                    const jsonData = audit.scrapedDataJson || audit.rawData;
+                                    if (jsonData) {
+                                      try {
+                                        const data = JSON.parse(jsonData);
+                                        const cats = data.categories?.length || 0;
+                                        const services = data.totalServices || data.categories?.reduce((acc: number, c: { services?: unknown[] }) => acc + (c.services?.length || 0), 0) || 0;
+                                        return `${cats} kat. / ${services} usł.`;
+                                      } catch {
+                                        return '- kat. / - usł.';
+                                      }
+                                    }
+                                    return '- kat. / - usł.';
+                                  })()}
+                                </span>
+                                <span className="text-slate-300">•</span>
+                                <span>{formatDate(audit.completedAt || audit.createdAt)}</span>
+                              </div>
+                            </div>
+
+                            {/* Info tooltip */}
+                            <InfoTooltip
+                              content={
+                                <div className="space-y-1.5">
+                                  <p className="font-medium text-slate-900">Audyt cennika</p>
+                                  <p className="text-slate-600 text-xs">
+                                    Analiza cennika Booksy z rekomendacjami optymalizacji.
+                                  </p>
+                                  {audit.overallScore !== undefined && (
+                                    <p className="text-slate-500 text-xs mt-2">
+                                      Wynik: {audit.overallScore}/100 punktów
+                                    </p>
+                                  )}
+                                </div>
+                              }
+                            />
+
+                            {/* Actions Menu */}
+                            <div className="relative flex-shrink-0" ref={openAuditDropdownId === audit._id ? auditDropdownRef : undefined}>
+                              <button
+                                className={cn(
+                                  "p-1.5 rounded-lg transition-colors",
+                                  openAuditDropdownId === audit._id ? "bg-slate-100 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                )}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenAuditDropdownId(openAuditDropdownId === audit._id ? null : audit._id);
+                                }}
+                              >
+                                <IconDotsVertical size={18} />
+                              </button>
+                              {openAuditDropdownId === audit._id && (
+                                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                  {audit.status === 'completed' && audit.reportJson && (
+                                    <button
+                                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                      onClick={() => {
+                                        setOpenAuditDropdownId(null);
+                                        navigate(`/audit-results?audit=${audit._id}`);
+                                      }}
+                                    >
+                                      <IconFileText size={16} className="text-indigo-500" />
+                                      Zobacz raport
+                                    </button>
+                                  )}
+                                  {audit.status === 'completed' && audit.reportPdfUrl && (
+                                    <a
+                                      href={audit.reportPdfUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                      onClick={() => setOpenAuditDropdownId(null)}
+                                    >
+                                      <IconDownload size={16} className="text-[#722F37]" />
+                                      Pobierz raport PDF
+                                    </a>
+                                  )}
+                                  {audit.sourceUrl && (
+                                    <a
+                                      href={audit.sourceUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                      onClick={() => setOpenAuditDropdownId(null)}
+                                    >
+                                      <IconExternalLink size={16} className="text-slate-400" />
+                                      Otwórz Booksy
+                                    </a>
+                                  )}
+                                  <button
+                                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                    onClick={async () => {
+                                      if (confirm('Czy na pewno chcesz usunąć ten audyt? Ta operacja jest nieodwracalna.')) {
+                                        setOpenAuditDropdownId(null);
+                                        await deleteAudit({ auditId: audit._id });
+                                      }
+                                    }}
+                                  >
+                                    <IconTrash size={16} />
+                                    Usuń audyt
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </div>
-                          {audit.status === 'completed' && audit.reportPdfUrl && (
-                            <a
-                              href={audit.reportPdfUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-[#722F37] hover:bg-[#722F37]/5 rounded-lg transition-colors"
-                            >
-                              <IconDownload size={14} />
-                              PDF
-                            </a>
+
+                          {/* Expanded content: linked items */}
+                          {hasLinkedItems && isExpanded && (
+                            <div className="ml-12 mb-2">
+                              {/* Header */}
+                              <div className="text-[11px] text-slate-400 uppercase tracking-wider mb-2 pl-8 pt-3">
+                                Powiązane elementy
+                              </div>
+
+                              {/* Tree structure */}
+                              <div className="relative pl-4">
+                                {/* Continuous vertical line */}
+                                <div className="absolute left-0 -top-9 bottom-[25px] w-px bg-slate-200" />
+
+                                {/* Items */}
+                                <div className="space-y-3">
+                                  {linkedItems.map((item) => (
+                                    <div key={item.key} className="relative">
+                                      {/* Horizontal branch from vertical line */}
+                                      <div className="absolute -left-4 top-[30px] w-4 h-px bg-slate-200" />
+
+                                      {/* Invoice */}
+                                      {item.type === 'invoice' && linkedPurchase && (
+                                        <div
+                                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80 cursor-pointer hover:bg-slate-100/80 transition-colors"
+                                          onClick={() => setActiveTab('payments')}
+                                        >
+                                          <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                                            <IconReceipt size={16} className="text-emerald-600" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-slate-900 text-sm">Faktura VAT</span>
+                                              <span className="text-xs text-slate-500">NR FV/...</span>
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">
+                                                opłacona
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                                              <span>Płatność kartą</span>
+                                              <span className="text-slate-300">•</span>
+                                              <span>{formatDate(linkedPurchase.completedAt || linkedPurchase.createdAt)}</span>
+                                            </div>
+                                          </div>
+                                          <InfoTooltip
+                                            content={
+                                              <div className="space-y-1.5">
+                                                <p className="font-medium text-slate-900">Faktura VAT</p>
+                                                <p className="text-slate-600 text-xs">
+                                                  Dokument rozliczeniowy za audyt cennika.
+                                                </p>
+                                              </div>
+                                            }
+                                          />
+                                          {/* Menu */}
+                                          <div className="relative flex-shrink-0" ref={openLinkedItemDropdownId === `invoice-${linkedPurchase._id}` ? linkedItemDropdownRef : undefined}>
+                                            <button
+                                              className={cn(
+                                                "p-1.5 rounded-lg transition-colors",
+                                                openLinkedItemDropdownId === `invoice-${linkedPurchase._id}` ? "bg-slate-200 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+                                              )}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenLinkedItemDropdownId(openLinkedItemDropdownId === `invoice-${linkedPurchase._id}` ? null : `invoice-${linkedPurchase._id}`);
+                                              }}
+                                            >
+                                              <IconDotsVertical size={16} />
+                                            </button>
+                                            {openLinkedItemDropdownId === `invoice-${linkedPurchase._id}` && (
+                                              <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                                <button
+                                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenLinkedItemDropdownId(null);
+                                                    setActiveTab('payments');
+                                                  }}
+                                                >
+                                                  <IconExternalLink size={16} className="text-slate-400" />
+                                                  Zobacz szczegóły
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Base Pricelist */}
+                                      {item.type === 'basePricelist' && basePricelist && (
+                                        <div
+                                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80 cursor-pointer hover:bg-slate-100/80 transition-colors"
+                                          onClick={() => {
+                                            setSelectedPricelistId(basePricelist._id);
+                                            setActiveTab('pricelists');
+                                          }}
+                                        >
+                                          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+                                            <IconList size={16} className="text-blue-600" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-slate-600 text-sm">{basePricelist.name}</span>
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+                                                Booksy
+                                              </span>
+                                              <span className="text-xs text-slate-400">bazowy</span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                                              <span>{basePricelist.categoriesCount || 0} kat. / {basePricelist.servicesCount || 0} usł.</span>
+                                              <span className="text-slate-300">•</span>
+                                              <span>{formatDate(basePricelist.createdAt)}</span>
+                                            </div>
+                                          </div>
+                                          <InfoTooltip
+                                            content={
+                                              <div className="space-y-1.5">
+                                                <p className="font-medium text-slate-900">Cennik bazowy</p>
+                                                <p className="text-slate-600 text-xs">
+                                                  Oryginalna struktura cennika z Booksy.
+                                                </p>
+                                              </div>
+                                            }
+                                          />
+                                          {/* Menu */}
+                                          <div className="relative flex-shrink-0" ref={openLinkedItemDropdownId === `base-${basePricelist._id}` ? linkedItemDropdownRef : undefined}>
+                                            <button
+                                              className={cn(
+                                                "p-1.5 rounded-lg transition-colors",
+                                                openLinkedItemDropdownId === `base-${basePricelist._id}` ? "bg-slate-200 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+                                              )}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenLinkedItemDropdownId(openLinkedItemDropdownId === `base-${basePricelist._id}` ? null : `base-${basePricelist._id}`);
+                                              }}
+                                            >
+                                              <IconDotsVertical size={16} />
+                                            </button>
+                                            {openLinkedItemDropdownId === `base-${basePricelist._id}` && (
+                                              <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                                <button
+                                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenLinkedItemDropdownId(null);
+                                                    setSelectedPricelistId(basePricelist._id);
+                                                    setActiveTab('pricelists');
+                                                  }}
+                                                >
+                                                  <IconEdit size={16} className="text-slate-400" />
+                                                  Edytuj cennik
+                                                </button>
+                                                <button
+                                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                                  onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
+                                                      setOpenLinkedItemDropdownId(null);
+                                                      await deletePricelist({ pricelistId: basePricelist._id });
+                                                    }
+                                                  }}
+                                                >
+                                                  <IconTrash size={16} />
+                                                  Usuń cennik
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* PRO Pricelist */}
+                                      {item.type === 'proPricelist' && proPricelist && (
+                                        <div
+                                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-50/80 cursor-pointer hover:bg-slate-100/80 transition-colors"
+                                          onClick={() => {
+                                            setSelectedPricelistId(proPricelist._id);
+                                            setActiveTab('pricelists');
+                                          }}
+                                        >
+                                          <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                                            <IconSparkles size={16} className="text-amber-600" />
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2">
+                                              <span className="text-slate-900 text-sm">{proPricelist.name}</span>
+                                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-[#D4A574]/20 text-[#996B3D]">
+                                                <IconSparkles size={12} />
+                                                AuditorAI®
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
+                                              <span>{proPricelist.categoriesCount || 0} kat. / {proPricelist.servicesCount || 0} usł.</span>
+                                              <span className="text-slate-300">•</span>
+                                              <span>{formatDate(proPricelist.createdAt)}</span>
+                                            </div>
+                                          </div>
+                                          <InfoTooltip
+                                            content={
+                                              <div className="space-y-1.5">
+                                                <p className="font-medium text-slate-900">Cennik PRO</p>
+                                                <p className="text-slate-600 text-xs">
+                                                  Zoptymalizowany przez AuditorAI® na podstawie rekomendacji z audytu.
+                                                </p>
+                                              </div>
+                                            }
+                                          />
+                                          {/* Menu */}
+                                          <div className="relative flex-shrink-0" ref={openLinkedItemDropdownId === `pro-${proPricelist._id}` ? linkedItemDropdownRef : undefined}>
+                                            <button
+                                              className={cn(
+                                                "p-1.5 rounded-lg transition-colors",
+                                                openLinkedItemDropdownId === `pro-${proPricelist._id}` ? "bg-slate-200 text-slate-700" : "text-slate-400 hover:text-slate-600 hover:bg-slate-200"
+                                              )}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                setOpenLinkedItemDropdownId(openLinkedItemDropdownId === `pro-${proPricelist._id}` ? null : `pro-${proPricelist._id}`);
+                                              }}
+                                            >
+                                              <IconDotsVertical size={16} />
+                                            </button>
+                                            {openLinkedItemDropdownId === `pro-${proPricelist._id}` && (
+                                              <div className="absolute right-0 top-full mt-1 w-44 bg-white rounded-xl shadow-lg border border-slate-200 py-1 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                                                <button
+                                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenLinkedItemDropdownId(null);
+                                                    setSelectedPricelistId(proPricelist._id);
+                                                    setActiveTab('pricelists');
+                                                  }}
+                                                >
+                                                  <IconEdit size={16} className="text-slate-400" />
+                                                  Edytuj cennik
+                                                </button>
+                                                <button
+                                                  className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                                                  onClick={async (e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm('Czy na pewno chcesz usunąć ten cennik?')) {
+                                                      setOpenLinkedItemDropdownId(null);
+                                                      await deletePricelist({ pricelistId: proPricelist._id });
+                                                    }
+                                                  }}
+                                                >
+                                                  <IconTrash size={16} />
+                                                  Usuń cennik
+                                                </button>
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
                           )}
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   ) : !activeAudit ? (
                     <div className="px-5 py-12 text-center">
                       <IconFileText className="w-10 h-10 text-slate-200 mx-auto mb-3" />

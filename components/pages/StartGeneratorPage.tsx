@@ -14,14 +14,11 @@ import {
   Image,
   Tag,
   Wand2,
-  Save,
-  Copy,
   Check,
   Code2,
   Palette,
   RotateCcw,
   Link2,
-  ExternalLink,
   Pencil,
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -38,10 +35,7 @@ import { useAuth, SignInButton, SignUpButton } from '@clerk/clerk-react';
 
 type AppState = 'INPUT' | 'PROCESSING' | 'PREVIEW';
 
-// Generate unique draft ID
-const generateDraftId = (): string => {
-  return `draft_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-};
+// Pricelist ID is now managed by Convex, no need to generate locally
 
 const StartGeneratorPage: React.FC = () => {
   const navigate = useNavigate();
@@ -55,71 +49,72 @@ const StartGeneratorPage: React.FC = () => {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('modern');
   const [error, setError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  const [savedPricelistId, setSavedPricelistId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [draftId, setDraftId] = useState<string | null>(null);
-  const [isLoadingDraft, setIsLoadingDraft] = useState(false);
+  const [pricelistId, setPricelistId] = useState<string | null>(null);
+  const [isLoadingPricelist, setIsLoadingPricelist] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
   const [pricelistName, setPricelistName] = useState(`Cennik ${new Date().toLocaleDateString('pl-PL')}`);
   const [isEditingName, setIsEditingName] = useState(false);
-  const [sourcePricelistId, setSourcePricelistId] = useState<string | null>(null);
   const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [isPricelistOptimized, setIsPricelistOptimized] = useState(false);
 
   // Convex
   const user = useQuery(api.users.getCurrentUser);
-  const savePricelist = useMutation(api.pricelists.savePricelist);
-  const saveDraft = useMutation(api.pricelistDrafts.saveDraft);
-  const updateDraft = useMutation(api.pricelistDrafts.updateDraft);
-  const convertDraftToPricelist = useMutation(api.pricelistDrafts.convertDraftToPricelist);
+  const savePricelistMutation = useMutation(api.pricelists.savePricelist);
+  const updatePricelist = useMutation(api.pricelists.updatePricelist);
   const createCheckoutSession = useAction(api.stripe.createCheckoutSession);
-  const verifySession = useAction(api.stripe.verifySession);
 
-  // Get draft from URL param
-  const urlDraftId = searchParams.get('draft');
+  // Get pricelist from URL param
+  const urlPricelistId = searchParams.get('pricelist');
+  const urlMode = searchParams.get('mode'); // 'original' to load original data
 
-  // Load draft from URL on mount
-  const existingDraft = useQuery(
-    api.pricelistDrafts.getDraft,
-    urlDraftId ? { draftId: urlDraftId } : "skip"
+  // Load pricelist from URL on mount (requires auth)
+  const existingPricelist = useQuery(
+    api.pricelists.getPricelist,
+    urlPricelistId ? { pricelistId: urlPricelistId as any } : "skip"
   );
 
-  // Load draft when it's fetched
+  // Load pricelist when it's fetched
   useEffect(() => {
-    if (existingDraft && !isLoadingDraft) {
-      setIsLoadingDraft(true);
+    if (existingPricelist && !isLoadingPricelist) {
+      setIsLoadingPricelist(true);
       try {
-        const data = JSON.parse(existingDraft.pricingDataJson);
-        setPricingData(data);
-        setDraftId(existingDraft.draftId);
+        // If mode=original and we have original data, load that instead
+        const dataJson = (urlMode === 'original' && existingPricelist.originalPricingDataJson)
+          ? existingPricelist.originalPricingDataJson
+          : existingPricelist.pricingDataJson;
 
-        if (existingDraft.themeConfigJson) {
-          setThemeConfig(JSON.parse(existingDraft.themeConfigJson));
+        const data = JSON.parse(dataJson);
+        setPricingData(data);
+        setPricelistId(existingPricelist._id);
+        setPricelistName(existingPricelist.name);
+
+        if (existingPricelist.themeConfigJson) {
+          setThemeConfig(JSON.parse(existingPricelist.themeConfigJson));
         }
-        if (existingDraft.templateId) {
-          setSelectedTemplateId(existingDraft.templateId);
+        if (existingPricelist.templateId) {
+          setSelectedTemplateId(existingPricelist.templateId);
         }
-        if (existingDraft.rawInputData) {
-          setInputText(existingDraft.rawInputData);
-        }
-        if (existingDraft.sourcePricelistId) {
-          setSourcePricelistId(existingDraft.sourcePricelistId);
+        // Check if pricelist is already optimized (unless loading original mode)
+        if (existingPricelist.isOptimized && urlMode !== 'original') {
+          setIsPricelistOptimized(true);
         }
 
         setAppState('PREVIEW');
       } catch (e) {
-        console.error('Error loading draft:', e);
+        console.error('Error loading pricelist:', e);
         setError('Nie udało się załadować zapisanego cennika.');
       }
-      setIsLoadingDraft(false);
+      setIsLoadingPricelist(false);
     }
-  }, [existingDraft, searchParams]);
+  }, [existingPricelist, urlMode]);
 
   // Load theme from localStorage
   const LOCAL_STORAGE_KEY = 'beauty_pricer_local_last';
   const LOCAL_STORAGE_TEMPLATE_KEY = 'beauty_pricer_template_id';
 
   useEffect(() => {
-    if (!urlDraftId) {
+    if (!urlPricelistId) {
       const savedTheme = localStorage.getItem(LOCAL_STORAGE_KEY);
       if (savedTheme) {
         try {
@@ -133,7 +128,7 @@ const StartGeneratorPage: React.FC = () => {
         setSelectedTemplateId(savedTemplateId);
       }
     }
-  }, [urlDraftId]);
+  }, [urlPricelistId]);
 
   const handleLoadExample = () => {
     const example = `Manicure Hybrydowy	120 zł	Zdjęcie poprzedniej stylizacji, opracowanie skórek, malowanie.	60 min	Bestseller
@@ -150,6 +145,12 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
   const handleGenerate = async () => {
     if (!inputText.trim()) return;
 
+    // Require login before generating
+    if (!isSignedIn) {
+      setShowLoginPrompt(true);
+      return;
+    }
+
     setAppState('PROCESSING');
     setError(null);
 
@@ -157,21 +158,19 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
       const data = await parsePricingData(inputText, false);
       setPricingData(data);
 
-      // Generate new draft ID and save
-      const newDraftId = generateDraftId();
-      setDraftId(newDraftId);
-
-      // Save draft to DB
-      await saveDraft({
-        draftId: newDraftId,
+      // Save pricelist directly to DB (user is logged in)
+      const newPricelistId = await savePricelistMutation({
+        name: pricelistName,
+        source: 'manual',
         pricingDataJson: JSON.stringify(data),
         themeConfigJson: JSON.stringify(themeConfig),
         templateId: selectedTemplateId,
-        rawInputData: inputText,
       });
 
-      // Update URL with draft ID
-      setSearchParams({ draft: newDraftId });
+      setPricelistId(newPricelistId);
+
+      // Update URL with pricelist ID
+      setSearchParams({ pricelist: newPricelistId });
 
       setAppState('PREVIEW');
 
@@ -188,94 +187,76 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
     }
   };
 
-  // Auto-save draft when theme or template changes
+  // Auto-save pricelist when theme or template changes
   const handleThemeChange = useCallback(async (newTheme: ThemeConfig) => {
     setThemeConfig(newTheme);
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(newTheme));
 
-    if (draftId) {
+    if (pricelistId) {
       try {
-        await updateDraft({
-          draftId,
+        await updatePricelist({
+          pricelistId: pricelistId as any,
           themeConfigJson: JSON.stringify(newTheme),
         });
       } catch (e) {
-        console.error('Error updating draft:', e);
+        console.error('Error updating pricelist:', e);
       }
     }
-  }, [draftId, updateDraft]);
+  }, [pricelistId, updatePricelist]);
 
   const handleTemplateChange = useCallback(async (templateId: string) => {
     setSelectedTemplateId(templateId);
     localStorage.setItem(LOCAL_STORAGE_TEMPLATE_KEY, templateId);
 
-    if (draftId) {
+    if (pricelistId) {
       try {
-        await updateDraft({
-          draftId,
+        await updatePricelist({
+          pricelistId: pricelistId as any,
           templateId,
         });
       } catch (e) {
-        console.error('Error updating draft:', e);
+        console.error('Error updating pricelist:', e);
       }
     }
-  }, [draftId, updateDraft]);
+  }, [pricelistId, updatePricelist]);
 
   const handleDataChange = useCallback(async (newData: PricingData) => {
     setPricingData(newData);
 
-    if (draftId) {
+    if (pricelistId) {
       try {
-        await updateDraft({
-          draftId,
+        await updatePricelist({
+          pricelistId: pricelistId as any,
           pricingDataJson: JSON.stringify(newData),
         });
       } catch (e) {
-        console.error('Error updating draft:', e);
+        console.error('Error updating pricelist:', e);
       }
     }
-  }, [draftId, updateDraft]);
+  }, [pricelistId, updatePricelist]);
 
-  const handleSaveToProfile = async () => {
-    if (!pricingData || !isSignedIn || !user || !draftId) return;
+  // Pricelist is already saved - update name if changed
+  const handleSaveName = async () => {
+    if (!pricelistId || !isSignedIn) return;
 
     setIsSaving(true);
     try {
-      const pricelistId = await convertDraftToPricelist({
-        draftId,
+      await updatePricelist({
+        pricelistId: pricelistId as any,
         name: pricelistName,
       });
-      setSavedPricelistId(pricelistId);
-      // Po zapisaniu ustaw sourcePricelistId żeby link podglądu działał
-      // (draft został usunięty, więc musimy używać pricelistId)
-      setSourcePricelistId(pricelistId);
-      // Wyczyść draftId bo draft został usunięty
-      setDraftId(null);
-
-      confetti({
-        particleCount: 50,
-        spread: 50,
-        origin: { y: 0.7 }
-      });
+      setIsEditingName(false);
     } catch (err: any) {
       console.error('Save error:', err);
-      setError(err.message || 'Wystąpił błąd podczas zapisywania cennika.');
+      setError(err.message || 'Wystąpił błąd podczas zapisywania nazwy.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCopyLink = () => {
-    // Jeśli edytujemy istniejący cennik, użyj jego ID dla stabilnego linka
-    // W przeciwnym razie użyj drafta
-    let url: string;
-    if (sourcePricelistId) {
-      url = `${window.location.origin}/preview?pricelist=${sourcePricelistId}`;
-    } else if (draftId) {
-      url = `${window.location.origin}/preview?draft=${draftId}`;
-    } else {
-      return;
-    }
+    if (!pricelistId) return;
+    const url = `${window.location.origin}/preview?pricelist=${pricelistId}`;
     navigator.clipboard.writeText(url);
     setLinkCopied(true);
     setTimeout(() => setLinkCopied(false), 2000);
@@ -284,21 +265,20 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
   const handleStartOver = () => {
     setAppState('INPUT');
     setPricingData(null);
-    setSavedPricelistId(null);
-    setSourcePricelistId(null);
     setError(null);
-    setDraftId(null);
+    setPricelistId(null);
+    setIsPricelistOptimized(false);
+    setPricelistName(`Cennik ${new Date().toLocaleDateString('pl-PL')}`);
     setSearchParams({});
   };
 
   // Handle optimization purchase
   const handleOptimizeClick = async () => {
     if (!isSignedIn) {
-      // Show login prompt instead of error
       setShowLoginPrompt(true);
       return;
     }
-    if (!draftId || !pricingData) {
+    if (!pricelistId || !pricingData) {
       setError('Najpierw wygeneruj cennik.');
       return;
     }
@@ -306,9 +286,9 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
     try {
       const result = await createCheckoutSession({
         product: 'pricelist_optimization',
-        successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
-        cancelUrl: `${window.location.origin}/start-generator?draft=${draftId}`,
-        draftId: draftId,
+        successUrl: `${window.location.origin}/optimization-results?pricelist=${pricelistId}`,
+        cancelUrl: `${window.location.origin}/start-generator?pricelist=${pricelistId}`,
+        pricelistId: pricelistId as any,
       });
 
       if (result.url) {
@@ -325,7 +305,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
 
   useEffect(() => {
     const triggerPendingCheckout = async () => {
-      if (pendingCheckoutParam === 'true' && isSignedIn && draftId && pricingData) {
+      if (pendingCheckoutParam === 'true' && isSignedIn && pricelistId && pricingData) {
         // Clear the pending_checkout param first
         const newParams = new URLSearchParams(searchParams);
         newParams.delete('pending_checkout');
@@ -335,9 +315,9 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
         try {
           const result = await createCheckoutSession({
             product: 'pricelist_optimization',
-            successUrl: `${window.location.origin}/optimization-results?draft=${draftId}`,
-            cancelUrl: `${window.location.origin}/start-generator?draft=${draftId}`,
-            draftId: draftId,
+            successUrl: `${window.location.origin}/optimization-results?pricelist=${pricelistId}`,
+            cancelUrl: `${window.location.origin}/start-generator?pricelist=${pricelistId}`,
+            pricelistId: pricelistId as any,
           });
 
           if (result.url) {
@@ -351,7 +331,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
     };
 
     triggerPendingCheckout();
-  }, [pendingCheckoutParam, isSignedIn, draftId, pricingData]);
+  }, [pendingCheckoutParam, isSignedIn, pricelistId, pricingData]);
 
   // Processing state
   if (appState === 'PROCESSING') {
@@ -434,7 +414,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
                 <div className="space-y-3">
                   <SignInButton
                     mode="modal"
-                    forceRedirectUrl={`${window.location.pathname}?draft=${draftId}&pending_checkout=true`}
+                    forceRedirectUrl={`${window.location.pathname}?pricelist=${pricelistId}&pending_checkout=true`}
                   >
                     <button className="w-full py-3 px-6 bg-[#D4A574] hover:bg-[#C9956C] text-white font-medium rounded-xl transition-colors">
                       Zaloguj się
@@ -443,7 +423,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
 
                   <SignUpButton
                     mode="modal"
-                    forceRedirectUrl={`${window.location.pathname}?draft=${draftId}&pending_checkout=true`}
+                    forceRedirectUrl={`${window.location.pathname}?pricelist=${pricelistId}&pending_checkout=true`}
                   >
                     <button className="w-full py-3 px-6 bg-slate-800/50 hover:bg-slate-800 text-white font-medium rounded-xl border border-slate-700 transition-colors">
                       Załóż konto
@@ -485,9 +465,15 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
                     type="text"
                     value={pricelistName}
                     onChange={(e) => setPricelistName(e.target.value)}
-                    onBlur={() => setIsEditingName(false)}
+                    onBlur={() => {
+                      setIsEditingName(false);
+                      handleSaveName();
+                    }}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter') setIsEditingName(false);
+                      if (e.key === 'Enter') {
+                        setIsEditingName(false);
+                        handleSaveName();
+                      }
                       if (e.key === 'Escape') setIsEditingName(false);
                     }}
                     autoFocus
@@ -506,7 +492,7 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
 
               <div className="flex items-center gap-3">
                 {/* Copy link button */}
-                {draftId && (
+                {pricelistId && (
                   <button
                     onClick={handleCopyLink}
                     className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-300 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
@@ -525,40 +511,17 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
                   </button>
                 )}
 
-                {/* Save button - only for logged-in users */}
-                {isSignedIn && user && !savedPricelistId && (
-                  <button
-                    onClick={handleSaveToProfile}
-                    disabled={isSaving}
-                    className="flex items-center gap-2 px-4 py-2 bg-[#D4A574] text-white text-sm font-medium rounded-lg hover:bg-[#C9956C] transition-colors disabled:opacity-50"
-                  >
-                    {isSaving ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Save className="w-4 h-4" />
-                    )}
-                    Zapisz w profilu
-                  </button>
-                )}
-
-                {/* Saved confirmation */}
-                {savedPricelistId && (
+                {/* Pricelist is auto-saved - show profile link */}
+                {isSignedIn && pricelistId && (
                   <div className="flex items-center gap-2 px-4 py-2 bg-emerald-900/50 text-emerald-400 text-sm font-medium rounded-lg border border-emerald-700">
                     <CheckCircle className="w-4 h-4" />
-                    Zapisano!
+                    Zapisano
                     <button
                       onClick={() => navigate('/profile')}
                       className="ml-2 underline hover:no-underline"
                     >
                       Zobacz w profilu
                     </button>
-                  </div>
-                )}
-
-                {/* Login prompt for non-logged-in users */}
-                {!isSignedIn && (
-                  <div className="flex items-center gap-2 text-sm text-slate-400">
-                    <span>Zaloguj się, aby zapisać cennik</span>
                   </div>
                 )}
               </div>
@@ -576,8 +539,8 @@ Depilacja całych nóg	150 zł	Woskiem miękkim lub twardym.	45 min`;
             onTemplateChange={handleTemplateChange}
             onDataChange={handleDataChange}
             enableDataEditing={true}
-            draftId={draftId}
-            showOptimizationCard={true}
+            pricelistId={pricelistId}
+            showOptimizationCard={!isPricelistOptimized}
             onOptimizeClick={handleOptimizeClick}
             isOptimizing={false}
             optimizationPrice="29,90 zł"

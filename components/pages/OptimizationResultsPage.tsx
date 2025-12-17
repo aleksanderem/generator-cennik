@@ -32,7 +32,8 @@ import {
   Zap,
 } from 'lucide-react';
 import { exportToPDFFromData } from '../../lib/pricelist-templates/utils/pdfExport';
-import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME, PricelistCategoryConfig } from '../../types';
+import { PricingData, OptimizationResult, ThemeConfig, DEFAULT_THEME, PricelistCategoryConfig, AuditResult } from '../../types';
+import AuditReportTab from '../AuditReportTab';
 import { RainbowButton } from '../ui/rainbow-button';
 import { Button } from '../ui/button';
 import { HeroHighlight } from '../ui/hero-highlight';
@@ -68,9 +69,9 @@ const mapProgressToStep = (msg: string): number => {
   return 0;
 };
 
-type TabType = 'summary' | 'original' | 'optimized' | 'changes' | 'suggestions';
+type TabType = 'summary' | 'original' | 'optimized' | 'changes' | 'suggestions' | 'report';
 
-const tabConfig: { id: TabType; label: string }[] = [
+const baseTabConfig: { id: TabType; label: string }[] = [
   { id: 'summary', label: 'Podsumowanie' },
   { id: 'original', label: 'Cennik oryginalny' },
   { id: 'optimized', label: 'Cennik zoptymalizowany' },
@@ -325,6 +326,38 @@ const OptimizationResultsPage: React.FC = () => {
 
   const updatePricelist = useMutation(api.pricelists.updatePricelist);
   const verifySession = useAction(api.stripe.verifySession);
+
+  // Fetch linked audit if pricelist has auditId
+  const linkedAudit = useQuery(
+    api.audits.getAudit,
+    existingPricelist?.auditId ? { auditId: existingPricelist.auditId } : "skip"
+  );
+
+  // Parse audit report from JSON
+  const auditReport: AuditResult | null = React.useMemo(() => {
+    if (!linkedAudit?.reportJson) return null;
+    try {
+      return JSON.parse(linkedAudit.reportJson) as AuditResult;
+    } catch (e) {
+      console.error('Failed to parse audit reportJson:', e);
+      return null;
+    }
+  }, [linkedAudit?.reportJson]);
+
+  // Build tabs dynamically - add "Raport" tab at the BEGINNING if auditReport exists
+  const tabConfig = React.useMemo(() => {
+    if (auditReport) {
+      return [{ id: 'report' as TabType, label: 'Raport' }, ...baseTabConfig];
+    }
+    return baseTabConfig;
+  }, [auditReport]);
+
+  // Set default tab to 'report' when auditReport is available
+  useEffect(() => {
+    if (auditReport && activeTab === 'summary') {
+      setActiveTab('report');
+    }
+  }, [auditReport]);
 
   // Load pricelist data
   useEffect(() => {
@@ -1671,6 +1704,11 @@ const OptimizationResultsPage: React.FC = () => {
               </motion.div>
             )}
           </motion.div>
+        )}
+
+        {/* Report Tab Content - only shown when auditReport exists */}
+        {activeTab === 'report' && auditReport && (
+          <AuditReportTab auditReport={auditReport} />
         )}
 
       </div>

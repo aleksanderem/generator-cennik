@@ -1,16 +1,18 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Sparkles, AlertTriangle, Flame, Star, ArrowRight, Settings2, Lightbulb, Check, Loader2, Layers } from 'lucide-react';
+import { Sparkles, AlertTriangle, Flame, Star, ArrowRight, Lightbulb, Check, Loader2, Layers, ArrowRightLeft, Copy } from 'lucide-react';
 import CategoryTree from './CategoryTree';
 import { PricingData, CategoryConfig, PricelistCategoryConfig, CategorySuggestionsResult, CategorySuggestion } from '../types';
 import { suggestCategories } from '../services/geminiService';
 import { Modal, ModalTrigger, ModalBody, ModalContent } from './ui/animated-modal';
 import { RainbowButton } from './ui/rainbow-button';
+import { DottedGlowBackground } from './ui/dotted-glow-background';
 
 interface CategoryConfigStepProps {
   pricingData: PricingData;
   onConfigComplete: (config: PricelistCategoryConfig) => void;
   onCancel: () => void;
   isLoading?: boolean;
+  initialConfig?: PricelistCategoryConfig | null;
 }
 
 export default function CategoryConfigStep({
@@ -18,27 +20,48 @@ export default function CategoryConfigStep({
   onConfigComplete,
   onCancel,
   isLoading = false,
+  initialConfig,
 }: CategoryConfigStepProps) {
-  // Initialize categories from pricingData
+  // Initialize categories from initialConfig (if editing) or from pricingData (if new)
   const initialCategories: CategoryConfig[] = useMemo(() => {
+    if (initialConfig?.categories && initialConfig.categories.length > 0) {
+      // Use saved config
+      return initialConfig.categories;
+    }
+    // Default: create from pricingData
     return pricingData.categories.map((cat, index) => ({
       categoryName: cat.categoryName,
       order: index,
       originalIndex: index,
       isAggregation: false,
     }));
-  }, [pricingData]);
+  }, [pricingData, initialConfig]);
 
   const [categories, setCategories] = useState<CategoryConfig[]>(initialCategories);
-  const [aggregationMode, setAggregationMode] = useState<'copy' | 'move'>('move');
-  const [enablePromotions, setEnablePromotions] = useState(false);
-  const [enableBestsellers, setEnableBestsellers] = useState(false);
+  const [aggregationMode, setAggregationMode] = useState<'copy' | 'move'>(
+    initialConfig?.aggregationMode || 'move'
+  );
+  const [enablePromotions, setEnablePromotions] = useState(
+    initialConfig?.enablePromotions || false
+  );
+  const [enableBestsellers, setEnableBestsellers] = useState(
+    initialConfig?.enableBestsellers || false
+  );
 
   // AI suggestions state
   const [suggestions, setSuggestions] = useState<CategorySuggestionsResult | null>(null);
   const [suggestionsLoading, setSuggestionsLoading] = useState(false);
   const [suggestionsError, setSuggestionsError] = useState<string | null>(null);
-  const [appliedSuggestions, setAppliedSuggestions] = useState<Set<number>>(new Set());
+
+  // Track applied suggestions by name (more robust than index-based tracking)
+  const appliedSuggestionNames = useMemo(() => {
+    return new Set(categories.map(cat => cat.categoryName));
+  }, [categories]);
+
+  // Check if a suggestion has already been applied (by name)
+  const isSuggestionApplied = (suggestionName: string) => {
+    return appliedSuggestionNames.has(suggestionName);
+  };
 
   // Fetch AI suggestions on mount
   useEffect(() => {
@@ -60,19 +83,20 @@ export default function CategoryConfigStep({
   }, [pricingData]);
 
   // Apply suggestion - add new category to the list
-  const applySuggestion = (suggestion: CategorySuggestion, suggestionIndex: number) => {
-    // Check if at least 1 service matches (requirement: even 1 service is enough)
-    if (suggestion.matchingServices.length >= 1) {
-      // Add new category at the end of the list
+  const applySuggestion = (suggestion: CategorySuggestion) => {
+    // Check if at least 1 service matches and not already applied
+    if (suggestion.matchingServices.length >= 1 && !isSuggestionApplied(suggestion.name)) {
+      // Use timestamp to create unique originalIndex
+      const uniqueOffset = Date.now() % 1000000;
       const newCategory: CategoryConfig = {
         categoryName: suggestion.name,
         order: categories.length, // Add at the end
-        originalIndex: -100 - suggestionIndex, // Negative index to mark as AI-suggested
+        originalIndex: -100 - uniqueOffset, // Unique negative index
         isAggregation: false,
+        matchingServiceNames: suggestion.matchingServices, // Store service names for AI category
       };
 
       setCategories(prev => [...prev, newCategory]);
-      setAppliedSuggestions(prev => new Set([...prev, suggestionIndex]));
     }
   };
 
@@ -116,63 +140,75 @@ export default function CategoryConfigStep({
     return result;
   }, [categories, enablePromotions, enableBestsellers, promoCount, bestsellerCount]);
 
-  // Handle move up
-  const handleMoveUp = (index: number) => {
-    const category = categories[index];
-    if (category.isAggregation) return; // Can't move aggregations
+  // Generate unique key for category
+  const getCategoryKey = (cat: CategoryConfig) =>
+    `${cat.isAggregation ? 'agg' : 'cat'}-${cat.originalIndex}-${cat.aggregationType || ''}`;
 
+  // Handle move up - receives category key from CategoryTree
+  const handleMoveUp = (categoryKey: string) => {
     setCategories(prev => {
       const sorted = [...prev].sort((a, b) => a.order - b.order);
-      const currentOrderIndex = sorted.findIndex(c => c.originalIndex === category.originalIndex);
+      const currentIndex = sorted.findIndex(c => getCategoryKey(c) === categoryKey);
 
-      if (currentOrderIndex <= 0) return prev; // Already at top
+      if (currentIndex <= 0) return prev; // Already at top
+
+      const current = sorted[currentIndex];
+      const above = sorted[currentIndex - 1];
 
       // Swap orders
-      const newCategories = prev.map(c => {
-        if (c.originalIndex === category.originalIndex) {
-          return { ...c, order: sorted[currentOrderIndex - 1].order };
+      return prev.map(c => {
+        const key = getCategoryKey(c);
+        if (key === categoryKey) {
+          return { ...c, order: above.order };
         }
-        if (c.originalIndex === sorted[currentOrderIndex - 1].originalIndex) {
-          return { ...c, order: category.order };
+        if (key === getCategoryKey(above)) {
+          return { ...c, order: current.order };
         }
         return c;
       });
-
-      return newCategories;
     });
   };
 
-  // Handle move down
-  const handleMoveDown = (index: number) => {
-    const category = categories[index];
-    if (category.isAggregation) return; // Can't move aggregations
-
+  // Handle move down - receives category key from CategoryTree
+  const handleMoveDown = (categoryKey: string) => {
     setCategories(prev => {
       const sorted = [...prev].sort((a, b) => a.order - b.order);
-      const currentOrderIndex = sorted.findIndex(c => c.originalIndex === category.originalIndex);
+      const currentIndex = sorted.findIndex(c => getCategoryKey(c) === categoryKey);
 
-      if (currentOrderIndex >= sorted.length - 1) return prev; // Already at bottom
+      if (currentIndex >= sorted.length - 1) return prev; // Already at bottom
+
+      const current = sorted[currentIndex];
+      const below = sorted[currentIndex + 1];
 
       // Swap orders
-      const newCategories = prev.map(c => {
-        if (c.originalIndex === category.originalIndex) {
-          return { ...c, order: sorted[currentOrderIndex + 1].order };
+      return prev.map(c => {
+        const key = getCategoryKey(c);
+        if (key === categoryKey) {
+          return { ...c, order: below.order };
         }
-        if (c.originalIndex === sorted[currentOrderIndex + 1].originalIndex) {
-          return { ...c, order: category.order };
+        if (key === getCategoryKey(below)) {
+          return { ...c, order: current.order };
         }
         return c;
       });
-
-      return newCategories;
     });
   };
 
-  // Handle rename
-  const handleRename = (index: number, newName: string) => {
+  // Handle rename - receives category key
+  const handleRename = (categoryKey: string, newName: string) => {
     setCategories(prev =>
-      prev.map((cat, i) => i === index ? { ...cat, categoryName: newName } : cat)
+      prev.map(cat => getCategoryKey(cat) === categoryKey ? { ...cat, categoryName: newName } : cat)
     );
+  };
+
+  // Handle delete - receives category key
+  const handleDelete = (categoryKey: string) => {
+    setCategories(prev => {
+      const newCategories = prev.filter(cat => getCategoryKey(cat) !== categoryKey);
+      // Recalculate orders
+      const sorted = [...newCategories].sort((a, b) => a.order - b.order);
+      return sorted.map((cat, i) => ({ ...cat, order: i }));
+    });
   };
 
   // Handle submit
@@ -187,29 +223,43 @@ export default function CategoryConfigStep({
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-amber-50/30">
-      <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="relative min-h-screen bg-gradient-to-br from-slate-50 to-amber-50/30 overflow-hidden">
+      {/* Dotted background like homepage hero */}
+      <DottedGlowBackground
+        className="pointer-events-none opacity-20"
+        opacity={1}
+        gap={10}
+        radius={1.6}
+        color="rgba(115, 115, 115, 0.7)"
+        glowColor="#D4A574"
+        backgroundOpacity={0}
+        speedMin={0.3}
+        speedMax={1.6}
+        speedScale={1}
+      />
+
+      <div className="relative z-10 max-w-5xl mx-auto px-4 py-8">
         {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 shadow-lg shadow-amber-500/30 mb-4">
-            <Settings2 className="w-8 h-8 text-white" />
+          <div className="w-16 h-16 mx-auto mb-4">
+            <img
+              src="/emblem.png"
+              alt="Beauty Audit"
+              className="w-full h-full object-contain"
+            />
           </div>
           <h1 className="text-2xl font-bold text-slate-800 mb-2">
             Konfiguracja kategorii
           </h1>
-          <p className="text-slate-600">
-            AuditorAI wygenerował <span className="font-semibold text-amber-600">{totalCategories} kategorii</span> i{' '}
-            <span className="font-semibold text-amber-600">{totalServices} usług</span> w Twoim cenniku.
-          </p>
-          <p className="text-sm text-slate-500 mt-1">
+          <p className="text-sm text-slate-500">
             Możesz je edytować i układać dowolnie poniżej.
           </p>
         </div>
 
-        {/* Two column layout: LEFT = categories, RIGHT = AI suggestions */}
+        {/* Two column layout: LEFT = AI suggestions, RIGHT = categories */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* LEFT COLUMN - Main card with categories */}
-          <div className="group relative h-fit rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300">
+          {/* Categories column (order-2 on desktop = right side) */}
+          <div className="group relative z-0 h-fit rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300 lg:order-2">
             <div className="relative z-10 flex flex-col rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)] overflow-hidden">
               {/* Category tree section */}
               <div className="p-6 border-b border-slate-100">
@@ -222,6 +272,7 @@ export default function CategoryConfigStep({
               onMoveUp={handleMoveUp}
               onMoveDown={handleMoveDown}
               onRename={handleRename}
+              onDelete={handleDelete}
               pricingData={pricingData}
               editable={true}
             />
@@ -236,43 +287,45 @@ export default function CategoryConfigStep({
             {/* Aggregation mode selector */}
             <div className="mb-6">
               <p className="text-xs text-slate-500 mb-3">Tryb agregacji:</p>
-              <div className="space-y-2">
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-amber-300 transition-colors">
+              <div className="grid grid-cols-2 gap-3">
+                <label className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                  aggregationMode === 'move'
+                    ? 'border-amber-400 bg-amber-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}>
                   <input
                     type="radio"
                     name="aggregationMode"
                     value="move"
                     checked={aggregationMode === 'move'}
                     onChange={() => setAggregationMode('move')}
-                    className="mt-0.5 text-amber-500 focus:ring-amber-500"
+                    className="sr-only"
                   />
-                  <div>
-                    <span className="text-sm font-medium text-slate-700">Przenieś</span>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Usługi pojawiają się tylko w agregacji (znikają z oryginalnej kategorii)
-                    </p>
-                  </div>
+                  <ArrowRightLeft size={20} className={aggregationMode === 'move' ? 'text-amber-600' : 'text-slate-400'} />
+                  <span className={`text-sm font-medium ${aggregationMode === 'move' ? 'text-amber-700' : 'text-slate-700'}`}>Przenieś</span>
+                  <p className="text-xs text-slate-500 text-center">
+                    Usługi znikają z oryginalnej kategorii
+                  </p>
                 </label>
 
-                <label className="flex items-start gap-3 p-3 rounded-lg border border-slate-200 bg-white cursor-pointer hover:border-amber-300 transition-colors">
+                <label className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                  aggregationMode === 'copy'
+                    ? 'border-amber-400 bg-amber-50'
+                    : 'border-slate-200 bg-white hover:border-slate-300'
+                }`}>
                   <input
                     type="radio"
                     name="aggregationMode"
                     value="copy"
                     checked={aggregationMode === 'copy'}
                     onChange={() => setAggregationMode('copy')}
-                    className="mt-0.5 text-amber-500 focus:ring-amber-500"
+                    className="sr-only"
                   />
-                  <div>
-                    <span className="text-sm font-medium text-slate-700">Kopiuj</span>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Usługi widoczne w agregacji i w oryginalnej kategorii
-                    </p>
-                    <div className="flex items-center gap-1 mt-1 text-xs text-amber-600">
-                      <AlertTriangle size={12} />
-                      <span>Uwaga: może tworzyć zduplikowaną treść</span>
-                    </div>
-                  </div>
+                  <Copy size={20} className={aggregationMode === 'copy' ? 'text-amber-600' : 'text-slate-400'} />
+                  <span className={`text-sm font-medium ${aggregationMode === 'copy' ? 'text-amber-700' : 'text-slate-700'}`}>Kopiuj</span>
+                  <p className="text-xs text-slate-500 text-center">
+                    Usługi widoczne w obu miejscach
+                  </p>
                 </label>
               </div>
             </div>
@@ -303,7 +356,7 @@ export default function CategoryConfigStep({
                 >
                   <span
                     className={`
-                      absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform
+                      absolute left-0 top-1 w-4 h-4 rounded-full bg-white shadow transition-transform
                       ${enablePromotions ? 'translate-x-7' : 'translate-x-1'}
                     `}
                   />
@@ -334,7 +387,7 @@ export default function CategoryConfigStep({
                 >
                   <span
                     className={`
-                      absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform
+                      absolute left-0 top-1 w-4 h-4 rounded-full bg-white shadow transition-transform
                       ${enableBestsellers ? 'translate-x-7' : 'translate-x-1'}
                     `}
                   />
@@ -343,47 +396,49 @@ export default function CategoryConfigStep({
             </div>
           </div>
 
-          {/* Actions */}
-          <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-t border-amber-100">
-            <div className="flex items-center justify-between gap-4">
-              <button
-                onClick={onCancel}
-                disabled={isLoading}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 hover:bg-white/50 rounded-lg transition-colors disabled:opacity-50"
-              >
-                Anuluj
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isLoading}
-                className="
-                  flex items-center gap-2 px-6 py-3 text-sm font-semibold text-white
-                  bg-gradient-to-r from-amber-500 to-orange-500
-                  hover:from-amber-600 hover:to-orange-600
-                  rounded-xl shadow-lg shadow-amber-500/30
-                  transition-all disabled:opacity-50 disabled:cursor-not-allowed
-                "
-              >
-                {isLoading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Optymalizowanie...
-                  </>
-                ) : (
-                  <>
-                    Rozpocznij optymalizację
-                    <ArrowRight size={16} />
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-            </div>
-          </div>
-          {/* END LEFT COLUMN */}
+          {/* Actions - dark theme with golden accents like LandingPage pricing */}
+          <div className="relative overflow-hidden rounded-b-xl">
+            {/* Dark background with circular golden glow */}
+            <div className="absolute inset-0 bg-[#0a0a0a]" />
+            <div
+              className="absolute bg-[radial-gradient(circle_at_30%_50%,rgb(212_165_116/70%),transparent_50%)]"
+              style={{ top: '-340%', width: '160%', height: '500%', left: '-30%' }}
+            />
 
-          {/* RIGHT COLUMN - AI Suggestions */}
-          <div className="space-y-4">
+            <div className="relative z-10 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <button
+                  onClick={onCancel}
+                  disabled={isLoading}
+                  className="px-4 py-2 text-[13px] font-medium text-white/60 hover:text-white hover:bg-white/5 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Anuluj
+                </button>
+                {isLoading ? (
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-6 py-3 text-[13px] font-semibold text-slate-900 bg-gradient-to-r from-amber-400 to-amber-500 rounded-xl opacity-50 cursor-not-allowed"
+                  >
+                    <div className="w-4 h-4 border-2 border-slate-900/30 border-t-slate-900 rounded-full animate-spin" />
+                    Optymalizowanie...
+                  </button>
+                ) : (
+                  <RainbowButton onClick={handleSubmit} className="px-6 text-[13px]">
+                    <span className="flex items-center gap-2">
+                      Rozpocznij optymalizację
+                      <ArrowRight size={16} />
+                    </span>
+                  </RainbowButton>
+                )}
+              </div>
+            </div>
+          </div>
+            </div>
+          </div>
+          {/* END Categories COLUMN */}
+
+          {/* AI Suggestions column (order-1 on desktop = left side) */}
+          <div className="space-y-4 lg:order-1">
             {suggestionsLoading ? (
               <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3">
                 <div className="relative z-10 flex flex-col rounded-xl bg-white p-6 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
@@ -438,91 +493,141 @@ export default function CategoryConfigStep({
                   </div>
                 )}
 
-                {/* Header: Znalezione kategorie with Modal */}
+                {/* Sugerowane kategorie - preview with modal */}
                 <div className="group relative rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3 transition-all duration-300">
-                  <div className="relative z-10 flex flex-col items-center rounded-xl bg-white p-6 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center shadow-lg mb-4">
-                      <Layers className="w-6 h-6 text-white" />
+                  <div className="relative z-10 flex flex-col rounded-xl bg-white shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)] overflow-hidden">
+                    {/* Header like other cards */}
+                    <div className="p-5 pb-3">
+                      <h2 className="text-sm font-semibold text-slate-700 flex items-center gap-2">
+                        <Lightbulb size={16} className="text-amber-500" />
+                        Sugerowane kategorie
+                      </h2>
                     </div>
-                    <h3 className="text-base font-semibold text-slate-800 mb-1">Znalezione kategorie</h3>
-                    <p className="text-sm text-slate-500 mb-5">{suggestions.suggestions.length} sugestii od AI</p>
 
-                    <Modal>
-                      <ModalTrigger className="p-0 border-0 bg-transparent">
-                        <RainbowButton variant="white" className="h-10 px-6 text-sm">
-                          <Lightbulb className="w-4 h-4 mr-2" />
-                          Zobacz kategorie
-                        </RainbowButton>
-                      </ModalTrigger>
-                      <ModalBody className="md:max-w-[600px]">
-                        <ModalContent>
-                          <h4 className="text-xl font-bold text-slate-800 text-center mb-2">
-                            Sugerowane kategorie
-                          </h4>
-                          <p className="text-sm text-slate-500 text-center mb-6">
-                            Wybierz kategorie, które chcesz dodać do swojego cennika
-                          </p>
-
-                          <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
-                            {suggestions.suggestions.map((suggestion, index) => (
-                              <div
-                                key={index}
-                                className={`
-                                  rounded-xl p-4 border transition-all
-                                  ${appliedSuggestions.has(index)
-                                    ? 'border-green-300 bg-green-50'
-                                    : 'border-slate-200 bg-slate-50 hover:border-violet-300 hover:bg-violet-50/50'}
-                                `}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <h4 className="font-semibold text-sm text-slate-800">{suggestion.name}</h4>
-                                      <span className={`
-                                        text-[10px] px-1.5 py-0.5 rounded-full font-medium
-                                        ${suggestion.priority === 'high'
-                                          ? 'bg-green-100 text-green-700'
-                                          : suggestion.priority === 'medium'
-                                            ? 'bg-amber-100 text-amber-700'
-                                            : 'bg-slate-100 text-slate-600'}
-                                      `}>
-                                        {suggestion.matchingServices.length} usług
-                                      </span>
-                                    </div>
-                                    <p className="text-xs text-slate-500 mb-2">{suggestion.description}</p>
-                                    {suggestion.matchingServices.length > 0 && (
-                                      <p className="text-[10px] text-slate-400">
-                                        np. {suggestion.matchingServices.slice(0, 3).join(', ')}
-                                        {suggestion.matchingServices.length > 3 && '...'}
-                                      </p>
-                                    )}
-                                  </div>
-                                  <button
-                                    onClick={() => applySuggestion(suggestion, index)}
-                                    disabled={appliedSuggestions.has(index)}
-                                    className={`
-                                      shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all
-                                      ${appliedSuggestions.has(index)
-                                        ? 'bg-green-100 text-green-700 cursor-default'
-                                        : 'bg-violet-500 text-white hover:bg-violet-600'}
-                                    `}
-                                  >
-                                    {appliedSuggestions.has(index) ? (
-                                      <span className="flex items-center gap-1">
-                                        <Check className="w-3 h-3" />
-                                        Dodano
-                                      </span>
-                                    ) : (
-                                      'Dodaj'
-                                    )}
-                                  </button>
+                    {/* Preview of first 2 categories */}
+                    <div className="px-5 relative">
+                      <div className="space-y-2">
+                        {suggestions.suggestions.slice(0, 2).map((suggestion, index) => (
+                          <div
+                            key={index}
+                            className={`relative rounded-lg p-3 border transition-all ${
+                              index === 1 ? '' : 'border-slate-200 bg-slate-50'
+                            } ${index === 1 ? 'border-slate-200/50 bg-slate-50/50' : ''}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-sm font-medium text-slate-700 truncate">{suggestion.name}</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium shrink-0">
+                                    {suggestion.matchingServices.length} usług
+                                  </span>
                                 </div>
+                                <p className="text-xs text-slate-500 line-clamp-2">{suggestion.description}</p>
                               </div>
-                            ))}
+                              <button
+                                onClick={() => applySuggestion(suggestion)}
+                                disabled={isSuggestionApplied(suggestion.name)}
+                                className={`shrink-0 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                                  isSuggestionApplied(suggestion.name)
+                                    ? 'bg-green-100 text-green-700'
+                                    : 'bg-amber-500 text-white hover:bg-amber-600'
+                                }`}
+                              >
+                                {isSuggestionApplied(suggestion.name) ? <Check className="w-3 h-3" /> : 'Dodaj'}
+                              </button>
+                            </div>
+                            {/* Gradient overlay on second item */}
+                            {index === 1 && (
+                              <div className="absolute inset-0 bg-gradient-to-b from-transparent via-white/70 to-white rounded-lg pointer-events-none" />
+                            )}
                           </div>
-                        </ModalContent>
-                      </ModalBody>
-                    </Modal>
+                        ))}
+                      </div>
+
+                      {/* Fade overlay at bottom */}
+                      {suggestions.suggestions.length > 2 && (
+                        <div className="absolute bottom-0 left-5 right-5 h-8 bg-gradient-to-t from-white to-transparent pointer-events-none" />
+                      )}
+                    </div>
+
+                    {/* Zobacz więcej link */}
+                    <div className="px-5 pb-5 pt-2">
+                      <Modal>
+                        <ModalTrigger className="w-full p-0 border-0 bg-transparent">
+                          <span className="text-xs text-slate-400 hover:text-amber-600 cursor-pointer transition-colors">
+                            Zobacz wszystkie ({suggestions.suggestions.length})
+                          </span>
+                        </ModalTrigger>
+                        <ModalBody className="md:max-w-[600px]">
+                          <ModalContent>
+                            <h4 className="text-xl font-bold text-slate-800 text-center mb-2">
+                              Sugerowane kategorie
+                            </h4>
+                            <p className="text-sm text-slate-500 text-center mb-6">
+                              Wybierz kategorie, które chcesz dodać do swojego cennika
+                            </p>
+
+                            <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2">
+                              {suggestions.suggestions.map((suggestion, index) => (
+                                <div
+                                  key={index}
+                                  className={`
+                                    rounded-xl p-4 border transition-all
+                                    ${isSuggestionApplied(suggestion.name)
+                                      ? 'border-green-300 bg-green-50'
+                                      : 'border-slate-200 bg-slate-50 hover:border-amber-300 hover:bg-amber-50/50'}
+                                  `}
+                                >
+                                  <div className="flex items-start justify-between gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        <h4 className="font-semibold text-sm text-slate-800">{suggestion.name}</h4>
+                                        <span className={`
+                                          text-[10px] px-1.5 py-0.5 rounded-full font-medium
+                                          ${suggestion.priority === 'high'
+                                            ? 'bg-green-100 text-green-700'
+                                            : suggestion.priority === 'medium'
+                                              ? 'bg-amber-100 text-amber-700'
+                                              : 'bg-slate-100 text-slate-600'}
+                                        `}>
+                                          {suggestion.matchingServices.length} usług
+                                        </span>
+                                      </div>
+                                      <p className="text-xs text-slate-500 mb-2">{suggestion.description}</p>
+                                      {suggestion.matchingServices.length > 0 && (
+                                        <p className="text-[10px] text-slate-400">
+                                          np. {suggestion.matchingServices.slice(0, 3).join(', ')}
+                                          {suggestion.matchingServices.length > 3 && '...'}
+                                        </p>
+                                      )}
+                                    </div>
+                                    <button
+                                      onClick={() => applySuggestion(suggestion)}
+                                      disabled={isSuggestionApplied(suggestion.name)}
+                                      className={`
+                                        shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all
+                                        ${isSuggestionApplied(suggestion.name)
+                                          ? 'bg-green-100 text-green-700 cursor-default'
+                                          : 'bg-amber-500 text-white hover:bg-amber-600'}
+                                      `}
+                                    >
+                                      {isSuggestionApplied(suggestion.name) ? (
+                                        <span className="flex items-center gap-1">
+                                          <Check className="w-3 h-3" />
+                                          Dodano
+                                        </span>
+                                      ) : (
+                                        'Dodaj'
+                                      )}
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </ModalContent>
+                        </ModalBody>
+                      </Modal>
+                    </div>
                   </div>
                 </div>
               </>

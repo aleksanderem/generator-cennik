@@ -1,10 +1,13 @@
 import { v } from "convex/values";
 import { mutation } from "./_generated/server";
 
-// Status audytu
+// Status audytu - rozbudowane statusy
 const auditStatusValidator = v.union(
   v.literal("pending"),
-  v.literal("processing"),
+  v.literal("processing"),      // LEGACY
+  v.literal("scraping"),
+  v.literal("scraping_retry"),
+  v.literal("analyzing"),
   v.literal("completed"),
   v.literal("failed")
 );
@@ -127,7 +130,9 @@ export const updateAuditStatus = mutation({
     const now = Date.now();
     const updates: Record<string, unknown> = { status: args.status };
 
-    if (args.status === "processing" && !audit.startedAt) {
+    // Active statuses that start the audit
+    const activeStatuses = ["scraping", "scraping_retry", "analyzing"];
+    if (activeStatuses.includes(args.status) && !audit.startedAt) {
       updates.startedAt = now;
       updates.sourceUrl = audit.sourceUrl || "https://booksy.com/pl-pl/test-salon";
     }
@@ -352,5 +357,136 @@ export const updatePurchaseStatus = mutation({
     await ctx.db.patch(args.purchaseId, updates);
 
     return null;
+  },
+});
+
+// Dodaj dane analizy AI do audytu (dev only)
+export const addAnalysisData = mutation({
+  args: { auditId: v.id("audits") },
+  returns: v.object({
+    keywordReportId: v.id("keywordReports"),
+    categoryProposalId: v.id("categoryProposals"),
+  }),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audyt nie znaleziony");
+    }
+
+    // Jeśli dane już istnieją, zwróć je
+    if (audit.keywordReportId && audit.categoryProposalId) {
+      return {
+        keywordReportId: audit.keywordReportId,
+        categoryProposalId: audit.categoryProposalId,
+      };
+    }
+
+    const now = Date.now();
+
+    // Utwórz keyword report z przykładowymi danymi dla salonu beauty
+    const keywordReportId = await ctx.db.insert("keywordReports", {
+      auditId: args.auditId,
+      keywords: [
+        { keyword: "depilacja laserowa", count: 45, categories: ["Depilacja Laserowa Thunder"], services: ["Bikini brazylijskie", "Całe ciało", "Nogi"] },
+        { keyword: "thunder", count: 38, categories: ["Depilacja Laserowa Thunder"], services: ["Thunder - Bikini", "Thunder - Całe nogi", "Thunder - Pachy"] },
+        { keyword: "kobieta", count: 32, categories: ["Depilacja Laserowa Thunder"], services: ["Bikini - Kobieta", "Całe nogi - Kobieta"] },
+        { keyword: "mężczyzna", count: 18, categories: ["Depilacja Laserowa Thunder"], services: ["Bikini - Mężczyzna", "Klatka piersiowa"] },
+        { keyword: "bikini", count: 24, categories: ["Depilacja Laserowa Thunder"], services: ["Bikini brazylijskie", "Bikini pełne", "Bikini podstawowe"] },
+        { keyword: "zabieg", count: 56, categories: ["Depilacja Laserowa Thunder", "Promocje"], services: ["4 zabiegi", "6 zabiegów"] },
+        { keyword: "promocja", count: 8, categories: ["Promocje Grudzień"], services: ["-30% na pierwszy zabieg", "-50% na drugi zabieg"] },
+        { keyword: "laser", count: 42, categories: ["Depilacja Laserowa Thunder"], services: ["Laser Thunder", "Depilacja laserowa"] },
+      ],
+      categoryDistribution: [
+        { categoryName: "Depilacja Laserowa Thunder - Kobieta", keywordCount: 45, topKeywords: ["depilacja", "thunder", "kobieta", "bikini"] },
+        { categoryName: "Depilacja Laserowa Thunder - Mężczyzna", keywordCount: 28, topKeywords: ["depilacja", "thunder", "mężczyzna", "klatka"] },
+        { categoryName: "Promocje Grudzień", keywordCount: 12, topKeywords: ["promocja", "gratis", "rabat", "-50%"] },
+      ],
+      suggestions: [
+        "Dodaj słowo 'bezbolesna' do opisów - to jeden z najczęściej wyszukiwanych terminów dla depilacji laserowej",
+        "Rozważ dodanie słów 'skuteczna' i 'trwałe usunięcie owłosienia' w opisach usług",
+        "Brakuje słów kluczowych związanych z technologią - dodaj 'aleksandryt' i 'Nd:YAG'",
+        "Dodaj informacje o typach skóry - 'wszystkie fototypy' to ważne słowo kluczowe",
+        "Rozważ dodanie 'certyfikowany' lub 'profesjonalny' dla budowania zaufania",
+      ],
+      createdAt: now,
+    });
+
+    // Pobierz rawData z audytu do stworzenia struktury
+    const originalStructure = {
+      categories: [
+        { name: "✦ PROMOCJE GRUDZIEŃ✦", services: ["promo1", "promo2", "promo3", "promo4", "promo5", "promo6"] },
+        { name: "🔲 DEPILACJA LASEROWA THUNDER KOBIETA", services: Array(70).fill("service") },
+        { name: "🔲 DEPILACJA LASEROWA THUNDER MĘŻCZYZNA", services: Array(45).fill("service") },
+      ],
+    };
+
+    const proposedStructure = {
+      categories: [
+        { name: "⭐ BESTSELLERY", services: ["Całe ciało - Kobieta", "Bikini brazylijskie - Kobieta", "Nogi całe - Kobieta"] },
+        { name: "🎁 PROMOCJE ŚWIĄTECZNE", services: ["promo1", "promo2", "promo3", "promo4", "promo5", "promo6"] },
+        { name: "👩 DEPILACJA LASEROWA - KOBIETA", services: Array(70).fill("service") },
+        { name: "👨 DEPILACJA LASEROWA - MĘŻCZYZNA", services: Array(45).fill("service") },
+        { name: "📦 PAKIETY ZABIEGÓW", services: ["Pakiet 4 zabiegi", "Pakiet 6 zabiegów"] },
+      ],
+    };
+
+    // Utwórz category proposal
+    const categoryProposalId = await ctx.db.insert("categoryProposals", {
+      auditId: args.auditId,
+      originalStructureJson: JSON.stringify(originalStructure),
+      proposedStructureJson: JSON.stringify(proposedStructure),
+      changes: [
+        {
+          type: "create_category" as const,
+          description: "Utworzenie kategorii 'Bestsellery' z najpopularniejszymi usługami",
+          toCategory: "⭐ BESTSELLERY",
+          services: ["Całe ciało - Kobieta", "Bikini brazylijskie - Kobieta", "Nogi całe - Kobieta"],
+          reason: "Bestsellery na górze cennika zwiększają konwersję nawet o 23% - klienci szybciej znajdują najpopularniejsze usługi",
+        },
+        {
+          type: "rename_category" as const,
+          description: "Zmiana nazwy z '✦ PROMOCJE GRUDZIEŃ✦' na '🎁 PROMOCJE ŚWIĄTECZNE'",
+          fromCategory: "✦ PROMOCJE GRUDZIEŃ✦",
+          toCategory: "🎁 PROMOCJE ŚWIĄTECZNE",
+          reason: "Bardziej uniwersalna nazwa pozwoli używać kategorii dłużej bez konieczności zmian",
+        },
+        {
+          type: "rename_category" as const,
+          description: "Uproszczenie nazwy kategorii dla kobiet",
+          fromCategory: "🔲 DEPILACJA LASEROWA THUNDER KOBIETA",
+          toCategory: "👩 DEPILACJA LASEROWA - KOBIETA",
+          reason: "Krótsze, czytelniejsze nazwy kategorii ułatwiają nawigację w cenniku",
+        },
+        {
+          type: "rename_category" as const,
+          description: "Uproszczenie nazwy kategorii dla mężczyzn",
+          fromCategory: "🔲 DEPILACJA LASEROWA THUNDER MĘŻCZYZNA",
+          toCategory: "👨 DEPILACJA LASEROWA - MĘŻCZYZNA",
+          reason: "Spójna konwencja nazewnictwa z kategorią dla kobiet",
+        },
+        {
+          type: "create_category" as const,
+          description: "Utworzenie kategorii z pakietami zabiegów",
+          toCategory: "📦 PAKIETY ZABIEGÓW",
+          services: ["Pakiet 4 zabiegi", "Pakiet 6 zabiegów"],
+          reason: "Wydzielenie pakietów ułatwia klientom znalezienie opcji oszczędności przy seriach zabiegów",
+        },
+        {
+          type: "reorder_categories" as const,
+          description: "Zmiana kolejności: Bestsellery → Promocje → Kobieta → Mężczyzna → Pakiety",
+          reason: "Optymalna kolejność: najpierw to co przyciąga uwagę (bestsellery, promocje), potem szczegółowa oferta",
+        },
+      ],
+      status: "pending",
+      createdAt: now,
+    });
+
+    // Zaktualizuj audyt z nowymi ID
+    await ctx.db.patch(args.auditId, {
+      keywordReportId,
+      categoryProposalId,
+    });
+
+    return { keywordReportId, categoryProposalId };
   },
 });

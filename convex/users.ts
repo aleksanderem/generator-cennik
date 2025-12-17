@@ -98,6 +98,24 @@ export const getUserByClerkId = internalQuery({
   },
 });
 
+// List all users (for debugging)
+export const listAllUsers = internalQuery({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("users"),
+    clerkId: v.string(),
+    email: v.string(),
+  })),
+  handler: async (ctx) => {
+    const users = await ctx.db.query("users").collect();
+    return users.map(u => ({
+      _id: u._id,
+      clerkId: u.clerkId,
+      email: u.email,
+    }));
+  },
+});
+
 // Dodaj kredyty użytkownikowi (po udanej płatności)
 export const addCredits = internalMutation({
   args: {

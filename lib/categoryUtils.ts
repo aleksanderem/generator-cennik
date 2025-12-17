@@ -61,6 +61,18 @@ export function applyConfigToPricingData(
     .filter(c => !c.isAggregation)
     .sort((a, b) => a.order - b.order);
 
+  // Krok 1.5: Zbierz nazwy usług z kategorii AI (do późniejszego usunięcia w trybie "przenieś")
+  const aiCategoryServiceNames: Set<string> = new Set();
+  if (config.aggregationMode === 'move') {
+    for (const catConfig of sortedCategories) {
+      if (catConfig.originalIndex < 0 && catConfig.matchingServiceNames) {
+        catConfig.matchingServiceNames.forEach(name =>
+          aiCategoryServiceNames.add(name.toLowerCase())
+        );
+      }
+    }
+  }
+
   // Krok 2: Buduj nowe kategorie
   const newCategories: Category[] = [];
 
@@ -107,18 +119,55 @@ export function applyConfigToPricingData(
 
   // Krok 4: Dodaj zwykłe kategorie
   for (const catConfig of sortedCategories) {
+    // Sprawdź czy to kategoria AI (ujemny originalIndex)
+    if (catConfig.originalIndex < 0 && catConfig.matchingServiceNames && catConfig.matchingServiceNames.length > 0) {
+      // Kategoria AI - znajdź usługi po nazwach ze wszystkich kategorii
+      const matchingServices: ServiceItem[] = [];
+      const serviceNamesLower = catConfig.matchingServiceNames.map(n => n.toLowerCase());
+
+      for (const origCat of originalData.categories) {
+        for (const service of origCat.services) {
+          // Sprawdź czy nazwa usługi pasuje (case-insensitive)
+          if (serviceNamesLower.some(name => service.name.toLowerCase().includes(name) || name.includes(service.name.toLowerCase()))) {
+            matchingServices.push({ ...service });
+          }
+        }
+      }
+
+      // Dodaj kategorię AI tylko jeśli znaleziono usługi
+      if (matchingServices.length > 0) {
+        newCategories.push({
+          categoryName: catConfig.categoryName,
+          services: matchingServices,
+        });
+      }
+      continue;
+    }
+
+    // Zwykła kategoria - pobierz z oryginalnych danych
     const originalCategory = originalData.categories[catConfig.originalIndex];
     if (!originalCategory) continue;
 
     let services = [...originalCategory.services];
 
-    // Jeśli tryb "przenieś", usuń usługi które są w agregacjach
+    // Jeśli tryb "przenieś", usuń usługi które są w agregacjach lub kategoriach AI
     if (config.aggregationMode === 'move') {
       if (config.enablePromotions) {
         services = services.filter(s => !s.isPromo);
       }
       if (config.enableBestsellers) {
         services = services.filter(s => !s.tags?.includes('Bestseller'));
+      }
+      // Usuń usługi które zostały przeniesione do kategorii AI
+      if (aiCategoryServiceNames.size > 0) {
+        const aiNamesArray = Array.from(aiCategoryServiceNames);
+        services = services.filter(s => {
+          const nameLower = s.name.toLowerCase();
+          // Sprawdź czy nazwa usługi pasuje do którejkolwiek nazwy z kategorii AI
+          return !aiNamesArray.some(aiName =>
+            nameLower.includes(aiName) || aiName.includes(nameLower)
+          );
+        });
       }
     }
 

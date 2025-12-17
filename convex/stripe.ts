@@ -48,8 +48,8 @@ export const createCheckoutSession = action({
     ),
     successUrl: v.string(),
     cancelUrl: v.string(),
-    // Opcjonalny draftId dla optymalizacji cennika
-    draftId: v.optional(v.string()),
+    // Opcjonalny pricelistId dla optymalizacji cennika
+    pricelistId: v.optional(v.id("pricelists")),
   },
   returns: v.object({
     url: v.union(v.string(), v.null()),
@@ -105,7 +105,7 @@ export const createCheckoutSession = action({
         product: args.product,
         userId: user._id,
         clerkId: identity.subject,
-        ...(args.draftId && { draftId: args.draftId }),
+        ...(args.pricelistId && { pricelistId: args.pricelistId }),
       },
       locale: "pl",
       // Zbierz dane do faktury podczas checkout
@@ -176,7 +176,7 @@ export const verifySession = action({
     product: v.optional(
       v.union(v.literal("audit"), v.literal("audit_consultation"), v.literal("pricelist_optimization"))
     ),
-    draftId: v.optional(v.string()),
+    pricelistId: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
     try {
@@ -187,7 +187,7 @@ export const verifySession = action({
         return {
           success: true,
           product: session.metadata?.product as ProductType | undefined,
-          draftId: session.metadata?.draftId,
+          pricelistId: session.metadata?.pricelistId,
         };
       }
 
@@ -415,16 +415,16 @@ export const handleWebhook = internalAction({
               });
 
             if (purchase) {
-              // Dla optymalizacji cennika - połącz draft z purchaseId
-              if (purchase.product === "pricelist_optimization" && session.metadata?.draftId) {
-                await ctx.runMutation(internal.pricelistDrafts.linkDraftToPurchase, {
-                  draftId: session.metadata.draftId,
+              // Dla optymalizacji cennika - połącz pricelist z purchaseId
+              if (purchase.product === "pricelist_optimization" && session.metadata?.pricelistId) {
+                await ctx.runMutation(internal.pricelists.linkPurchaseToPricelist, {
+                  pricelistId: session.metadata.pricelistId as Id<"pricelists">,
                   purchaseId: purchaseId,
                 });
                 console.log(
-                  `Linked draft ${session.metadata.draftId} to purchase ${purchaseId}`
+                  `Linked pricelist ${session.metadata.pricelistId} to purchase ${purchaseId}`
                 );
-              } else {
+              } else if (purchase.product !== "pricelist_optimization") {
                 // Dla audytów - utwórz audyt w statusie pending
                 await ctx.runMutation(internal.audits.createPendingAudit, {
                   userId: purchase.userId,

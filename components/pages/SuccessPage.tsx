@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useAction } from 'convex/react';
+import { useAction, useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { Sparkles, Link2, Clock, ArrowRight, Loader2, PartyPopper, Check, CheckCircle } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -25,6 +25,10 @@ const SuccessPage: React.FC = () => {
   const [verificationStatus, setVerificationStatus] = useState<'loading' | 'success' | 'error'>('loading');
 
   const verifySession = useAction(api.stripe.verifySession);
+
+  // Get pending audit after payment verification
+  const activeAudit = useQuery(api.audits.getActiveAudit);
+  const startAudit = useMutation(api.audits.startAudit);
 
   // Verify payment on mount
   useEffect(() => {
@@ -65,21 +69,33 @@ const SuccessPage: React.FC = () => {
       return;
     }
 
+    // Check if we have a pending audit
+    if (!activeAudit || activeAudit.status !== 'pending') {
+      setError('Nie znaleziono oczekującego audytu. Odśwież stronę lub skontaktuj się z nami.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
-    // TODO: Save Booksy URL to database and trigger audit
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    try {
+      // Start the audit with the Booksy URL
+      await startAudit({ auditId: activeAudit._id, sourceUrl: booksyUrl });
 
-    setIsSubmitting(false);
-    setIsSubmitted(true);
+      setIsSubmitted(true);
 
-    // Another confetti burst
-    confetti({
-      particleCount: 50,
-      spread: 60,
-      origin: { y: 0.7 }
-    });
+      // Confetti burst on success
+      confetti({
+        particleCount: 50,
+        spread: 60,
+        origin: { y: 0.7 }
+      });
+    } catch (err: any) {
+      console.error('Start audit error:', err);
+      setError(err.message || 'Wystąpił błąd podczas rozpoczynania audytu');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (verificationStatus === 'loading') {

@@ -1,15 +1,19 @@
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, internalQuery } from "./_generated/server";
+import { internal } from "./_generated/api";
 
-// Typ statusu audytu
+// Typ statusu audytu - rozbudowane statusy
 const auditStatusValidator = v.union(
-  v.literal("pending"),
-  v.literal("processing"),
-  v.literal("completed"),
-  v.literal("failed")
+  v.literal("pending"),         // Oczekuje na podanie URL
+  v.literal("processing"),      // LEGACY: dla backwards compatibility (= scraping)
+  v.literal("scraping"),        // Pobieranie danych z Booksy (Firecrawl)
+  v.literal("scraping_retry"),  // Retry scrapingu po błędzie
+  v.literal("analyzing"),       // AI analizuje dane
+  v.literal("completed"),       // Zakończony
+  v.literal("failed")           // Błąd
 );
 
-// Typ wyniku audytu
+// Typ wyniku audytu - rozbudowany o nowe pola
 const auditValidator = v.object({
   _id: v.id("audits"),
   _creationTime: v.number(),
@@ -18,12 +22,36 @@ const auditValidator = v.object({
   status: auditStatusValidator,
   sourceUrl: v.optional(v.string()),
   sourceType: v.union(v.literal("booksy"), v.literal("manual")),
+  // Progress tracking
+  progress: v.optional(v.number()),
+  progressMessage: v.optional(v.string()),
+  // Error handling
+  errorMessage: v.optional(v.string()),
+  retryCount: v.optional(v.number()),
+  lastRetryAt: v.optional(v.number()),
+  // Scraped data
+  scrapedDataJson: v.optional(v.string()),
+  scrapedCategoriesCount: v.optional(v.number()),
+  scrapedServicesCount: v.optional(v.number()),
+  salonName: v.optional(v.string()),
+  salonAddress: v.optional(v.string()),
+  salonLogoUrl: v.optional(v.string()),
+  // Wyniki audytu
   overallScore: v.optional(v.number()),
   rawData: v.optional(v.string()),
   reportJson: v.optional(v.string()),
   reportPdfUrl: v.optional(v.string()),
+  // Linked pricelists
+  basePricelistId: v.optional(v.id("pricelists")),
+  proPricelistId: v.optional(v.id("pricelists")),
+  // Multi-step analysis (Audyt Booksy v2)
+  keywordReportId: v.optional(v.id("keywordReports")),
+  categoryProposalId: v.optional(v.id("categoryProposals")),
+  optimizationOptionsId: v.optional(v.id("optimizationOptions")),
+  // Timestamps
   createdAt: v.number(),
   startedAt: v.optional(v.number()),
+  scrapingCompletedAt: v.optional(v.number()),
   completedAt: v.optional(v.number()),
 });
 
@@ -56,7 +84,7 @@ export const getUserAudits = query({
   },
 });
 
-// Pobierz aktywny audyt użytkownika (pending lub processing)
+// Pobierz aktywny audyt użytkownika (pending, scraping, scraping_retry lub analyzing)
 export const getActiveAudit = query({
   args: {},
   returns: v.union(auditValidator, v.null()),
@@ -75,16 +103,16 @@ export const getActiveAudit = query({
       return null;
     }
 
-    // Szukaj audytu w statusie pending lub processing
+    // Szukaj audytu w aktywnym statusie
     const audits = await ctx.db
       .query("audits")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
       .collect();
 
-    const activeAudit = audits.find(
-      (a) => a.status === "pending" || a.status === "processing"
-    );
+    // Include "processing" for backwards compatibility
+    const activeStatuses = ["pending", "processing", "scraping", "scraping_retry", "analyzing"];
+    const activeAudit = audits.find((a) => activeStatuses.includes(a.status));
 
     return activeAudit ?? null;
   },
@@ -137,7 +165,7 @@ export const createPendingAudit = internalMutation({
   },
 });
 
-// Rozpocznij audyt (podaj URL i zmień status na processing)
+// Rozpocznij audyt (podaj URL i uruchom scraping)
 export const startAudit = mutation({
   args: {
     auditId: v.id("audits"),
@@ -169,10 +197,19 @@ export const startAudit = mutation({
       throw new Error("Audyt już został rozpoczęty");
     }
 
+    // Ustaw status na scraping i zapisz URL
     await ctx.db.patch(args.auditId, {
       sourceUrl: args.sourceUrl,
-      status: "processing",
+      status: "scraping",
       startedAt: Date.now(),
+      progress: 0,
+      progressMessage: "Rozpoczynanie audytu...",
+      retryCount: 0,
+    });
+
+    // Uruchom scraping asynchronicznie
+    await ctx.scheduler.runAfter(0, internal.auditActions.scrapeBooksyProfile, {
+      auditId: args.auditId,
     });
 
     return true;
@@ -206,18 +243,14 @@ export const startNewAudit = mutation({
     }
 
     // Sprawdź czy nie ma już aktywnego audytu
+    const activeStatuses = ["pending", "scraping", "scraping_retry", "analyzing"];
     const existingAudit = await ctx.db
       .query("audits")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .filter((q) =>
-        q.or(
-          q.eq(q.field("status"), "pending"),
-          q.eq(q.field("status"), "processing")
-        )
-      )
-      .first();
+      .collect();
 
-    if (existingAudit) {
+    const hasActiveAudit = existingAudit.some((a) => activeStatuses.includes(a.status));
+    if (hasActiveAudit) {
       throw new Error("Masz już aktywny audyt w trakcie");
     }
 
@@ -226,14 +259,22 @@ export const startNewAudit = mutation({
       credits: user.credits - 1,
     });
 
-    // Utwórz audyt od razu w statusie processing
+    // Utwórz audyt w statusie scraping
     const auditId = await ctx.db.insert("audits", {
       userId: user._id,
-      status: "processing",
+      status: "scraping",
       sourceUrl: args.sourceUrl,
       sourceType: "booksy",
       createdAt: Date.now(),
       startedAt: Date.now(),
+      progress: 0,
+      progressMessage: "Rozpoczynanie audytu...",
+      retryCount: 0,
+    });
+
+    // Uruchom scraping asynchronicznie
+    await ctx.scheduler.runAfter(0, internal.auditActions.scrapeBooksyProfile, {
+      auditId,
     });
 
     return auditId;
@@ -251,6 +292,69 @@ export const completeAudit = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // Get audit to retrieve userId and base pricelist
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+
+    // Parse audit report for optimization data (with safe fallback)
+    let reportRecommendations: string[] = [];
+    try {
+      const report = JSON.parse(args.reportJson);
+      reportRecommendations = Array.isArray(report?.recommendations) ? report.recommendations : [];
+    } catch (parseError) {
+      console.error("[completeAudit] Failed to parse reportJson:", parseError);
+      // Continue with empty recommendations - the raw JSON will still be saved
+    }
+
+    // Get base pricelist data if available
+    let proPricelistId: typeof audit.basePricelistId = undefined;
+
+    if (audit.basePricelistId) {
+      const basePricelist = await ctx.db.get(audit.basePricelistId);
+      if (basePricelist) {
+        // Create PRO pricelist based on base pricelist with optimization metadata
+        // The PRO pricelist starts with the same data as base, ready for AI optimization
+
+        // Create optimization result from audit report
+        const optimizationResult = {
+          qualityScore: args.overallScore,
+          summary: {
+            totalChanges: 0,
+            duplicatesFound: 0,
+            descriptionsAdded: 0,
+            namesImproved: 0,
+            categoriesOptimized: 0,
+          },
+          recommendations: reportRecommendations,
+          changes: [],
+        };
+
+        proPricelistId = await ctx.db.insert("pricelists", {
+          userId: audit.userId,
+          auditId: args.auditId,
+          name: audit.salonName ? `Cennik PRO - ${audit.salonName}` : "Cennik PRO (zoptymalizowany)",
+          source: "audit",
+          pricingDataJson: basePricelist.pricingDataJson, // Start with base data
+          originalPricingDataJson: basePricelist.pricingDataJson, // Keep original for comparison
+          servicesCount: basePricelist.servicesCount,
+          categoriesCount: basePricelist.categoriesCount,
+          isOptimized: true,
+          optimizedFromPricelistId: audit.basePricelistId,
+          optimizationResultJson: JSON.stringify(optimizationResult),
+          optimizedAt: Date.now(),
+          createdAt: Date.now(),
+        });
+
+        // Link base pricelist to its optimized version
+        await ctx.db.patch(audit.basePricelistId, {
+          optimizedVersionId: proPricelistId,
+        });
+      }
+    }
+
+    // Update audit with completion status and PRO pricelist link
     await ctx.db.patch(args.auditId, {
       status: "completed",
       overallScore: args.overallScore,
@@ -258,6 +362,7 @@ export const completeAudit = internalMutation({
       reportJson: args.reportJson,
       reportPdfUrl: args.reportPdfUrl,
       completedAt: Date.now(),
+      proPricelistId: proPricelistId,
     });
     return null;
   },
@@ -273,8 +378,151 @@ export const failAudit = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.auditId, {
       status: "failed",
+      errorMessage: args.errorMessage,
       completedAt: Date.now(),
     });
+    return null;
+  },
+});
+
+// --- HELPER FUNCTIONS DLA AUDIT ACTIONS ---
+
+// Pobierz audyt bez autentykacji (dla internal actions)
+export const getAuditInternal = internalQuery({
+  args: { auditId: v.id("audits") },
+  returns: v.union(auditValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.auditId);
+  },
+});
+
+// Aktualizuj postęp audytu
+export const updateProgress = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    status: v.optional(auditStatusValidator),
+    progress: v.optional(v.number()),
+    progressMessage: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const updates: Record<string, unknown> = {};
+    if (args.status !== undefined) updates.status = args.status;
+    if (args.progress !== undefined) updates.progress = args.progress;
+    if (args.progressMessage !== undefined) updates.progressMessage = args.progressMessage;
+
+    await ctx.db.patch(args.auditId, updates);
+    return null;
+  },
+});
+
+// Zapisz dane po scraping
+export const saveScrapedData = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    scrapedDataJson: v.string(),
+    categoriesCount: v.number(),
+    servicesCount: v.number(),
+    salonName: v.optional(v.string()),
+    salonAddress: v.optional(v.string()),
+    salonLogoUrl: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    // Get audit to retrieve userId
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+
+    // Convert scraped data to PricingData format for base pricelist
+    const scrapedData = JSON.parse(args.scrapedDataJson);
+    const pricingData = {
+      salonName: scrapedData.salonName,
+      categories: scrapedData.categories.map((cat: { name: string; services: Array<{ name: string; price: string; description?: string; duration?: string }> }) => ({
+        categoryName: cat.name,
+        services: cat.services.map((service: { name: string; price: string; description?: string; duration?: string }) => ({
+          name: service.name,
+          price: service.price,
+          description: service.description,
+          duration: service.duration,
+          isPromo: false,
+        })),
+      })),
+    };
+
+    // Create base pricelist (original structure from Booksy)
+    const basePricelistId = await ctx.db.insert("pricelists", {
+      userId: audit.userId,
+      auditId: args.auditId,
+      name: args.salonName ? `Cennik bazowy - ${args.salonName}` : "Cennik bazowy z Booksy",
+      source: "booksy",
+      pricingDataJson: JSON.stringify(pricingData),
+      servicesCount: args.servicesCount,
+      categoriesCount: args.categoriesCount,
+      isOptimized: false,
+      createdAt: Date.now(),
+    });
+
+    // Update audit with scraped data and link to base pricelist
+    await ctx.db.patch(args.auditId, {
+      scrapedDataJson: args.scrapedDataJson,
+      scrapedCategoriesCount: args.categoriesCount,
+      scrapedServicesCount: args.servicesCount,
+      salonName: args.salonName,
+      salonAddress: args.salonAddress,
+      salonLogoUrl: args.salonLogoUrl,
+      scrapingCompletedAt: Date.now(),
+      status: "analyzing",
+      progress: 50,
+      progressMessage: "Dane pobrane. AI analizuje cennik...",
+      basePricelistId: basePricelistId,
+    });
+    return null;
+  },
+});
+
+// Obsłuż błąd scrapingu z retry logic
+export const handleScrapingError = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    errorMessage: v.string(),
+    shouldRetry: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) return null;
+
+    const newRetryCount = (audit.retryCount || 0) + 1;
+
+    if (args.shouldRetry && newRetryCount <= 3) {
+      // Ustaw status na retry i zaplanuj ponowną próbę
+      await ctx.db.patch(args.auditId, {
+        status: "scraping_retry",
+        retryCount: newRetryCount,
+        lastRetryAt: Date.now(),
+        progressMessage: `Próba ${newRetryCount}/3 - ponawiam pobieranie...`,
+        errorMessage: args.errorMessage,
+      });
+
+      // Exponential backoff: 30s, 2min, 5min
+      const delays = [30000, 120000, 300000];
+      const delay = delays[newRetryCount - 1] || delays[2];
+
+      await ctx.scheduler.runAfter(delay, internal.auditActions.scrapeBooksyProfile, {
+        auditId: args.auditId,
+      });
+    } else {
+      // Wszystkie próby wyczerpane - fail
+      await ctx.db.patch(args.auditId, {
+        status: "failed",
+        errorMessage: args.errorMessage,
+        retryCount: newRetryCount,
+        completedAt: Date.now(),
+      });
+    }
+
     return null;
   },
 });
@@ -305,6 +553,70 @@ export const hasPendingAudit = query({
       .first();
 
     return pendingAudit !== null;
+  },
+});
+
+// DEBUG: Lista wszystkich audytów (internal only)
+export const listAllAudits = internalQuery({
+  args: {},
+  returns: v.array(auditValidator),
+  handler: async (ctx) => {
+    return await ctx.db
+      .query("audits")
+      .order("desc")
+      .collect();
+  },
+});
+
+// DEBUG: Ręczne wznowienie zablokowanego audytu
+export const retryStuckAudit = internalMutation({
+  args: { auditId: v.id("audits") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) return false;
+
+    // Reset status to scraping and clear error state
+    await ctx.db.patch(args.auditId, {
+      status: "scraping",
+      progress: 0,
+      progressMessage: "Ponowne rozpoczynanie audytu...",
+      errorMessage: undefined,
+      retryCount: 0,
+    });
+
+    // Schedule the scraping action
+    await ctx.scheduler.runAfter(0, internal.auditActions.scrapeBooksyProfile, {
+      auditId: args.auditId,
+    });
+
+    return true;
+  },
+});
+
+// DEBUG: Ponów tylko analizę AI (gdy scraping już zakończony)
+export const retryAIAnalysis = internalMutation({
+  args: { auditId: v.id("audits") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit || !audit.scrapedDataJson) return false;
+
+    // Reset status to analyzing
+    await ctx.db.patch(args.auditId, {
+      status: "analyzing",
+      progress: 50,
+      progressMessage: "Ponowna analiza AI...",
+      errorMessage: undefined,
+      completedAt: undefined,
+    });
+
+    // Schedule the AI analysis
+    await ctx.scheduler.runAfter(0, internal.auditActions.analyzeWithAI, {
+      auditId: args.auditId,
+    });
+
+    return true;
   },
 });
 

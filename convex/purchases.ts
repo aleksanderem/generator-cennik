@@ -172,3 +172,27 @@ export const failPurchase = internalMutation({
     return null;
   },
 });
+
+// Internal: List all purchases (for admin/debugging)
+export const listAllPurchases = internalQuery({
+  args: {},
+  returns: v.array(v.object({
+    _id: v.id("purchases"),
+    product: v.union(
+      v.literal("audit"),
+      v.literal("audit_consultation"),
+      v.literal("pricelist_optimization")
+    ),
+    status: v.string(),
+    amount: v.number(),
+  })),
+  handler: async (ctx) => {
+    const purchases = await ctx.db.query("purchases").collect();
+    return purchases.map(p => ({
+      _id: p._id,
+      product: p.product,
+      status: p.status,
+      amount: p.amount,
+    }));
+  },
+});

@@ -68,10 +68,23 @@ const StartAuditPage: React.FC = () => {
   // Check if user has pending audit OR credits
   const hasPendingAudit = activeAudit?.status === 'pending';
   const hasCredits = user.credits > 0;
-  const hasProcessingAudit = activeAudit?.status === 'processing';
 
-  // Already has processing audit - redirect to profile
-  if (hasProcessingAudit) {
+  // Active statuses that indicate an audit is in progress
+  const activeStatuses = ['processing', 'scraping', 'scraping_retry', 'analyzing'];
+  const hasActiveAudit = activeAudit && activeStatuses.includes(activeAudit.status);
+
+  // Already has active audit - show progress and redirect to profile
+  if (hasActiveAudit && activeAudit) {
+    const statusMessages: Record<string, string> = {
+      'processing': 'Przetwarzanie...',
+      'scraping': 'Pobieranie danych z Booksy...',
+      'scraping_retry': 'Ponowna próba pobierania danych...',
+      'analyzing': 'AI analizuje Twój cennik...',
+    };
+
+    const progress = activeAudit.progress ?? 0;
+    const statusMessage = activeAudit.progressMessage || statusMessages[activeAudit.status] || 'Przetwarzanie...';
+
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white flex items-center justify-center p-4">
         <div className="text-center max-w-md">
@@ -81,14 +94,26 @@ const StartAuditPage: React.FC = () => {
           <h1 className="text-2xl font-serif font-bold text-slate-900 mb-4">
             Audyt w trakcie realizacji
           </h1>
+
+          {/* Progress bar */}
+          <div className="mb-4">
+            <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#D4A574] to-[#B8860B] transition-all duration-500"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <p className="text-sm text-slate-500 mt-2">{progress}% ukończono</p>
+          </div>
+
           <p className="text-slate-600 mb-8">
-            Twój audyt jest przetwarzany. Sprawdź status w profilu.
+            {statusMessage}
           </p>
           <button
             onClick={() => navigate('/profile')}
             className="px-6 py-3 bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white rounded-xl hover:shadow-lg transition-all"
           >
-            Zobacz status
+            Zobacz status w profilu
           </button>
         </div>
       </div>

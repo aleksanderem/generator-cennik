@@ -1,51 +1,57 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronUp, ChevronDown, Pencil, Check, X, Layers, Flame, Star } from 'lucide-react';
+import { ChevronUp, ChevronDown, Pencil, Check, X, Layers, Flame, Star, Trash2 } from 'lucide-react';
 import { CategoryConfig, PricingData } from '../types';
 
 interface CategoryTreeProps {
   categories: CategoryConfig[];
-  onMoveUp: (index: number) => void;
-  onMoveDown: (index: number) => void;
-  onRename: (index: number, newName: string) => void;
+  onMoveUp: (categoryKey: string) => void;
+  onMoveDown: (categoryKey: string) => void;
+  onRename: (categoryKey: string, newName: string) => void;
+  onDelete?: (categoryKey: string) => void;
   pricingData?: PricingData;
   editable?: boolean;
 }
+
+// Helper to generate unique key for category
+const getCategoryKey = (cat: CategoryConfig) =>
+  `${cat.isAggregation ? 'agg' : 'cat'}-${cat.originalIndex}-${cat.aggregationType || ''}`;
 
 export default function CategoryTree({
   categories,
   onMoveUp,
   onMoveDown,
   onRename,
+  onDelete,
   pricingData,
   editable = true,
 }: CategoryTreeProps) {
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus input when editing starts
   useEffect(() => {
-    if (editingIndex !== null && inputRef.current) {
+    if (editingKey !== null && inputRef.current) {
       inputRef.current.focus();
       inputRef.current.select();
     }
-  }, [editingIndex]);
+  }, [editingKey]);
 
-  const startEditing = (index: number) => {
-    setEditingIndex(index);
-    setEditValue(categories[index].categoryName);
+  const startEditing = (category: CategoryConfig) => {
+    setEditingKey(getCategoryKey(category));
+    setEditValue(category.categoryName);
   };
 
   const confirmEdit = () => {
-    if (editingIndex !== null && editValue.trim()) {
-      onRename(editingIndex, editValue.trim());
+    if (editingKey !== null && editValue.trim()) {
+      onRename(editingKey, editValue.trim());
     }
-    setEditingIndex(null);
+    setEditingKey(null);
     setEditValue('');
   };
 
   const cancelEdit = () => {
-    setEditingIndex(null);
+    setEditingKey(null);
     setEditValue('');
   };
 
@@ -98,15 +104,15 @@ export default function CategoryTree({
   return (
     <div className="space-y-1">
       {sortedCategories.map((category, displayIndex) => {
-        const actualIndex = categories.findIndex(c => c.originalIndex === category.originalIndex && c.isAggregation === category.isAggregation);
+        const categoryKey = getCategoryKey(category);
         const serviceCount = getServiceCount(category);
         const isFirst = displayIndex === 0;
         const isLast = displayIndex === sortedCategories.length - 1;
-        const isEditing = editingIndex === actualIndex;
+        const isEditing = editingKey === categoryKey;
 
         return (
           <div
-            key={`${category.isAggregation ? 'agg' : 'cat'}-${category.originalIndex}-${category.aggregationType || ''}`}
+            key={categoryKey}
             className={`
               group flex items-center gap-2 p-3 rounded-lg border transition-all
               ${category.isAggregation
@@ -119,7 +125,7 @@ export default function CategoryTree({
             {editable && (
               <div className="flex flex-col gap-0.5">
                 <button
-                  onClick={() => onMoveUp(actualIndex)}
+                  onClick={() => onMoveUp(categoryKey)}
                   disabled={isFirst}
                   className={`
                     p-0.5 rounded transition-colors
@@ -133,7 +139,7 @@ export default function CategoryTree({
                   <ChevronUp size={14} />
                 </button>
                 <button
-                  onClick={() => onMoveDown(actualIndex)}
+                  onClick={() => onMoveDown(categoryKey)}
                   disabled={isLast}
                   className={`
                     p-0.5 rounded transition-colors
@@ -189,7 +195,7 @@ export default function CategoryTree({
                   </span>
                   {editable && !category.isAggregation && (
                     <button
-                      onClick={() => startEditing(actualIndex)}
+                      onClick={() => startEditing(category)}
                       className="p-1 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                       title="Zmień nazwę"
                     >
@@ -199,6 +205,17 @@ export default function CategoryTree({
                 </div>
               )}
             </div>
+
+            {/* Delete button - before service count */}
+            {editable && !category.isAggregation && onDelete && (
+              <button
+                onClick={() => onDelete(categoryKey)}
+                className="flex-shrink-0 p-1.5 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                title="Usuń kategorię"
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
 
             {/* Service count badge */}
             <div className={`

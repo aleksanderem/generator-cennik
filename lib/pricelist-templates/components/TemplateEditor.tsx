@@ -182,14 +182,12 @@ interface TemplateEditorProps {
   onDataChange?: (data: PricingData) => void;
   // Włącza panel edycji treści (druga kolumna po prawej)
   enableDataEditing?: boolean;
-  // ID draftu do otwierania podglądu w nowej zakładce
-  draftId?: string | null;
   // Optymalizacja AI
   showOptimizationCard?: boolean;
   onOptimizeClick?: () => void;
   isOptimizing?: boolean;
   optimizationPrice?: string;
-  // ID cennika do generowania embed snippet
+  // ID cennika do generowania embed snippet i podglądu
   pricelistId?: string | null;
 }
 
@@ -204,7 +202,6 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
   onTemplateChange,
   onDataChange,
   enableDataEditing = false,
-  draftId = null,
   showOptimizationCard = false,
   onOptimizeClick,
   isOptimizing = false,
@@ -991,9 +988,9 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               </p>
 
               {/* Przycisk otwierania podglądu w nowej zakładce */}
-              {draftId && (
+              {pricelistId && (
                 <button
-                  onClick={() => window.open(`/preview?draft=${draftId}`, '_blank')}
+                  onClick={() => window.open(`/preview?pricelist=${pricelistId}`, '_blank')}
                   className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors"
                 >
                   <ExternalLink size={16} />
@@ -1269,7 +1266,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   {isOptimizing ? (
                     <>
                       <Loader2 size={16} className="animate-spin" />
-                      Optymalizuję...
+                      Przekierowanie do płatności...
                     </>
                   ) : (
                     <>

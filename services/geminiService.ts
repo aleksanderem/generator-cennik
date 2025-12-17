@@ -13,8 +13,8 @@ const simpleHash = (str: string): string => {
   return hash.toString();
 };
 
-const CACHE_PREFIX = 'bp_cache_v7_holistic_'; // Version bump for new prompts
-const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v4_personas_';
+const CACHE_PREFIX = 'bp_cache_v9_source_truth_'; // Version bump - source of truth rule
+const AUDIT_CACHE_PREFIX = 'bp_audit_cache_v6_source_truth_';
 const N8N_WEBHOOK_URL = "https://n8n.kolabogroup.pl/webhook/36fc010f-9dd1-4554-b027-3497525babe9";
 
 // --- MOCK DATA FOR FALLBACK ---
@@ -118,9 +118,17 @@ const parsePricingData = async (rawData: string, optimizationMode: boolean = fal
     JESTEŚ EKSPERTEM PSYCHOLOGII SPRZEDAŻY w branży Beauty (Booksy).
     Twój cel: Ułatwić nowemu klientowi podjęcie decyzji ("Nie wiem co wybrać") oraz dać konkret stałemu klientowi ("Wiem czego szukam").
 
+    ⚠️ BEZWZGLĘDNA ZASADA "SOURCE OF TRUTH":
+    - CENNIK KLIENTA JEST JEDYNYM ŹRÓDŁEM PRAWDY
+    - NIE WYMYŚLAJ NOWYCH USŁUG - możesz tylko pracować z tym, co jest w cenniku
+    - ZAKAZ tworzenia usług, które nie istnieją w oryginale
+    - Możesz ZMNIEJSZAĆ liczbę usług (przez grupowanie/łączenie wariantów)
+    - Możesz DUPLIKOWAĆ usługę do różnych kategorii (to jedyny przypadek "zwiększenia")
+    - Jeśli usługa nie istnieje w oryginalnym cenniku - NIE DODAWAJ JEJ
+
     ZASADY OPTYMALIZACJI (SMART GROUPING & BENEFIT LANGUAGE):
-    
-    1. ZASADA "MENU RESTAURACJI": 
+
+    1. ZASADA "MENU RESTAURACJI":
        - Zamiast 10 osobnych pozycji typu "Depilacja Łydek 1 zabieg", "Depilacja Łydek 4 zabiegi", "Depilacja Łydek 6 zabiegów"...
        - STWÓRZ JEDNĄ POZYCJĘ: "Depilacja Laserowa - Łydki (Pakiety)"
        - CENA: "od 200 zł" (najniższa cena pojedynczego zabiegu)
@@ -136,7 +144,7 @@ const parsePricingData = async (rawData: string, optimizationMode: boolean = fal
        - Łączysz TYLKO warianty ilościowe (1/4/6 zabiegów) lub bardzo bliskie warianty (np. "Masaż 30min", "Masaż 60min" -> "Masaż Relaksacyjny (30-60min)").
 
     4. FORMATOWANIE:
-       - Używaj Emoji w opisach (np. ⏱️ 💎 ✨) aby przyciągnąć wzrok skanującego wzrokiem klienta na mobile.
+       - ABSOLUTNY ZAKAZ UŻYWANIA EMOJI - nie używaj żadnych emotikon ani symboli Unicode w nazwach ani opisach.
        - Dodaj TAGI ["Bestseller", "Hit", "Nowość"] przy usługach o wysokim potencjale (np. pakiety startowe, popularne zabiegi na twarz).
 
     Działaj tak, aby cennik był KRÓTSZY wizualnie, ale BOGATSZY treściowo.
@@ -320,9 +328,20 @@ const analyzeLocalDataWithGemini = async (rawData: string): Promise<AuditResult>
     W SEKCJI "beforeAfter" (Przed/Po):
     - Znajdź NAJGORSZY przykład (np. sekcję z 10 wariantami tego samego lasera).
     - Pokaż jak to zgrupować w JEDNĄ, czytelną pozycję z opisem wariantów.
-    
+
     W SEKCJI "growthTips":
     - Daj porady realne dla Booksy (np. "Dodaj do nazwy słowo klucz 'Lifting', bo tego szukają ludzie w wyszukiwarce aplikacji").
+
+    ABSOLUTNY ZAKAZ EMOJI:
+    - Nie używaj żadnych emoji ani emotikon w żadnej części odpowiedzi.
+    - Dotyczy to nazw usług, opisów, kategorii i wszystkich przykładów.
+
+    ⚠️ BEZWZGLĘDNA ZASADA "SOURCE OF TRUTH":
+    - CENNIK KLIENTA JEST JEDYNYM ŹRÓDŁEM PRAWDY
+    - W sekcji "beforeAfter" przykłady MUSZĄ pochodzić z oryginalnych danych
+    - NIE WYMYŚLAJ usług, które nie istnieją w cenniku klienta
+    - Sugestie grupowania mogą tylko REDUKOWAĆ liczbę usług (łączenie wariantów)
+    - Jedyny przypadek "zwiększenia" to duplikowanie usługi do różnych kategorii
 
     DANE WEJŚCIOWE (FRAGMENT):
     ${rawData.substring(0, 30000)}
@@ -478,7 +497,7 @@ const optimizeBooksyContent = async (url: string, mode: IntegrationMode, onProgr
 // Ta funkcja optymalizuje cennik pod kątem UX/UI/Copywriting/Sprzedaż
 // WAŻNE: NIE tworzy nowych usług, NIE usuwa usług - tylko poprawia istniejące
 
-const OPTIMIZATION_CACHE_PREFIX = 'bp_optim_v1_';
+const OPTIMIZATION_CACHE_PREFIX = 'bp_optim_v3_source_truth_';
 
 const optimizePricelist = async (
   pricingData: PricingData,
@@ -570,26 +589,35 @@ Jesteś ekspertem UX/UI i copywriterem specjalizującym się w branży beauty/we
 
 TWOJE ZADANIE: Zoptymalizuj cennik pod kątem sprzedaży i doświadczenia klienta.
 
+⚠️ BEZWZGLĘDNA ZASADA "SOURCE OF TRUTH":
+- CENNIK KLIENTA JEST JEDYNYM ŹRÓDŁEM PRAWDY
+- NIE WYMYŚLAJ NOWYCH USŁUG - możesz tylko pracować z tym, co jest w cenniku
+- ZAKAZ tworzenia usług, które nie istnieją w oryginale
+- Każda usługa w output MUSI pochodzić z oryginalnego cennika
+- Jeśli usługa nie istnieje w input - NIE DODAWAJ JEJ do output
+
 BEZWZGLĘDNE ZASADY (NIENARUSZALNE):
 1. LICZBA USŁUG MUSI BYĆ IDENTYCZNA - nie usuwaj ani nie dodawaj usług
 2. LICZBA KATEGORII MUSI BYĆ IDENTYCZNA - nie usuwaj ani nie dodawaj kategorii
 3. CENY MUSZĄ POZOSTAĆ NIEZMIENIONE (chyba że poprawiasz format, np. "100zł" → "100 zł")
-4. NIE TWÓRZ NOWYCH USŁUG Z NICZEGO
+4. NIE TWÓRZ NOWYCH USŁUG Z NICZEGO - to naruszenie zasady SOURCE OF TRUTH
 5. NIE ŁĄCZ USŁUG W JEDNĄ (np. 4 warianty = 4 osobne usługi)
 
 CO MOŻESZ ROBIĆ:
-1. NAZWY USŁUG - popraw copywriting:
+1. NAZWY USŁUG - popraw copywriting (ale usługa MUSI istnieć w oryginale):
    - "Masaż 60min" → "Masaż Relaksacyjny (60 min) – Pełne Odprężenie"
    - "Depilacja laserowa nogi" → "Depilacja Laserowa – Nogi (Gładkość na Lata)"
-   - Dodaj emotikony gdzie pasuje (✨ 💎 🌟)
+   - ABSOLUTNY ZAKAZ UŻYWANIA EMOJI - nie używaj żadnych emotikon ani symboli Unicode
 
 2. OPISY - dodaj lub popraw:
    - Dodaj opis jeśli brakuje (krótki, sprzedażowy, 1-2 zdania)
    - Popraw istniejący opis (język korzyści, dla kogo, efekty)
+   - ABSOLUTNY ZAKAZ EMOJI w opisach
 
 3. NAZWY KATEGORII - popraw:
-   - "Usługi" → "✨ Zabiegi na Twarz"
-   - "Inne" → "💆 Masaże i Relaks"
+   - "Usługi" → "Zabiegi na Twarz"
+   - "Inne" → "Masaże i Relaks"
+   - ABSOLUTNY ZAKAZ EMOJI w nazwach kategorii
 
 4. KOLEJNOŚĆ - zoptymalizuj:
    - Kategorie od najpopularniejszych (twarzy, włosy) do niszowych

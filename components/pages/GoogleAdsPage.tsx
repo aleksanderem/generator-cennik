@@ -1223,26 +1223,6 @@ const GoogleAdsPage: React.FC<GoogleAdsPageProps> = ({ onOpenPaywall }) => {
         </div>
       </section>
 
-      {/* ===================== FOOTER ===================== */}
-      <footer className="py-10 border-t border-slate-100 bg-white">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <img src="/logo2.png" alt="BooksyAudit" className="h-6" />
-            <div className="flex items-center gap-6 text-sm text-slate-500">
-              <a href="#" className="hover:text-[#171717]">Regulamin</a>
-              <a href="#" className="hover:text-[#171717]">Prywatność</a>
-              <a href="#" className="hover:text-[#171717]">Kontakt</a>
-            </div>
-            <div className="flex items-center gap-3">
-              <p className="text-sm text-slate-400">© 2025 BooksyAudit.pl by</p>
-              <a href="https://kolabo.pl" target="_blank" rel="noopener noreferrer" className="opacity-60 hover:opacity-100 transition-opacity">
-                <img src="/kolabo.svg" alt="Kolabo" className="h-5" />
-              </a>
-            </div>
-          </div>
-        </div>
-      </footer>
-
     </div>
   );
 };

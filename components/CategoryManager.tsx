@@ -81,24 +81,27 @@ export default function CategoryManager({
     });
   };
 
-  // Handle move up
-  const handleMoveUp = (index: number) => {
-    const category = categoryConfig.categories[index];
-    if (category.isAggregation) return;
+  // Generate unique key for category
+  const getCategoryKey = (cat: CategoryConfig) =>
+    `${cat.isAggregation ? 'agg' : 'cat'}-${cat.originalIndex}-${cat.aggregationType || ''}`;
 
+  // Handle move up - receives category key from CategoryTree
+  const handleMoveUp = (categoryKey: string) => {
     const sorted = [...categoryConfig.categories].sort((a, b) => a.order - b.order);
-    const currentOrderIndex = sorted.findIndex(
-      (c) => c.originalIndex === category.originalIndex
-    );
+    const currentIndex = sorted.findIndex(c => getCategoryKey(c) === categoryKey);
 
-    if (currentOrderIndex <= 0) return;
+    if (currentIndex <= 0) return;
+
+    const current = sorted[currentIndex];
+    const above = sorted[currentIndex - 1];
 
     const newCategories = categoryConfig.categories.map((c) => {
-      if (c.originalIndex === category.originalIndex) {
-        return { ...c, order: sorted[currentOrderIndex - 1].order };
+      const key = getCategoryKey(c);
+      if (key === categoryKey) {
+        return { ...c, order: above.order };
       }
-      if (c.originalIndex === sorted[currentOrderIndex - 1].originalIndex) {
-        return { ...c, order: category.order };
+      if (key === getCategoryKey(above)) {
+        return { ...c, order: current.order };
       }
       return c;
     });
@@ -106,24 +109,23 @@ export default function CategoryManager({
     handleCategoriesChange(newCategories);
   };
 
-  // Handle move down
-  const handleMoveDown = (index: number) => {
-    const category = categoryConfig.categories[index];
-    if (category.isAggregation) return;
-
+  // Handle move down - receives category key from CategoryTree
+  const handleMoveDown = (categoryKey: string) => {
     const sorted = [...categoryConfig.categories].sort((a, b) => a.order - b.order);
-    const currentOrderIndex = sorted.findIndex(
-      (c) => c.originalIndex === category.originalIndex
-    );
+    const currentIndex = sorted.findIndex(c => getCategoryKey(c) === categoryKey);
 
-    if (currentOrderIndex >= sorted.length - 1) return;
+    if (currentIndex >= sorted.length - 1) return;
+
+    const current = sorted[currentIndex];
+    const below = sorted[currentIndex + 1];
 
     const newCategories = categoryConfig.categories.map((c) => {
-      if (c.originalIndex === category.originalIndex) {
-        return { ...c, order: sorted[currentOrderIndex + 1].order };
+      const key = getCategoryKey(c);
+      if (key === categoryKey) {
+        return { ...c, order: below.order };
       }
-      if (c.originalIndex === sorted[currentOrderIndex + 1].originalIndex) {
-        return { ...c, order: category.order };
+      if (key === getCategoryKey(below)) {
+        return { ...c, order: current.order };
       }
       return c;
     });
@@ -131,10 +133,10 @@ export default function CategoryManager({
     handleCategoriesChange(newCategories);
   };
 
-  // Handle rename
-  const handleRename = (index: number, newName: string) => {
-    const newCategories = categoryConfig.categories.map((cat, i) =>
-      i === index ? { ...cat, categoryName: newName } : cat
+  // Handle rename - receives category key
+  const handleRename = (categoryKey: string, newName: string) => {
+    const newCategories = categoryConfig.categories.map((cat) =>
+      getCategoryKey(cat) === categoryKey ? { ...cat, categoryName: newName } : cat
     );
     handleCategoriesChange(newCategories);
   };

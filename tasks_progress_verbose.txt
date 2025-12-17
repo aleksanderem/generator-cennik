@@ -1,0 +1,285 @@
+Task Progress Log
+=================
+
+=== SESSION S0001 START === [timestamp]
+Focus: Initial project setup
+Project: BEAUTY_AUDIT
+First session - creating task tracking infrastructure
+
+---
+
+S0001. Initialization:
+- Created task tracking files (session_state.json, tasks_progress.json, tasks_progress_verbose.txt)
+- Next: Define first tasks based on project requirements
+- Note: Do not remove tests as this could lead to missing functionality
+
+---
+
+=== SESSION S0003 START === 2025-12-09T16:00:00Z
+Focus: Planowanie modyfikacji UI - nadanie struktury layoutowi aplikacji
+Continuing from: S0002 (paused)
+Active tasks: #1 - ui_redesign_planning
+
+---
+
+S0003. Task #1 - UI Redesign Planning:
+
+Analiza istniejącej struktury:
+- App.tsx: główny komponent (~475 linii), zarządza stanem aplikacji
+- Komponenty: InputSection, BooksyOptimizer, AuditResults, TerminalLoader, ConfigPanel, Accordion
+- Efekty wizualne: ShineBorder, LightRays
+- Stan: AppState enum (INPUT → PROCESSING → PREVIEW)
+- Nawigacja: prosty toggle między trybami PASTE/IMPORT
+
+Preferencje użytkownika zebrane (runda 1):
+- Nawigacja: Sidebar z menu
+- Priorytet elementów: Wszystkie równo ważne (Terminal, Podgląd, Audyt)
+- Styl wizualny: Premium/Luxury
+
+Plan modyfikacji stworzony:
+- Nowa architektura: App Shell z sidebar + main content
+- Paleta kolorów: Rose Gold, Burgundy, Champagne, Cream
+- Nawigacja: 4 sekcje (Generator, Audyt, Historia, Ustawienia)
+- Nowe komponenty: AppShell, Sidebar, GoldButton, Card
+- Struktura plików: grupowanie by feature
+
+Deliverable v1:
+- docs/UI_REDESIGN_PLAN.md - pełny plan z checklistą, paletą kolorów, przykładowym kodem Sidebar.tsx
+
+---
+
+S0003. Task #1 - UI Redesign Planning (UPDATE - Model SaaS):
+
+Nowe wymaganie: Aplikacja ma być produktem SaaS z monetyzacją via Stripe
+- Cel: Kampania reklamowa
+- Model: Freemium + upgrade
+
+Preferencje użytkownika zebrane (runda 2):
+- Model płatności: Freemium + upgrade (jednorazowe płatności)
+- Free vs Paid: Generator FREE, Audyt+AI PAID
+- Autoryzacja: Pełna rejestracja (email + hasło)
+
+Kluczowe zmiany w planie:
+1. Sidebar → Top Navigation (lepsze dla nowych użytkowników z kampanii)
+2. Dodano system użytkowników (Clerk rekomendowany)
+3. Dodano integrację Stripe (produkty, checkout, webhooks)
+4. Dodano schema Convex (users, purchases, audits, optimizations)
+5. Dodano PaywallModal komponent
+6. Dodano User Journey dla kampanii reklamowej
+7. Dodano Landing Page jako osobny widok
+8. Zaktualizowano strukturę plików
+
+Nowa struktura cenowa:
+- Audyt Cennika: 49-79 zł / audyt
+- AI Optymalizacja: 29-49 zł / optymalizacja
+- Pakiet Combo: 69-99 zł
+
+Deliverable v2:
+- docs/UI_REDESIGN_PLAN.md - znacząco rozszerzony plan z:
+  - Model biznesowy i user journey
+  - Schema bazy danych Convex
+  - Przykładowy kod Stripe integration
+  - Przykładowy kod PaywallModal
+  - Zaktualizowana checklist (6 faz)
+
+---
+
+=== SESSION S0003 HANDOFF === 2025-12-09T16:30:00Z
+Status: paused
+Current state: Task #1 (ui_redesign_planning) - passing, plan kompletny
+Immediate next action: Decyzja o auth (Clerk vs Custom), potem setup Stripe
+Open questions:
+  - Czy Clerk czy custom auth?
+  - Dokładne ceny produktów Stripe
+  - Czy routing via React Router czy inny mechanizm?
+Warnings:
+  - Stripe wymaga własnej domeny dla webhooks w produkcji
+  - Pamiętaj o test mode vs live mode przy launch
+Files created/modified: docs/UI_REDESIGN_PLAN.md (znacząco rozszerzony)
+
+---
+
+=== SESSION S0004-S0006 === 2025-12-10
+Focus: HeroDemo slides, performance optimizations, LandingPage redesign
+Summary: Created animated HeroDemo with 3-slide demo animation, fixed performance issues (blur, backdrop), completed full sales landing page redesign.
+
+---
+
+=== SESSION S0007 START === 2025-12-10T16:00:00Z
+Focus: Review of completed Sales Landing Page
+Continuing from: S0006 (context refresh)
+Active tasks: None (all passing)
+
+---
+
+S0007. Session Resume:
+- Context refresh from previous session
+- Verified build passes (920KB JS, 90KB CSS)
+- Dev server running at http://localhost:3000
+- Sales Landing Page (790 lines) complete with:
+  * Hero section: "Wklej bałagan, otrzymaj profesjonalny cennik" + HeroDemo
+  * BeforeAfterComparison: Interactive tabs showing transformation
+  * Problem/Solution points
+  * How It Works: 3-step process
+  * AuditChecklistVisual: 60 points across 5 categories
+  * Testimonials marquee with social proof
+  * FAQ section (5 questions)
+  * Multiple CTAs throughout
+- Awaiting user review and next instructions
+
+---
+
+=== SESSION S0046 START === 2025-12-16T12:00:00Z
+Focus: Booksy API integration - replacing Firecrawl LLM extraction
+Continuing from: S0045 (context refresh)
+Active tasks: #10 - test_firecrawl_llm_extraction
+
+---
+
+S0046. Task #10 - Booksy API Integration:
+
+Previous state (S0045):
+- Firecrawl LLM extraction was implemented but only returned 5 services
+- User pointed to booksy-extractor project using XHR interception approach
+- Discovered Booksy has internal API that returns structured JSON
+
+Implementation completed:
+1. Fixed TypeScript error - scrapeWithFirecrawlFallback now only takes sourceUrl param
+2. Deployed to Convex with `npx convex dev --once`
+3. Tested with real salon URL (Beauty4ever)
+
+Test results:
+- Previous Firecrawl LLM: 5 services
+- New Booksy API: 24 categories, 412 services
+- Method: Direct API call to pl.booksy.com/core/v2/customer_api/businesses/{id}/
+
+Key implementation details:
+- extractBusinessId() parses URL pattern /pl-pl/{businessId}_{slug}
+- fetchFromBooksyApi() calls Booksy API with required headers
+- convertBooksyApiToScrapedData() transforms API response to ScrapedData format
+- Fallback to Firecrawl if Booksy API fails or URL is not from Booksy
+
+Files modified:
+- convex/auditActions.ts: Added Booksy API integration, fixed function signatures
+
+Status: PASSING - Booksy API working, 80x more data extracted
+
+---
+
+=== SESSION S0057 START === 2025-12-16T22:20:00Z
+Focus: Backend refactoring - Phase 2-3 Keyword analysis and category proposals
+Continuing from: S0056 (context refresh - previous session implemented Phase 1 schema changes)
+Active tasks: #14 - backend_refactor_multi_step_analysis
+
+---
+
+S0057. Task #14 - Backend Refactor Multi-Step Analysis:
+
+CONTEXT:
+- S0055 created PRODUCT_SPEC.md and BACKEND_REFACTOR_PLAN.md
+- S0056 started implementation, added new tables to schema
+- Previous session hit Convex runtime error: mutations in Node.js file
+
+PROBLEM SOLVED:
+Convex runtime constraint - files with "use node" directive can ONLY contain actions (internalAction, action).
+Queries and mutations MUST be in separate files without the "use node" directive.
+
+IMPLEMENTATION:
+1. Split auditAnalysis into two files:
+   - convex/auditAnalysis.ts ("use node") - contains ONLY actions:
+     * generateKeywordReport - extracts keywords from scraped data
+     * generateCategoryProposal - AI generates category reorganization
+   - convex/auditAnalysisQueries.ts (no "use node") - contains queries AND mutations:
+     * getKeywordReport, getCategoryProposal (internal queries)
+     * getKeywordReportForAudit, getCategoryProposalForAudit (public queries)
+     * saveKeywordReport, saveCategoryProposal (internal mutations)
+
+2. Fixed TypeScript circular type inference by adding explicit type annotations:
+   - const reportId: Id<"keywordReports"> = await ctx.runMutation(...)
+   - const proposalId: Id<"categoryProposals"> = await ctx.runMutation(...)
+
+3. Updated action references to use internal.auditAnalysisQueries.* instead of internal.auditAnalysis.*
+
+4. Successfully deployed to Convex
+
+STATUS:
+- Phase 1: Schema changes - COMPLETE (keywordReports, categoryProposals, optimizationOptions tables)
+- Phase 2: generateKeywordReport action - COMPLETE
+- Phase 3: generateCategoryProposal action - COMPLETE
+- Phase 4: Dynamic optimization prompt builder - PENDING
+- Phase 5: API endpoints (public queries) - COMPLETE
+
+FILES CREATED/MODIFIED:
+- convex/schema.ts - Extended with 3 new tables + audit references
+- convex/auditAnalysis.ts - New file with keyword/category AI actions + dynamic prompt builder
+- convex/auditAnalysisQueries.ts - New file with queries/mutations for V8 runtime
+
+---
+
+S0057. Task #14 - Phase 4 Complete - Dynamic Optimization Prompt Builder:
+
+Added to auditAnalysis.ts:
+1. OptimizationOption type - 8 options matching schema (descriptions, seo, categories, order, prices, duplicates, duration, tags)
+2. AuditContext interface - audit data for prompt context (salonName, overallScore, weaknesses, suggestedKeywords, categoryProposalJson)
+3. buildOptimizationPrompt() function - builds customized AI prompt based on selected options
+4. validateOptimizationOptions() helper - validates option combinations (e.g., "categories" requires accepted proposal)
+
+The dynamic prompt builder allows users to select specific areas to optimize rather than applying all optimizations. Each option adds a specific section to the prompt:
+- descriptions: adds language of benefits, target customer, expected effects
+- seo: includes suggested keywords from keyword report
+- categories: applies accepted category proposal
+- order: reorders by popularity/premium
+- prices: formats and rounds prices
+- duplicates: detects and marks similar services
+- duration: estimates service duration
+- tags: adds Bestseller/Nowość/Premium tags
+
+---
+
+S0057. ALL PHASES COMPLETE:
+✓ Phase 1: Schema changes (keywordReports, categoryProposals, optimizationOptions)
+✓ Phase 2: generateKeywordReport action (keyword extraction + AI suggestions)
+✓ Phase 3: generateCategoryProposal action (AI category reorganization)
+✓ Phase 4: buildOptimizationPrompt function (dynamic prompts based on options)
+✓ Phase 5: API endpoints (public queries for UI)
+
+---
+
+=== SESSION S0058 START === 2025-12-16T22:30:00Z
+Focus: Unit tests for auditAnalysis functions
+Continuing from: S0057 (all phases complete, user requested tests)
+Active tasks: #6 - write unit tests
+
+---
+
+S0058. Task #6 - Unit Tests for auditAnalysis:
+
+Implementation completed:
+1. Added exports to testable functions in auditAnalysis.ts:
+   - BEAUTY_KEYWORDS (const array)
+   - extractKeywords(scrapedData) - keyword extraction
+   - calculateCategoryDistribution(scrapedData, keywords) - distribution calculation
+   - buildOptimizationPrompt(options, context, services) - dynamic AI prompt
+   - validateOptimizationOptions(options, hasProposal) - validation
+
+2. Added export to types/interfaces:
+   - ScrapedData, KeywordData, CategoryDistribution
+   - OptimizationOption, AuditContext
+
+3. Created convex/auditAnalysis.test.ts with 41 tests:
+   - BEAUTY_KEYWORDS tests (3): essential keywords, count, no duplicates
+   - extractKeywords tests (9): extraction, categories, services, sorting, limits, edge cases
+   - calculateCategoryDistribution tests (5): counts, sorting, limits, empty handling
+   - buildOptimizationPrompt tests (17): context, all 8 options, combinations, edge cases
+   - validateOptimizationOptions tests (7): validation rules, category dependency
+
+4. Bug fix discovered by tests:
+   - Found duplicate "laminowanie" in BEAUTY_KEYWORDS
+   - Fixed by renaming to "laminowanie brwi" in eyebrow section
+
+Test results: 41/41 passing
+Convex deploy: successful
+
+STATUS: PASSING
+
+---

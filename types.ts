@@ -199,9 +199,10 @@ export interface OptimizationResult {
 export interface CategoryConfig {
   categoryName: string;
   order: number;                    // kolejność wyświetlania (0 = góra)
-  originalIndex: number;            // oryginalny indeks w PricingData
+  originalIndex: number;            // oryginalny indeks w PricingData (ujemny dla kategorii AI)
   isAggregation: boolean;           // true jeśli to specjalna agregacja (Promocje/Bestsellery)
   aggregationType?: 'promotions' | 'bestsellers'; // typ agregacji
+  matchingServiceNames?: string[];  // nazwy usług dla kategorii sugerowanych przez AI
 }
 
 /**

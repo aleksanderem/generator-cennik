@@ -11,8 +11,10 @@ import {
   FileText,
   TrendingUp,
   GitCompare,
+  ClipboardCheck,
 } from 'lucide-react';
-import { PricingData, OptimizationResult, ThemeConfig } from '../types';
+import { PricingData, OptimizationResult, ThemeConfig, AuditResult } from '../types';
+import AuditReportTab from './AuditReportTab';
 import { ShineBorder } from './ui/shine-border';
 import { RainbowButton } from './ui/rainbow-button';
 import { HeroHighlight } from './ui/hero-highlight';
@@ -25,9 +27,12 @@ interface OptimizationAnalysisViewProps {
   isOptimizing: boolean;
   themeConfig: ThemeConfig;
   onComplete: () => void;
+  // Optional audit report - when provided, adds "Raport" tab
+  auditReport?: AuditResult | null;
+  onEditPricelist?: () => void;
 }
 
-type TabId = 'comparison' | 'changes' | 'summary';
+type TabId = 'comparison' | 'changes' | 'summary' | 'report';
 
 // Change type label mapping
 const changeTypeLabels: Record<string, { label: string; color: string }> = {
@@ -122,13 +127,17 @@ const OptimizationAnalysisView: React.FC<OptimizationAnalysisViewProps> = ({
   isOptimizing,
   themeConfig,
   onComplete,
+  auditReport,
+  onEditPricelist,
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>('comparison');
 
+  // Build tabs dynamically - add "Raport" tab if auditReport is provided
   const tabs: { id: TabId; label: string; icon: React.ElementType }[] = [
     { id: 'comparison', label: 'Porównanie', icon: GitCompare },
     { id: 'changes', label: 'Lista zmian', icon: FileText },
     { id: 'summary', label: 'Podsumowanie', icon: TrendingUp },
+    ...(auditReport ? [{ id: 'report' as TabId, label: 'Raport', icon: ClipboardCheck }] : []),
   ];
 
   // Loading state
@@ -442,6 +451,14 @@ const OptimizationAnalysisView: React.FC<OptimizationAnalysisViewProps> = ({
               </div>
             )}
           </motion.div>
+        )}
+
+        {/* Tab: Report (only shown when auditReport is provided) */}
+        {activeTab === 'report' && auditReport && (
+          <AuditReportTab
+            auditReport={auditReport}
+            onEditPricelist={onEditPricelist}
+          />
         )}
       </div>
     </div>
