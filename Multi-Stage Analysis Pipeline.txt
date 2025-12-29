@@ -1,0 +1,72 @@
+Multi-Stage Analysis Pipeline
+┌─────────────────────────────────────────────────────────────────────┐
+│  FAZA 1: Discovery          │  "Co mamy? Kogo analizujemy?"        │
+│  ─────────────────────────  │                                      │
+│  Input:  nazwa salonu       │  Output: profil + dane dostępne      │
+└──────────────────────────────┴──────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  FAZA 2: Landscape          │  "Kto jest konkurencją?"             │
+│  ─────────────────────────  │                                      │
+│  Input:  lokalizacja+radius │  Output: lista konkurentów + stats   │
+└──────────────────────────────┴──────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  FAZA 3: Price Analysis     │  "Jak wypadamy cenowo?"              │
+│  ─────────────────────────  │                                      │
+│  Input:  konkurenci+usługi  │  Output: tabela cen + pozycjonowanie │
+└──────────────────────────────┴──────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│  FAZA 4: Niche Discovery    │  "Gdzie są luki w rynku?"            │
+│  ─────────────────────────  │                                      │
+│  Input:  macierz usług      │  Output: kandydaci na nisze          │
+└──────────────────────────────┴──────────────────────────────────────┘
+                              │
+               ┌──────────────┴──────────────┐
+               ▼                             ▼
+    ┌─────────────────────┐      ┌─────────────────────┐
+    │  FAZA 5a: Validate  │      │  FAZA 5b: Expand    │
+    │  (nisze <3 konk.)   │      │  (nisze 3-10 konk.) │
+    │  → potwierdź w 10km │      │  → sprawdź lokalnie │
+    └─────────────────────┘      └─────────────────────┘
+               │                             │
+               └──────────────┬──────────────┘
+                              ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  FAZA 6: Strategy           │  "Co z tym zrobić?"                  │
+    │  ─────────────────────────  │                                      │
+    │  Input:  nisze + konkurencja│  Output: SWOT + rekomendacje geo     │
+    └──────────────────────────────┴──────────────────────────────────────┘
+    │
+    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │  FAZA 7: Report             │  "Wygeneruj deliverable"             │
+    │  ─────────────────────────  │                                      │
+    │  Input:  wszystkie outputy  │  Output: HTML/PDF raport             │
+    └──────────────────────────────┴──────────────────────────────────────┘
+    Kluczowe elementy systemu:
+    1. Context Accumulator (stan między fazami)
+    {
+    "target": { name, location, services, prices },
+    "competitors": { list, stats, byRadius },
+    "niches": { candidates, confirmed, localOnly },
+    "strategy": { swot, recommendations, budgetSplit },
+    "decisions": [
+    { phase: 2, decision: "radius_2km", reason: "initial scan" },
+    { phase: 5, decision: "expand_to_10km", reason: "niches found" }
+    ]
+    }
+    2. Decision Points (warunkowa logika)
+    - Faza 4 → jeśli znaleziono nisze → Faza 5a (walidacja 10km)
+    - Faza 4 → jeśli brak nisz → Faza 5b (szukaj przewag cenowych)
+    - Faza 5 → jeśli nisza trzyma w 10km → strategia globalna
+    - Faza 5 → jeśli nisza tylko lokalna → strategia lokalna
+    3. Prompt Templates (jeden per faza)
+    Każdy prompt ma:
+    - input_schema - co potrzebuje
+    - output_schema - co zwraca
+    - decision_triggers - kiedy zmienia flow
