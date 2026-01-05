@@ -149,6 +149,49 @@ export const getPurchaseBySessionId = internalQuery({
   },
 });
 
+// Utwórz completed purchase (fallback gdy webhook nie zadziałał)
+export const createCompletedPurchase = internalMutation({
+  args: {
+    userId: v.id("users"),
+    stripeSessionId: v.string(),
+    stripePaymentIntentId: v.string(),
+    product: v.union(
+      v.literal("audit"),
+      v.literal("audit_consultation"),
+      v.literal("pricelist_optimization")
+    ),
+    amount: v.number(),
+    currency: v.string(),
+  },
+  returns: v.id("purchases"),
+  handler: async (ctx, args) => {
+    // Sprawdź czy już istnieje
+    const existing = await ctx.db
+      .query("purchases")
+      .withIndex("by_stripe_session", (q) =>
+        q.eq("stripeSessionId", args.stripeSessionId)
+      )
+      .unique();
+
+    if (existing) {
+      // Już istnieje - zwróć istniejący ID
+      return existing._id;
+    }
+
+    return await ctx.db.insert("purchases", {
+      userId: args.userId,
+      stripePaymentIntentId: args.stripePaymentIntentId,
+      stripeSessionId: args.stripeSessionId,
+      product: args.product,
+      amount: args.amount,
+      currency: args.currency,
+      status: "completed",
+      createdAt: Date.now(),
+      completedAt: Date.now(),
+    });
+  },
+});
+
 // Oznacz zakup jako nieudany
 export const failPurchase = internalMutation({
   args: {

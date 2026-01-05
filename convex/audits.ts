@@ -147,6 +147,23 @@ export const getAudit = query({
   },
 });
 
+// Sprawdź czy użytkownik ma aktywny audyt (internal - dla fallback w verifySession)
+export const hasActiveAuditForUser = internalQuery({
+  args: {
+    userId: v.id("users"),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const audits = await ctx.db
+      .query("audits")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+
+    const activeStatuses = ["pending", "processing", "scraping", "scraping_retry", "analyzing"];
+    return audits.some((a) => activeStatuses.includes(a.status));
+  },
+});
+
 // Utwórz nowy audyt po płatności (status: pending)
 export const createPendingAudit = internalMutation({
   args: {

@@ -1491,6 +1491,20 @@ const ProfilePage: React.FC = () => {
                               }
                             />
 
+                            {/* View Result Button - visible for completed audits */}
+                            {audit.status === 'completed' && audit.reportJson && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/audit-results?audit=${audit._id}`);
+                                }}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-[#722F37] hover:bg-[#5a252c] rounded-lg transition-colors"
+                              >
+                                <IconEye size={14} />
+                                Zobacz wynik
+                              </button>
+                            )}
+
                             {/* Actions Menu */}
                             <div className="relative flex-shrink-0" ref={openAuditDropdownId === audit._id ? auditDropdownRef : undefined}>
                               <button

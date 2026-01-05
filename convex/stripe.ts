@@ -184,9 +184,59 @@ export const verifySession = action({
       const session = await stripe.checkout.sessions.retrieve(args.sessionId);
 
       if (session.payment_status === "paid") {
+        const product = session.metadata?.product as ProductType | undefined;
+
+        // Fallback: jeśli webhook nie zadziałał, utwórz audyt tutaj
+        if (product === "audit" || product === "audit_consultation") {
+          const identity = await ctx.auth.getUserIdentity();
+          if (identity) {
+            let user = await ctx.runQuery(internal.users.getUserByClerkId, {
+              clerkId: identity.subject,
+            });
+
+            // Auto-create user if not exists
+            if (!user) {
+              const userId = await ctx.runMutation(internal.users.upsertUser, {
+                clerkId: identity.subject,
+                email: identity.email || "",
+                name: identity.name,
+                avatarUrl: identity.pictureUrl,
+              });
+              user = { _id: userId } as any;
+            }
+
+            if (user) {
+              // Sprawdź czy użytkownik ma już pending audit
+              const hasActiveAudit = await ctx.runQuery(internal.audits.hasActiveAuditForUser, {
+                userId: user._id,
+              });
+
+              if (!hasActiveAudit) {
+                // Brak audytu - utwórz purchase (lub pobierz istniejący) i audyt
+                const purchaseId = await ctx.runMutation(internal.purchases.createCompletedPurchase, {
+                  userId: user._id,
+                  stripeSessionId: args.sessionId,
+                  stripePaymentIntentId: session.payment_intent as string || "unknown",
+                  product: product,
+                  amount: session.amount_total || 0,
+                  currency: session.currency || "pln",
+                });
+
+                // Utwórz pending audit
+                await ctx.runMutation(internal.audits.createPendingAudit, {
+                  userId: user._id,
+                  purchaseId: purchaseId,
+                });
+
+                console.log(`Fallback: Created audit for session ${args.sessionId}`);
+              }
+            }
+          }
+        }
+
         return {
           success: true,
-          product: session.metadata?.product as ProductType | undefined,
+          product,
           pricelistId: session.metadata?.pricelistId,
         };
       }

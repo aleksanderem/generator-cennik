@@ -484,3 +484,38 @@ export const getOptimizationOptionsForAudit = query({
     };
   },
 });
+
+// Internal query to get optimization options by auditId (for action use)
+export const getOptimizationOptionsInternal = internalQuery({
+  args: { auditId: v.id("audits") },
+  returns: v.union(
+    v.object({
+      selectedOptions: v.array(
+        v.union(
+          v.literal("descriptions"),
+          v.literal("seo"),
+          v.literal("categories"),
+          v.literal("order"),
+          v.literal("prices"),
+          v.literal("duplicates"),
+          v.literal("duration"),
+          v.literal("tags")
+        )
+      ),
+      isFullAuto: v.boolean(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit?.optimizationOptionsId) return null;
+
+    const options = await ctx.db.get(audit.optimizationOptionsId);
+    if (!options) return null;
+
+    return {
+      selectedOptions: options.selectedOptions,
+      isFullAuto: options.isFullAuto,
+    };
+  },
+});

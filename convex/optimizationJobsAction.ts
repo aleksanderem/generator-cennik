@@ -10,7 +10,19 @@ import { internal } from "./_generated/api";
 // ARCHITECTURE: Uses chunked category-by-category processing
 // to avoid JSON truncation issues with large pricelists.
 // Each category is optimized separately, then assembled.
+// Uses selectedOptions from user to customize optimization.
 // ============================================
+
+// Optimization option types
+type OptimizationOption =
+  | "descriptions"
+  | "seo"
+  | "categories"
+  | "order"
+  | "prices"
+  | "duplicates"
+  | "duration"
+  | "tags";
 
 interface ServiceInput {
   name: string;
@@ -89,6 +101,22 @@ export const runOptimization = internalAction({
         ? JSON.parse(job.auditRecommendationsJson)
         : [];
 
+      // Get selected optimization options from audit (if exists)
+      let selectedOptions: OptimizationOption[] = [
+        "descriptions", "seo", "order", "prices", "duplicates", "duration", "tags"
+      ]; // Default: all options except categories
+
+      if (job.auditId) {
+        const optionsData = await ctx.runQuery(
+          internal.auditAnalysisQueries.getOptimizationOptionsInternal,
+          { auditId: job.auditId }
+        );
+        if (optionsData?.selectedOptions) {
+          selectedOptions = optionsData.selectedOptions;
+          console.log(`[Optimization] Using user-selected options: ${selectedOptions.join(", ")}`);
+        }
+      }
+
       // Initialize Gemini
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -122,12 +150,13 @@ export const runOptimization = internalAction({
         });
 
         try {
-          // Optimize single category
+          // Optimize single category with selected options
           const optimizedCategory = await optimizeSingleCategory(
             model,
             category,
             recommendations,
-            pricingData.salonName
+            pricingData.salonName,
+            selectedOptions
           );
 
           // Validate service count matches
@@ -340,41 +369,110 @@ async function optimizeSingleCategory(
   model: any,
   category: CategoryInput,
   recommendations: string[],
-  salonName?: string
+  salonName?: string,
+  selectedOptions: OptimizationOption[] = ["descriptions", "seo", "order", "prices", "duplicates", "duration", "tags"]
 ): Promise<OptimizedCategory> {
   const serviceCount = category.services.length;
 
-  // Build prompt for single category - uses NDJSON format to avoid truncation
+  // Build dynamic prompt based on selected options
+  let optionsInstructions = "";
+
+  if (selectedOptions.includes("descriptions")) {
+    optionsInstructions += `
+[OPISY USŁUG] ✓
+- Dodaj język korzyści do opisów (co klient zyskuje)
+- Jakie efekty można się spodziewać
+- Maksymalnie 2-3 zdania na opis (do 100 znaków)
+- Jeśli usługa nie ma opisu, dodaj go
+`;
+  }
+
+  if (selectedOptions.includes("seo")) {
+    optionsInstructions += `
+[SŁOWA KLUCZOWE SEO] ✓
+- Użyj popularnych słów kluczowych w nazwach i opisach
+- Słowa które klienci wyszukują (np. "depilacja laserowa", "mezoterapia", "botox")
+`;
+  }
+
+  if (selectedOptions.includes("order")) {
+    optionsInstructions += `
+[KOLEJNOŚĆ USŁUG] ✓
+- Najpopularniejsze/bestsellerowe usługi na początku
+- Usługi premium wyżej
+`;
+  }
+
+  if (selectedOptions.includes("prices")) {
+    optionsInstructions += `
+[FORMATOWANIE CEN] ✓
+- Ujednolicić format cen (np. "od 50 zł" lub "50-100 zł")
+- Popraw literówki w cenach
+`;
+  }
+
+  if (selectedOptions.includes("duplicates")) {
+    optionsInstructions += `
+[DUPLIKATY I BŁĘDY] ✓
+- Popraw oczywiste literówki w nazwach
+- Oznacz podobne usługi w opisie
+`;
+  }
+
+  if (selectedOptions.includes("duration")) {
+    optionsInstructions += `
+[CZAS TRWANIA] ✓
+- Dodaj szacowany czas usługom bez czasu
+- Format: "30 min", "1h", "1h 30min"
+`;
+  }
+
+  if (selectedOptions.includes("tags")) {
+    optionsInstructions += `
+[TAGI] ✓
+- Dodaj tagi: Bestseller, Nowość, Premium (max 1-2 na usługę)
+- Nie wszystkim usługom (max 30%)
+`;
+  }
+
+  // If no options selected, use minimal optimization
+  if (!optionsInstructions) {
+    optionsInstructions = `
+[MINIMALNA OPTYMALIZACJA]
+- Popraw oczywiste literówki
+- NIE zmieniaj niczego innego
+`;
+  }
+
   const prompt = `Jesteś ekspertem od optymalizacji cenników dla salonów beauty.
-Zoptymalizuj poniższą kategorię usług.
+Zoptymalizuj poniższą kategorię usług TYLKO w wybranych obszarach.
 
-ZASADY:
-1. ZACHOWAJ DOKŁADNIE ${serviceCount} usług - nie dodawaj, nie usuwaj
-2. NIE zmieniaj cen
-3. Popraw nazwy usług - usuń skróty, literówki, użyj języka korzyści
-4. Dodaj krótkie opisy (max 100 znaków) do usług które ich nie mają
-5. NIE używaj emoji w nazwach ani opisach
-6. Zachowaj kolejność usług
+KRYTYCZNE ZASADY:
+1. ZACHOWAJ DOKŁADNIE ${serviceCount} usług - NIE dodawaj, NIE usuwaj
+2. NIE zmieniaj cen (chyba że zaznaczono formatowanie cen)
+3. NIE używaj emoji
+4. Zachowaj kolejność (chyba że zaznaczono kolejność usług)
 
-${recommendations.length > 0 ? `REKOMENDACJE DO UWZGLĘDNIENIA:\n${recommendations.slice(0, 3).join("\n")}` : ""}
+WYBRANE OBSZARY OPTYMALIZACJI:
+${optionsInstructions}
 
-KATEGORIA DO OPTYMALIZACJI:
-Nazwa: ${category.categoryName}
+${recommendations.length > 0 ? `REKOMENDACJE Z AUDYTU:\n${recommendations.slice(0, 3).join("\n")}` : ""}
+
+KATEGORIA: ${category.categoryName}
 Salon: ${salonName || "Nieznany"}
 
-USŁUGI (format: NUMER | NAZWA | CENA | OPIS | CZAS):
+USŁUGI (NUMER | NAZWA | CENA | OPIS | CZAS):
 ${category.services.map((svc, idx) =>
   `${idx + 1} | ${svc.name} | ${svc.price} | ${svc.description || "-"} | ${svc.duration || "-"}`
 ).join("\n")}
 
-ODPOWIEDŹ:
-Zwróć DOKŁADNIE ${serviceCount} linii, każda w formacie:
-NUMER | ZOPTYMALIZOWANA_NAZWA | CENA_BEZ_ZMIAN | NOWY_OPIS | CZAS
+ODPOWIEDŹ - DOKŁADNIE ${serviceCount} linii:
+NUMER | NAZWA | CENA | OPIS | CZAS | TAGI
 
-Na końcu dodaj linię z nową nazwą kategorii:
-KATEGORIA: Zoptymalizowana nazwa kategorii
+Na końcu:
+KATEGORIA: Nazwa kategorii
 
-WAŻNE: Odpowiedz TYLKO liniami w podanym formacie, bez dodatkowego tekstu.`;
+Odpowiedz TYLKO w podanym formacie.`;
 
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],

@@ -143,13 +143,25 @@ export const savePricelist = mutation({
       throw new Error("Musisz być zalogowany");
     }
 
-    const user = await ctx.db
+    let user = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
       .unique();
 
+    // Auto-create user if not exists (fallback for missing Clerk webhook)
     if (!user) {
-      throw new Error("Użytkownik nie znaleziony");
+      const userId = await ctx.db.insert("users", {
+        clerkId: identity.subject,
+        email: identity.email || "unknown@email.com",
+        name: identity.name,
+        avatarUrl: identity.pictureUrl,
+        createdAt: Date.now(),
+        credits: 0,
+      });
+      user = await ctx.db.get(userId);
+      if (!user) {
+        throw new Error("Nie udało się utworzyć użytkownika");
+      }
     }
 
     // Parsuj JSON aby wyliczyć statystyki

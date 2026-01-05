@@ -4,7 +4,7 @@
 export default {
   providers: [
     {
-      domain: "https://settling-sloth-35.clerk.accounts.dev",
+      domain: "https://clerk.booksyaudit.pl",
       applicationID: "convex",
     },
   ],
