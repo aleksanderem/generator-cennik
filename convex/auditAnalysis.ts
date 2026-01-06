@@ -567,9 +567,9 @@ function propagateTransformationPatterns(
         const serviceName = service.name.trim();
         const serviceNameLower = serviceName.toLowerCase();
 
-        // Skip if already transformed or already has a long descriptive name
+        // Skip if already transformed or already has a descriptive suffix
         if (transformedNames.has(serviceNameLower)) continue;
-        if (serviceName.includes(" - ") || serviceName.includes(": ") || serviceName.length > 50) continue;
+        if (serviceName.includes(" - ") || serviceName.includes(": ")) continue;
 
         // Only improve services that have descriptions we can use
         if (!service.description || service.description.trim().length < 15) continue;

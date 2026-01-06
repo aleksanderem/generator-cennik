@@ -3,6 +3,39 @@ import { v } from "convex/values";
 
 export default defineSchema({
   // ============================================
+  // BOOKSY API CREDENTIALS
+  // ============================================
+
+  // Credentials extracted from Booksy website for API access
+  booksyCredentials: defineTable({
+    // Authentication tokens
+    accessToken: v.string(),
+    apiKey: v.string(),
+    fingerprint: v.string(),
+
+    // Metadata
+    extractedAt: v.number(),         // When credentials were extracted
+    lastUsedAt: v.optional(v.number()), // Last successful API call
+    lastFailedAt: v.optional(v.number()), // Last failed API call (credential issue)
+    failureCount: v.number(),        // Consecutive failures (reset on success)
+
+    // Status
+    status: v.union(
+      v.literal("active"),           // Working credentials
+      v.literal("expired"),          // Failed due to expiration
+      v.literal("refreshing"),       // Currently being refreshed
+      v.literal("failed")            // Multiple failures, needs manual intervention
+    ),
+
+    // Extraction source
+    extractedBy: v.optional(v.string()), // "playwright" | "manual"
+    notes: v.optional(v.string()),
+
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_status", ["status"]),
+
+  // ============================================
   // AUDYT BOOKSY - Multi-step analysis tables
   // ============================================
 

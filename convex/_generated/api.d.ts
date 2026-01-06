@@ -13,6 +13,7 @@ import type * as auditAnalysis from "../auditAnalysis.js";
 import type * as auditAnalysisQueries from "../auditAnalysisQueries.js";
 import type * as auditHelpers from "../auditHelpers.js";
 import type * as audits from "../audits.js";
+import type * as booksyCredentials from "../booksyCredentials.js";
 import type * as dev from "../dev.js";
 import type * as email from "../email.js";
 import type * as http from "../http.js";
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   auditAnalysisQueries: typeof auditAnalysisQueries;
   auditHelpers: typeof auditHelpers;
   audits: typeof audits;
+  booksyCredentials: typeof booksyCredentials;
   dev: typeof dev;
   email: typeof email;
   http: typeof http;

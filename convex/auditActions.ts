@@ -50,14 +50,34 @@ function stripMarkdown(text: string): string {
 
 // Booksy API configuration
 const BOOKSY_API_BASE = "https://pl.booksy.com/core/v2/customer_api";
-const BOOKSY_HEADERS = {
-  "accept": "application/json, text/plain, */*",
-  "accept-language": "pl-PL, pl",
-  "x-access-token": "GACioqQNYSx5wVxsgNZfq2DHz5YvSOOt",
-  "x-api-key": "web-e3d812bf-d7a2-445d-ab38-55589ae6a121",
-  "x-app-version": "3.0",
-  "x-fingerprint": "3bd6e818-f4e0-4f78-a2fa-da68498ff9a2",
+
+// Credentials interface
+interface BooksyCredentials {
+  accessToken: string;
+  apiKey: string;
+  fingerprint: string;
+}
+
+// Fallback credentials (used when no credentials in DB)
+const FALLBACK_CREDENTIALS: BooksyCredentials = {
+  accessToken: "GACioqQNYSx5wVxsgNZfq2DHz5YvSOOt",
+  apiKey: "web-e3d812bf-d7a2-445d-ab38-55589ae6a121",
+  fingerprint: "3bd6e818-f4e0-4f78-a2fa-da68498ff9a2",
 };
+
+/**
+ * Build Booksy API headers from credentials.
+ */
+function buildBooksyHeaders(credentials: BooksyCredentials): Record<string, string> {
+  return {
+    "accept": "application/json, text/plain, */*",
+    "accept-language": "pl-PL, pl",
+    "x-access-token": credentials.accessToken,
+    "x-api-key": credentials.apiKey,
+    "x-app-version": "3.0",
+    "x-fingerprint": credentials.fingerprint,
+  };
+}
 
 interface BooksyServiceVariant {
   duration: number;
@@ -115,16 +135,26 @@ function extractBusinessId(url: string): string | null {
 /**
  * Fetch salon data directly from Booksy API.
  * This is faster and more reliable than web scraping.
+ * @param businessId - Booksy business ID
+ * @param credentials - API credentials (from DB or fallback)
  */
-async function fetchFromBooksyApi(businessId: string): Promise<BooksyApiResponse> {
+async function fetchFromBooksyApi(
+  businessId: string,
+  credentials: BooksyCredentials
+): Promise<BooksyApiResponse> {
   const apiUrl = `${BOOKSY_API_BASE}/businesses/${businessId}/?no_thumbs=true&with_markdown=1&with_combos=1`;
+  const headers = buildBooksyHeaders(credentials);
 
   const response = await fetch(apiUrl, {
     method: "GET",
-    headers: BOOKSY_HEADERS,
+    headers,
   });
 
   if (!response.ok) {
+    // Check if it's an auth error
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(`Booksy API auth error: ${response.status} - credentials may be expired`);
+    }
     throw new Error(`Booksy API error: ${response.status}`);
   }
 
@@ -291,12 +321,48 @@ export const scrapeBooksyProfile = internalAction({
           progressMessage: "Pobieranie danych z API Booksy...",
         });
 
+        // Get credentials from database, fallback to hardcoded if none
+        const dbCredentials = await ctx.runQuery(
+          internal.booksyCredentials.getActiveCredentials,
+          {}
+        );
+
+        const credentials: BooksyCredentials = dbCredentials
+          ? {
+              accessToken: dbCredentials.accessToken,
+              apiKey: dbCredentials.apiKey,
+              fingerprint: dbCredentials.fingerprint,
+            }
+          : FALLBACK_CREDENTIALS;
+
+        const credentialsId = dbCredentials?._id;
+        const credentialsSource = dbCredentials ? "database" : "fallback";
+        console.log(`[Booksy API] Using ${credentialsSource} credentials`);
+
         try {
-          const apiResponse = await fetchFromBooksyApi(businessId);
+          const apiResponse = await fetchFromBooksyApi(businessId, credentials);
           parsedData = convertBooksyApiToScrapedData(apiResponse);
           console.log(`[Booksy API] Found ${parsedData.categories.length} categories, ${parsedData.totalServices} services`);
+
+          // Mark credentials as successfully used
+          if (credentialsId) {
+            await ctx.runMutation(
+              internal.booksyCredentials.markCredentialsUsed,
+              { credentialsId }
+            );
+          }
         } catch (apiError) {
-          console.log(`[Booksy API] Failed: ${apiError}, falling back to Firecrawl`);
+          const errorMessage = apiError instanceof Error ? apiError.message : String(apiError);
+          console.log(`[Booksy API] Failed: ${errorMessage}, falling back to Firecrawl`);
+
+          // If auth error and using DB credentials, mark as failed
+          if (credentialsId && errorMessage.includes("auth error")) {
+            await ctx.runMutation(
+              internal.booksyCredentials.markCredentialsFailed,
+              { credentialsId, reason: errorMessage }
+            );
+          }
+
           // Fall through to Firecrawl
           parsedData = await scrapeWithFirecrawlFallback(audit.sourceUrl);
         }
@@ -730,39 +796,43 @@ async function analyzeNamingQuality(
 
 ${pricelistText}
 
-ZADANIE: Oceń JAKOŚĆ NAZW usług i WYCZYŚĆ zbędne elementy. Skala 0-20 punktów.
+ZADANIE: Oceń JAKOŚĆ NAZW usług i ULEPSZ je. Skala 0-20 punktów.
 
-KRYTERIA:
-- Czy nazwy są KRÓTKIE i ZROZUMIAŁE? (ideał: 2-6 słów, max 40 znaków)
-- Czy nie zawierają MARKETINGOWYCH BZDUR? (typu "100% skuteczności", "gładkość na długo")
+DWA TYPY TRANSFORMACJI:
+
+1. CZYSZCZENIE - usuwanie śmieci:
+   - Usuń puste marketingowe frazesy ("100% skuteczności", "niezależnie od koloru skóry")
+   - Usuń instrukcje wewnętrzne ("łączyć z...", "pamiętaj o...")
+   - Usuń zbędne opisy w nawiasach (chyba że określają zakres usługi)
+
+   PRZYKŁADY:
+   - "Pachy + Całe nogi - 100% skuteczności niezależnie od koloru skóry" → "Pachy + Całe nogi"
+   - "Ramiona: łączyć z przedramionami" → "Ramiona"
+
+2. WZBOGACANIE - dodawanie wartości:
+   - Dodaj KONKRETNĄ korzyść dla klienta (efekt, rezultat)
+   - Nazwa powinna odpowiadać: "co dostanę jako klient?"
+   - Używaj języka korzyści, nie technicznego żargonu
+   - Max 80 znaków
+
+   PRZYKŁADY:
+   - "Mezoterapia igłowa" → "Mezoterapia igłowa - głębokie nawilżenie i lifting"
+   - "Depilacja laserowa bikini" → "Depilacja laserowa bikini - gładka skóra na lata"
+   - "Peeling kawitacyjny" → "Peeling kawitacyjny - oczyszczenie i rozświetlenie"
+   - "Masaż klasyczny 60 min" → "Masaż klasyczny 60 min - relaks i ulga w bólach"
+
+KRYTERIA OCENY:
+- Czy nazwy są ZROZUMIAŁE dla klienta? (nie tylko dla specjalisty)
+- Czy WYRÓŻNIAJĄ usługę? (co dostanę czego nie dam gdzie indziej)
 - Czy są UNIKALNE? (brak duplikatów)
+- Czy nie zawierają PUSTYCH frazesów bez wartości?
 
-TWOJE ZADANIE TO CZYSZCZENIE NAZW - USUWANIE ZBĘDNYCH ELEMENTÓW:
-
-1. USUŃ marketingowe sufiksy po myślniku lub dwukropku:
-   ZŁE: "Pachy + Całe nogi - 100% skuteczności niezależnie od koloru skóry"
-   DOBRE: "Pachy + Całe nogi"
-
-2. USUŃ frazesy korzyści:
-   ZŁE: "Mezoterapia: głębokie nawilżenie i odmłodzenie"
-   DOBRE: "Mezoterapia"
-
-3. USUŃ instrukcje i notatki:
-   ZŁE: "Ramiona: łączyć z przedramionami"
-   DOBRE: "Ramiona"
-
-4. USUŃ zbędne opisy w nawiasach (chyba że to istotna informacja):
-   ZŁE: "Depilacja (trwałe efekty gładkiej skóry)"
-   DOBRE: "Depilacja"
-   OK: "Depilacja (pachy + bikini)" - to jest OK bo określa zakres
-
-5. NIE DODAWAJ niczego do nazw - tylko USUWAJ zbędne elementy
-
-PRZYKŁADY TRANSFORMACJI:
-- "Pachy + Całe nogi - 100% skuteczności" → "Pachy + Całe nogi"
-- "Mezoterapia igłowa: odmłodzenie skóry twarzy" → "Mezoterapia igłowa twarzy"
-- "2 okolice małe: wąsik + broda / pachy + wąsik" → "2 okolice małe"
-- "Masaż relaksacyjny - pełen relaks i odprężenie" → "Masaż relaksacyjny"
+ZASADY WZBOGACANIA:
+- Korzyść musi być KONKRETNA (nie "profesjonalny zabieg")
+- Korzyść musi być PRAWDZIWA dla danej usługi
+- Używaj myślnika " - " jako separatora
+- Nie dodawaj emoji
+- Max 80 znaków całości
 
 FORMAT ODPOWIEDZI:
 
@@ -772,9 +842,9 @@ TOP_ISSUES:
 ISSUE: [critical/major/minor] | naming | [opis problemu] | [wpływ] | [ile usług] | [przykład] | [jak naprawić]
 
 TRANSFORMATIONS:
-TRANSFORM: name | [oryginalna nazwa ZE ŚMIECIAMI] | [OCZYSZCZONA krótka nazwa] | [co usunięto] | [wpływ 1-10]
+TRANSFORM: name | [oryginalna nazwa] | [ulepszona nazwa] | [clean/enrich] | [wpływ 1-10]
 
-Podaj TRANSFORM tylko dla nazw które mają zbędne elementy do usunięcia. Jeśli nazwa jest już krótka i czysta - NIE zmieniaj jej.`;
+Podaj TRANSFORM dla nazw które wymagają czyszczenia LUB wzbogacenia. Priorytet: najpierw czyść śmieci, potem wzbogacaj suche nazwy.`;
 
   const text = await callGeminiText(apiKey, prompt);
   return parseNamingAnalysis(text);
@@ -898,77 +968,75 @@ function parseNamingAnalysis(text: string): {
 
 /**
  * Validate that a name transformation is sensible.
- * NEW PHILOSOPHY: Transformations should CLEAN (shorten) names, not add to them.
+ * Supports two transformation types:
+ * 1. CLEANING - removing garbage (result shorter than original)
+ * 2. ENRICHING - adding benefits (result longer, but with real value)
  */
 function validateNameTransformation(before: string, after: string): boolean {
-  // Rule 1: After name should be SHORTER or same length (we're cleaning, not adding)
-  // Allow small increase only for fixing typos/clarity (max +5 chars)
-  if (after.length > before.length + 5) {
-    console.log(`[validateNameTransformation] Rejected: result is longer than original (${after.length} vs ${before.length})`);
+  const beforeLen = before.trim().length;
+  const afterLen = after.trim().length;
+
+  // Rule 1: After name must be at least 3 chars
+  if (afterLen < 3) {
+    console.log(`[validateNameTransformation] Rejected: result too short (${afterLen} chars)`);
     return false;
   }
 
-  // Rule 2: After name can't be longer than 50 chars total
-  if (after.length > 50) {
-    console.log(`[validateNameTransformation] Rejected: too long (${after.length} chars)`);
+  // Rule 2: After name can't exceed 80 chars (allows enriched names)
+  if (afterLen > 80) {
+    console.log(`[validateNameTransformation] Rejected: too long (${afterLen} chars, max 80)`);
     return false;
   }
 
-  // Rule 3: After name can't have colon followed by descriptive phrase
-  const colonIndex = after.indexOf(":");
-  if (colonIndex > 0) {
-    const afterColon = after.substring(colonIndex + 1).trim().toLowerCase();
-    // Check if what's after colon looks like a benefit phrase (lowercase, long)
-    if (afterColon.length > 15 && /^[a-ząćęłńóśźż]/.test(afterColon)) {
-      console.log(`[validateNameTransformation] Rejected: still has descriptive suffix after colon`);
-      return false;
-    }
-  }
-
-  // Rule 4: Reject if after STILL contains marketing garbage words
-  const garbagePatterns = [
+  // Rule 3: Reject EMPTY marketing garbage (phrases without real value)
+  const emptyGarbagePatterns = [
     /100%\s*skuteczn/i,
-    /długotrwał[ąa]\s+gładkoś/i,
     /niezależnie\s+od/i,
-    /pełen\s+relaks/i,
-    /głębok[ie]\s+nawilżen/i,
-    /trwał[eay]\s+(efekt|usuw)/i,
+    /profesjonaln[yae]\s+(zabieg|usługa)/i,  // Too generic
+    /najlepsz[yae]/i,  // Superlatives without substance
+    /jedyn[yae]\s+w\s+swoim/i,
+    /wyjątkow[yae]/i,
   ];
 
-  for (const pattern of garbagePatterns) {
+  for (const pattern of emptyGarbagePatterns) {
     if (pattern.test(after)) {
-      console.log(`[validateNameTransformation] Rejected: still contains marketing garbage`);
+      console.log(`[validateNameTransformation] Rejected: contains empty marketing garbage`);
       return false;
     }
   }
 
-  // Rule 5: If we cleaned a name, the after should NOT contain the garbage that was in before
-  // (this ensures we actually removed something, not just reshuffled)
-  if (before.includes(":") && after.includes(":")) {
-    const beforeAfterColon = before.split(":")[1]?.trim() || "";
-    const afterAfterColon = after.split(":")[1]?.trim() || "";
-    // If after colon part is still long, reject
-    if (afterAfterColon.length > 20) {
-      console.log(`[validateNameTransformation] Rejected: didn't clean the colon suffix properly`);
+  // Rule 4: If name is being ENRICHED (longer), validate the addition
+  if (afterLen > beforeLen + 5) {
+    // Check if the enrichment uses proper separator
+    const hasSeparator = after.includes(" - ") || after.includes(": ");
+    if (!hasSeparator) {
+      console.log(`[validateNameTransformation] Rejected: enriched name without separator`);
       return false;
     }
-  }
 
-  // Rule 6: After name must be at least 3 chars
-  if (after.trim().length < 3) {
-    console.log(`[validateNameTransformation] Rejected: result too short`);
-    return false;
-  }
+    // The original name should still be present at the start
+    const originalPresent = after.toLowerCase().startsWith(before.toLowerCase().split(/[-:]/)[0].trim());
+    if (!originalPresent) {
+      // Check if at least 50% of original words are preserved
+      const similarity = calculateSimilarity(before.toLowerCase(), after.toLowerCase());
+      if (similarity < 0.4) {
+        console.log(`[validateNameTransformation] Rejected: enriched name lost original identity (similarity: ${similarity})`);
+        return false;
+      }
+    }
 
-  // Rule 7: Prefer transformations that actually shorten the name
-  // If the name is the same or longer, it better be fixing something specific
-  if (after.length >= before.length) {
-    // Only allow if it's a minor fix (typo, capitalization)
+    console.log(`[validateNameTransformation] Accepted ENRICHED: "${before}" -> "${after}"`);
+  } else if (afterLen < beforeLen) {
+    // CLEANING transformation - make sure we actually removed garbage
+    console.log(`[validateNameTransformation] Accepted CLEANED: "${before}" -> "${after}"`);
+  } else {
+    // Same length or minor change - must be a meaningful fix
     const similarity = calculateSimilarity(before.toLowerCase(), after.toLowerCase());
-    if (similarity < 0.8) {
-      console.log(`[validateNameTransformation] Rejected: not shorter and too different (similarity: ${similarity})`);
+    if (similarity < 0.5) {
+      console.log(`[validateNameTransformation] Rejected: same length but too different (similarity: ${similarity})`);
       return false;
     }
+    console.log(`[validateNameTransformation] Accepted FIXED: "${before}" -> "${after}"`);
   }
 
   return true;
@@ -1618,11 +1686,33 @@ export const testBooksyApi = internalAction({
       };
     }
 
+    // Get credentials from database, fallback to hardcoded if none available
+    const dbCredentials = await ctx.runQuery(
+      internal.booksyCredentials.getActiveCredentials,
+      {}
+    );
+    const credentials: BooksyCredentials = dbCredentials
+      ? {
+          accessToken: dbCredentials.accessToken,
+          apiKey: dbCredentials.apiKey,
+          fingerprint: dbCredentials.fingerprint,
+        }
+      : FALLBACK_CREDENTIALS;
+
+    console.log(`[Test] Using credentials: ${dbCredentials ? "from DB" : "fallback"}`);
+
     try {
-      const apiResponse = await fetchFromBooksyApi(businessId);
+      const apiResponse = await fetchFromBooksyApi(businessId, credentials);
       const parsedData = convertBooksyApiToScrapedData(apiResponse);
 
       console.log(`[Test] Booksy API SUCCESS: ${parsedData.categories.length} categories, ${parsedData.totalServices} services`);
+
+      // Mark credentials as used successfully if from DB
+      if (dbCredentials) {
+        await ctx.runMutation(internal.booksyCredentials.markCredentialsUsed, {
+          credentialsId: dbCredentials._id,
+        });
+      }
 
       return {
         success: true,
@@ -1639,6 +1729,15 @@ export const testBooksyApi = internalAction({
       };
     } catch (error) {
       console.log(`[Test] Booksy API failed: ${error}`);
+
+      // Mark credentials as failed if from DB
+      if (dbCredentials) {
+        await ctx.runMutation(internal.booksyCredentials.markCredentialsFailed, {
+          credentialsId: dbCredentials._id,
+          reason: String(error),
+        });
+      }
+
       return {
         success: false,
         categoriesCount: 0,
