@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, internalQuery, internalMutation } from "./_generated/server";
+import { query, mutation, internalQuery, internalMutation } from "./_generated/server";
 import { internal } from "./_generated/api";
 
 // Debug: Delete pricelist by ID
@@ -766,5 +766,285 @@ export const createAndRunAuditDev = mutation({
     });
 
     return auditId;
+  },
+});
+
+// DEV ONLY: Reset optimization for an audit (clear optimization data from base pricelist)
+export const resetOptimizationDev = mutation({
+  args: { auditId: v.id("audits") },
+  returns: v.object({
+    success: v.boolean(),
+    clearedPricelistId: v.union(v.id("pricelists"), v.null()),
+    deletedOptionsId: v.union(v.id("optimizationOptions"), v.null()),
+  }),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+
+    let clearedPricelistId = null;
+    let deletedOptionsId = null;
+
+    // Clear optimization from base pricelist and restore original data
+    if (audit.basePricelistId) {
+      const pricelist = await ctx.db.get(audit.basePricelistId);
+      if (pricelist?.optimizationResultJson) {
+        clearedPricelistId = audit.basePricelistId;
+        // Restore original pricingData if available
+        const originalData = pricelist.originalPricingDataJson;
+        await ctx.db.patch(audit.basePricelistId, {
+          pricingDataJson: originalData ?? pricelist.pricingDataJson,
+          optimizationResultJson: undefined,
+          originalPricingDataJson: undefined,
+          isOptimized: false,
+          optimizedAt: undefined,
+          optimizationStatus: undefined,
+        });
+      }
+    }
+
+    // Delete optimization options if exists
+    if (audit.optimizationOptionsId) {
+      deletedOptionsId = audit.optimizationOptionsId;
+      await ctx.db.delete(audit.optimizationOptionsId);
+    }
+
+    // Clear audit optimization options reference
+    await ctx.db.patch(args.auditId, {
+      optimizationOptionsId: undefined,
+    });
+
+    return {
+      success: true,
+      clearedPricelistId,
+      deletedOptionsId,
+    };
+  },
+});
+
+// DEV ONLY: Set optimization options directly (without auth)
+export const setOptimizationOptionsDev = mutation({
+  args: {
+    auditId: v.id("audits"),
+    selectedOptions: v.array(v.union(
+      v.literal("descriptions"),
+      v.literal("seo"),
+      v.literal("categories"),
+      v.literal("order"),
+      v.literal("prices"),
+      v.literal("duplicates"),
+      v.literal("duration"),
+      v.literal("tags")
+    )),
+  },
+  returns: v.id("optimizationOptions"),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+
+    // Check if options already exist
+    const existingOptions = await ctx.db
+      .query("optimizationOptions")
+      .withIndex("by_audit", (q) => q.eq("auditId", args.auditId))
+      .unique();
+
+    if (existingOptions) {
+      // Update existing
+      await ctx.db.patch(existingOptions._id, {
+        selectedOptions: args.selectedOptions,
+        isFullAuto: args.selectedOptions.length === 8,
+      });
+      return existingOptions._id;
+    }
+
+    // Create new
+    const optionsId = await ctx.db.insert("optimizationOptions", {
+      auditId: args.auditId,
+      selectedOptions: args.selectedOptions,
+      isFullAuto: args.selectedOptions.length === 8,
+      createdAt: Date.now(),
+    });
+
+    // Link to audit
+    await ctx.db.patch(args.auditId, {
+      optimizationOptionsId: optionsId,
+    });
+
+    return optionsId;
+  },
+});
+
+// DEV ONLY: Run optimization with specific options (without auth)
+export const runOptimizationDev = mutation({
+  args: {
+    auditId: v.id("audits"),
+    selectedOptions: v.array(v.union(
+      v.literal("descriptions"),
+      v.literal("seo"),
+      v.literal("categories"),
+      v.literal("order"),
+      v.literal("prices"),
+      v.literal("duplicates"),
+      v.literal("duration"),
+      v.literal("tags")
+    )),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+    if (!audit.basePricelistId) {
+      throw new Error("Audit has no base pricelist");
+    }
+
+    const pricelist = await ctx.db.get(audit.basePricelistId);
+    if (!pricelist) {
+      throw new Error("Pricelist not found");
+    }
+
+    // First reset any existing optimization
+    if (audit.proPricelistId) {
+      await ctx.db.delete(audit.proPricelistId);
+    }
+    if (audit.optimizationOptionsId) {
+      await ctx.db.delete(audit.optimizationOptionsId);
+    }
+
+    // Set new optimization options
+    const optionsId = await ctx.db.insert("optimizationOptions", {
+      auditId: args.auditId,
+      selectedOptions: args.selectedOptions,
+      isFullAuto: args.selectedOptions.length === 8,
+      createdAt: Date.now(),
+    });
+
+    await ctx.db.patch(args.auditId, {
+      optimizationOptionsId: optionsId,
+      proPricelistId: undefined,
+    });
+
+    // Create optimization job
+    const jobId = await ctx.db.insert("optimizationJobs", {
+      userId: audit.userId,
+      pricelistId: audit.basePricelistId,
+      auditId: args.auditId,
+      status: "pending",
+      progress: 0,
+      progressMessage: "Przygotowuję optymalizację...",
+      currentStep: 0,
+      totalSteps: 5,
+      inputPricingDataJson: pricelist.pricingDataJson,
+      createdAt: Date.now(),
+    });
+
+    // Schedule the optimization action
+    await ctx.scheduler.runAfter(0, internal.optimizationJobsAction.runOptimization, {
+      jobId,
+    });
+
+    return null;
+  },
+});
+
+// DEV ONLY: Get optimization result summary
+export const getOptimizationResultDev = query({
+  args: { auditId: v.id("audits") },
+  returns: v.union(
+    v.object({
+      hasOptimization: v.literal(true),
+      qualityScore: v.number(),
+      totalChanges: v.number(),
+      descriptionsAdded: v.number(),
+      namesImproved: v.number(),
+      categoriesOptimized: v.number(),
+      duplicatesFound: v.number(),
+      selectedOptions: v.array(v.string()),
+    }),
+    v.object({
+      hasOptimization: v.literal(false),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit?.basePricelistId) {
+      return { hasOptimization: false as const };
+    }
+
+    // Check base pricelist for optimization result (that's where completeJob stores it)
+    const pricelist = await ctx.db.get(audit.basePricelistId);
+    if (!pricelist?.optimizationResultJson) {
+      return { hasOptimization: false as const };
+    }
+
+    const result = JSON.parse(pricelist.optimizationResultJson);
+
+    // Get selected options
+    let selectedOptions: string[] = [];
+    if (audit.optimizationOptionsId) {
+      const options = await ctx.db.get(audit.optimizationOptionsId);
+      if (options) {
+        selectedOptions = options.selectedOptions;
+      }
+    }
+
+    return {
+      hasOptimization: true as const,
+      qualityScore: result.qualityScore ?? 0,
+      totalChanges: result.summary?.totalChanges ?? 0,
+      descriptionsAdded: result.summary?.descriptionsAdded ?? 0,
+      namesImproved: result.summary?.namesImproved ?? 0,
+      categoriesOptimized: result.summary?.categoriesOptimized ?? 0,
+      duplicatesFound: result.summary?.duplicatesFound ?? 0,
+      selectedOptions,
+    };
+  },
+});
+
+// DEV ONLY: Get optimization job status for an audit
+export const getOptimizationJobStatusDev = query({
+  args: { auditId: v.id("audits") },
+  returns: v.union(
+    v.object({
+      hasJob: v.literal(true),
+      jobId: v.id("optimizationJobs"),
+      status: v.string(),
+      progress: v.optional(v.number()),
+      progressMessage: v.optional(v.string()),
+      errorMessage: v.optional(v.string()),
+    }),
+    v.object({
+      hasJob: v.literal(false),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit?.basePricelistId) {
+      return { hasJob: false as const };
+    }
+
+    // Get most recent job for this audit's pricelist
+    const job = await ctx.db
+      .query("optimizationJobs")
+      .withIndex("by_pricelist", (q) => q.eq("pricelistId", audit.basePricelistId!))
+      .order("desc")
+      .first();
+
+    if (!job) {
+      return { hasJob: false as const };
+    }
+
+    return {
+      hasJob: true as const,
+      jobId: job._id,
+      status: job.status,
+      progress: job.progress,
+      progressMessage: job.progressMessage,
+      errorMessage: job.errorMessage,
+    };
   },
 });
