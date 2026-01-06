@@ -5,18 +5,23 @@
  * 1. Open Booksy website
  * 2. Navigate to a salon page
  * 3. Intercept API requests and extract authentication headers
- * 4. Output credentials in JSON format
+ * 4. Automatically solve CAPTCHA using 2captcha service
+ * 5. Output credentials in JSON format
  *
  * Usage:
- *   npx ts-node scripts/extract-booksy-credentials.ts
+ *   npx tsx scripts/extract-booksy-credentials.ts
  *
- * Or with environment variables for login:
- *   BOOKSY_EMAIL=... BOOKSY_PASSWORD=... npx ts-node scripts/extract-booksy-credentials.ts
+ * With login credentials:
+ *   BOOKSY_EMAIL=... BOOKSY_PASSWORD=... npx tsx scripts/extract-booksy-credentials.ts
+ *
+ * With 2captcha API key (for automatic CAPTCHA solving):
+ *   TWOCAPTCHA_API_KEY=... BOOKSY_EMAIL=... BOOKSY_PASSWORD=... npx tsx scripts/extract-booksy-credentials.ts
  *
  * Output: JSON with extracted credentials printed to stdout
  */
 
 import { chromium, type Page, type Request } from '@playwright/test';
+import { Solver } from '2captcha-ts';
 
 interface BooksyCredentials {
   accessToken: string;
@@ -28,6 +33,126 @@ interface BooksyCredentials {
 
 const SAMPLE_SALON_URL = 'https://booksy.com/pl-pl/98814_beauty4ever-ul-woloska-16_medycyna-estetyczna_3_warszawa';
 const API_PATTERN = /booksy\.com\/core\/v2/;
+
+// Initialize 2captcha solver if API key is provided
+const TWOCAPTCHA_API_KEY = process.env.TWOCAPTCHA_API_KEY;
+const solver = TWOCAPTCHA_API_KEY ? new Solver(TWOCAPTCHA_API_KEY) : null;
+
+/**
+ * Attempt to solve CAPTCHA on the page using 2captcha service.
+ * Supports hCaptcha and FunCaptcha (shape puzzle).
+ */
+async function solveCaptcha(page: Page): Promise<boolean> {
+  if (!solver) {
+    console.error('[CAPTCHA] No 2captcha API key provided. Set TWOCAPTCHA_API_KEY env var.');
+    return false;
+  }
+
+  try {
+    // Check for hCaptcha
+    const hcaptchaFrame = await page.$('iframe[src*="hcaptcha"]');
+    if (hcaptchaFrame) {
+      console.error('[CAPTCHA] Detected hCaptcha, solving...');
+      const sitekey = await page.evaluate(() => {
+        const el = document.querySelector('[data-sitekey]');
+        return el?.getAttribute('data-sitekey') || '';
+      });
+
+      if (sitekey) {
+        const result = await solver.hcaptcha({
+          sitekey,
+          pageurl: page.url(),
+        });
+        console.error('[CAPTCHA] Got solution, injecting...');
+
+        // Inject the solution
+        await page.evaluate((token: string) => {
+          const textarea = document.querySelector('textarea[name="h-captcha-response"]');
+          if (textarea) {
+            (textarea as HTMLTextAreaElement).value = token;
+          }
+          // Trigger callback if exists
+          if ((window as unknown as Record<string, unknown>).hcaptchaCallback) {
+            ((window as unknown as Record<string, (token: string) => void>).hcaptchaCallback)(token);
+          }
+        }, result.data);
+
+        return true;
+      }
+    }
+
+    // Check for FunCaptcha / Arkose Labs (shape puzzle)
+    const funcaptchaFrame = await page.$('iframe[src*="funcaptcha"], iframe[src*="arkoselabs"]');
+    if (funcaptchaFrame) {
+      console.error('[CAPTCHA] Detected FunCaptcha, solving...');
+      const publicKey = await page.evaluate(() => {
+        const el = document.querySelector('[data-pkey]');
+        return el?.getAttribute('data-pkey') || '';
+      });
+
+      if (publicKey) {
+        const result = await solver.funCaptcha({
+          publickey: publicKey,
+          pageurl: page.url(),
+        });
+        console.error('[CAPTCHA] Got FunCaptcha solution');
+
+        await page.evaluate((token: string) => {
+          const input = document.querySelector('input[name="fc-token"]');
+          if (input) {
+            (input as HTMLInputElement).value = token;
+          }
+        }, result.data);
+
+        return true;
+      }
+    }
+
+    // Check for custom shape puzzle (Booksy specific)
+    const shapePuzzle = await page.$('text="Proszę przeciągnąć kształt"');
+    if (shapePuzzle) {
+      console.error('[CAPTCHA] Detected custom shape puzzle');
+      console.error('[CAPTCHA] Taking screenshot for 2captcha image solving...');
+
+      // Take screenshot of the captcha area
+      const captchaElement = await page.$('.captcha-container, [class*="captcha"], [data-testid*="captcha"]');
+      if (captchaElement) {
+        const screenshot = await captchaElement.screenshot({ type: 'png' });
+        const base64 = screenshot.toString('base64');
+
+        // Send to 2captcha as coordinates task
+        console.error('[CAPTCHA] Sending to 2captcha for coordinate solving...');
+        const result = await solver.coordinates({
+          body: base64,
+          textinstructions: 'Drag the shape from the right side to where it fits. Click on the target position.',
+        });
+
+        if (result.data) {
+          // Parse coordinates and click
+          const coords = result.data.split(':');
+          if (coords.length >= 2) {
+            const x = parseInt(coords[0], 10);
+            const y = parseInt(coords[1], 10);
+            console.error(`[CAPTCHA] Clicking at coordinates: ${x}, ${y}`);
+
+            const box = await captchaElement.boundingBox();
+            if (box) {
+              await page.mouse.click(box.x + x, box.y + y);
+              await page.waitForTimeout(1000);
+              return true;
+            }
+          }
+        }
+      }
+    }
+
+    console.error('[CAPTCHA] No supported CAPTCHA detected');
+    return false;
+  } catch (error) {
+    console.error('[CAPTCHA] Error solving:', error);
+    return false;
+  }
+}
 
 async function extractCredentials(): Promise<BooksyCredentials | null> {
   console.error('[Booksy Extractor] Starting browser...');
@@ -330,13 +455,13 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
     }
 
     // Wait for login to complete - may show CAPTCHA
-    console.error('[Booksy Extractor] Waiting for login (may require CAPTCHA solving)...');
-    console.error('[Booksy Extractor] If CAPTCHA appears, solve it manually in the browser window');
+    console.error('[Booksy Extractor] Waiting for login (checking for CAPTCHA)...');
 
-    // Wait up to 60 seconds for user to solve captcha and login to complete
-    const maxWaitTime = 60000;
+    // Wait up to 90 seconds for captcha solving and login to complete
+    const maxWaitTime = 90000;
     const checkInterval = 2000;
     let waited = 0;
+    let captchaAttempted = false;
 
     while (waited < maxWaitTime) {
       await page.waitForTimeout(checkInterval);
@@ -354,6 +479,25 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
         console.error('[Booksy Extractor] Login modal closed, checking for credentials...');
         await page.waitForTimeout(2000);
         break;
+      }
+
+      // Check for CAPTCHA and try to solve it automatically
+      const captchaVisible = await page.$('text="Proszę przeciągnąć kształt"');
+      if (captchaVisible && !captchaAttempted) {
+        console.error('[Booksy Extractor] CAPTCHA detected!');
+        captchaAttempted = true;
+
+        if (solver) {
+          console.error('[Booksy Extractor] Attempting automatic CAPTCHA solve with 2captcha...');
+          const solved = await solveCaptcha(page);
+          if (solved) {
+            console.error('[Booksy Extractor] CAPTCHA solved! Waiting for response...');
+            await page.waitForTimeout(3000);
+          }
+        } else {
+          console.error('[Booksy Extractor] No 2captcha API key - solve CAPTCHA manually in browser');
+          console.error('[Booksy Extractor] Set TWOCAPTCHA_API_KEY env var for automatic solving');
+        }
       }
 
       console.error(`[Booksy Extractor] Still waiting... (${waited/1000}s/${maxWaitTime/1000}s)`);
