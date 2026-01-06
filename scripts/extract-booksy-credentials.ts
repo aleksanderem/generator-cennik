@@ -172,48 +172,200 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
   page.on('request', (request: Request) => {
     const url = request.url();
 
+    // Log booksy requests for debugging
+    if (url.includes('booksy.com')) {
+      console.error(`[Request] ${request.method()} ${url.substring(0, 80)}`);
+    }
+
     if (API_PATTERN.test(url)) {
       const headers = request.headers();
+      console.error(`[Booksy Extractor] API call: ${url.substring(0, 80)}`);
+      console.error(`[Booksy Extractor] Has x-access-token: ${!!headers['x-access-token']}`);
 
       const accessToken = headers['x-access-token'];
       const apiKey = headers['x-api-key'];
       const fingerprint = headers['x-fingerprint'];
 
-      if (accessToken && apiKey) {
-        console.error(`[Booksy Extractor] Captured credentials from: ${url}`);
+      if (apiKey) {
+        console.error(`[Booksy Extractor] Captured credentials! accessToken: ${accessToken ? 'YES' : 'NO'}`);
 
-        credentials = {
-          accessToken,
-          apiKey,
-          fingerprint: fingerprint || '',
-          extractedAt: new Date().toISOString(),
-          expiresAt: null,
-        };
+        // Only update if we get better credentials (with access token)
+        if (accessToken || !credentials?.accessToken) {
+          credentials = {
+            accessToken: accessToken || '',
+            apiKey,
+            fingerprint: fingerprint || '',
+            extractedAt: new Date().toISOString(),
+            expiresAt: null,
+          };
+        }
       }
     }
   });
 
   try {
-    // Go to login page
-    console.error('[Booksy Extractor] Navigating to login page...');
-    await page.goto('https://booksy.com/pl-pl/login', {
+    // Go to main page first and look for login button
+    console.error('[Booksy Extractor] Navigating to main page to find login...');
+    await page.goto('https://booksy.com/pl-pl/', {
       waitUntil: 'domcontentloaded',
       timeout: 60000,
     });
 
-    // Wait for login form
-    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 15000 });
+    // Wait for page to fully load
+    await page.waitForTimeout(3000);
 
-    // Fill login form
-    console.error('[Booksy Extractor] Filling login form...');
-    await page.fill('input[type="email"], input[name="email"]', email);
-    await page.fill('input[type="password"], input[name="password"]', password);
+    // Accept cookies if present
+    try {
+      const cookieButton = await page.waitForSelector('button:has-text("Zezwól"), button:has-text("Akceptuj"), [id*="accept"]', { timeout: 3000 });
+      if (cookieButton) {
+        await cookieButton.click();
+        await page.waitForTimeout(1000);
+      }
+    } catch {
+      // No cookie banner
+    }
 
-    // Submit
-    await page.click('button[type="submit"]');
+    // Look for login/sign in button
+    console.error('[Booksy Extractor] Looking for login button...');
+    const loginButtonSelectors = [
+      'a:has-text("Zaloguj")',
+      'button:has-text("Zaloguj")',
+      'a:has-text("Sign in")',
+      'a:has-text("Log in")',
+      '[href*="login"]',
+      '[href*="signin"]',
+      '[data-testid*="login"]',
+    ];
 
-    // Wait for login to complete
-    await page.waitForTimeout(5000);
+    let loginClicked = false;
+    for (const selector of loginButtonSelectors) {
+      try {
+        const btn = await page.waitForSelector(selector, { timeout: 2000 });
+        if (btn) {
+          console.error(`[Booksy Extractor] Found login button with: ${selector}`);
+          await btn.click();
+          loginClicked = true;
+          await page.waitForTimeout(2000);
+          break;
+        }
+      } catch {
+        // Try next
+      }
+    }
+
+    if (!loginClicked) {
+      await page.screenshot({ path: '/tmp/booksy-main-page.png' });
+      console.error('[Booksy Extractor] Could not find login button. Screenshot saved.');
+    }
+
+    // Try different selectors for email input
+    console.error('[Booksy Extractor] Looking for login form...');
+    const emailSelectors = [
+      'input[type="email"]',
+      'input[name="email"]',
+      'input[placeholder*="email" i]',
+      'input[placeholder*="e-mail" i]',
+      'input[id*="email" i]',
+      '#email',
+    ];
+
+    let emailInput = null;
+    for (const selector of emailSelectors) {
+      try {
+        emailInput = await page.waitForSelector(selector, { timeout: 2000 });
+        if (emailInput) {
+          console.error(`[Booksy Extractor] Found email input with selector: ${selector}`);
+          break;
+        }
+      } catch {
+        // Try next selector
+      }
+    }
+
+    if (!emailInput) {
+      // Take screenshot for debugging
+      await page.screenshot({ path: '/tmp/booksy-login-page.png' });
+      console.error('[Booksy Extractor] Could not find email input. Screenshot saved to /tmp/booksy-login-page.png');
+      console.error('[Booksy Extractor] Page URL:', page.url());
+      throw new Error('Email input not found');
+    }
+
+    // Fill login form - Booksy uses two-step: email first, then password
+    console.error('[Booksy Extractor] Filling email...');
+    await emailInput.fill(email);
+
+    // Click continue/next button after email
+    try {
+      const continueBtn = await page.waitForSelector('button[type="submit"], button:has-text("Dalej"), button:has-text("Kontynuuj"), button:has-text("Continue")', { timeout: 3000 });
+      if (continueBtn) {
+        await continueBtn.click();
+        await page.waitForTimeout(2000);
+      }
+    } catch {
+      // Maybe single-step form, continue
+    }
+
+    // Find password input (now should be visible)
+    console.error('[Booksy Extractor] Looking for password field...');
+    const passwordInput = await page.waitForSelector('input[type="password"]:visible', { timeout: 10000 });
+    if (passwordInput) {
+      console.error('[Booksy Extractor] Filling password...');
+      await passwordInput.fill(password);
+      await page.waitForTimeout(500);
+    }
+
+    // Click the login/submit button (Dalej = Continue)
+    console.error('[Booksy Extractor] Clicking login button...');
+    await page.waitForTimeout(1000); // Wait for any animations
+
+    // Try to click the Dalej button directly
+    try {
+      await page.click('button:has-text("Dalej")', { force: true });
+      console.error('[Booksy Extractor] Clicked Dalej button');
+    } catch (e) {
+      console.error('[Booksy Extractor] Could not click Dalej:', e);
+      // Try pressing Enter as fallback
+      await page.keyboard.press('Enter');
+      console.error('[Booksy Extractor] Pressed Enter instead');
+    }
+
+    // Wait for login to complete - may show CAPTCHA
+    console.error('[Booksy Extractor] Waiting for login (may require CAPTCHA solving)...');
+    console.error('[Booksy Extractor] If CAPTCHA appears, solve it manually in the browser window');
+
+    // Wait up to 60 seconds for user to solve captcha and login to complete
+    const maxWaitTime = 60000;
+    const checkInterval = 2000;
+    let waited = 0;
+
+    while (waited < maxWaitTime) {
+      await page.waitForTimeout(checkInterval);
+      waited += checkInterval;
+
+      // Check if we got credentials with access token
+      if (credentials?.accessToken) {
+        console.error('[Booksy Extractor] Got access token! Login successful.');
+        break;
+      }
+
+      // Check if login modal closed (successful login)
+      const loginModal = await page.$('input[type="password"]:visible');
+      if (!loginModal) {
+        console.error('[Booksy Extractor] Login modal closed, checking for credentials...');
+        await page.waitForTimeout(2000);
+        break;
+      }
+
+      console.error(`[Booksy Extractor] Still waiting... (${waited/1000}s/${maxWaitTime/1000}s)`);
+    }
+
+    // Check if still on login page (login failed)
+    const currentUrl = page.url();
+    console.error(`[Booksy Extractor] Current URL after login attempt: ${currentUrl}`);
+
+    // Take screenshot to verify login
+    await page.screenshot({ path: '/tmp/booksy-after-login.png' });
+    console.error('[Booksy Extractor] After login screenshot saved. URL:', page.url());
 
     // Navigate to salon page
     console.error('[Booksy Extractor] Navigating to salon page...');
@@ -225,11 +377,20 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
     console.error('[Booksy Extractor] Page loaded, waiting for API calls...');
     await page.waitForTimeout(5000);
 
+    // Try scrolling to trigger more API calls
+    await page.evaluate(() => window.scrollTo(0, 500));
+    await page.waitForTimeout(2000);
+
     if (credentials) {
-      console.error('[Booksy Extractor] Credentials extracted successfully after login!');
+      if (credentials.accessToken) {
+        console.error('[Booksy Extractor] Full credentials extracted with access token!');
+      } else {
+        console.error('[Booksy Extractor] Partial credentials (no access token)');
+      }
       console.log(JSON.stringify(credentials, null, 2));
     } else {
-      console.error('[Booksy Extractor] Failed to extract credentials after login');
+      console.error('[Booksy Extractor] Failed to extract any credentials after login');
+      await page.screenshot({ path: '/tmp/booksy-salon-page.png' });
     }
 
   } catch (error) {
