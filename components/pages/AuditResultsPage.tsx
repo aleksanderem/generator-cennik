@@ -290,6 +290,52 @@ const AuditResultsPage: React.FC = () => {
     return result;
   }, [enhancedReport, keywordReport?.suggestions]);
 
+  // Extract transformed service names for visual highlighting in CategoryEditorModal
+  // Combines: 1) explicit transformations from audit, 2) propagated changes in category proposal
+  const transformedServices: Set<string> = useMemo(() => {
+    const result = new Set<string>();
+
+    // 1. Add explicit transformations from audit report
+    if (enhancedReport?.transformations) {
+      enhancedReport.transformations.forEach(t => {
+        if (t.type === 'name' && t.after) {
+          result.add(t.after);
+        }
+      });
+    }
+
+    // 2. Detect propagated changes by comparing original vs proposed structure
+    // This catches services transformed by pattern propagation (not in audit report)
+    if (categoryProposal?.originalStructureJson && categoryProposal?.proposedStructureJson) {
+      try {
+        const original = JSON.parse(categoryProposal.originalStructureJson);
+        const proposed = JSON.parse(categoryProposal.proposedStructureJson);
+
+        // Build set of original service names (normalized)
+        const originalNames = new Set<string>();
+        (Array.isArray(original) ? original : []).forEach((cat: { services?: Array<{ name?: string }> }) => {
+          cat.services?.forEach(s => {
+            if (s.name) originalNames.add(s.name.toLowerCase().trim());
+          });
+        });
+
+        // Find services in proposed that don't exist in original (new/transformed names)
+        (Array.isArray(proposed) ? proposed : []).forEach((cat: { services?: Array<{ name?: string }> }) => {
+          cat.services?.forEach(s => {
+            if (s.name && !originalNames.has(s.name.toLowerCase().trim())) {
+              // This is a new/changed name - add to transformed set
+              result.add(s.name);
+            }
+          });
+        });
+      } catch (e) {
+        console.warn('[transformedServices] Failed to compare structures:', e);
+      }
+    }
+
+    return result;
+  }, [enhancedReport?.transformations, categoryProposal?.originalStructureJson, categoryProposal?.proposedStructureJson]);
+
   // Build loading states from audit recommendations
   const optimizationLoadingStates = useMemo(() => {
     const baseSteps = [
@@ -1696,67 +1742,122 @@ const AuditResultsPage: React.FC = () => {
       <CategoryEditorModal
         isOpen={isCategoryEditorOpen}
         onClose={() => setIsCategoryEditorOpen(false)}
-        originalStructure={originalPricingData?.categories || []}
-        proposedStructure={categoryProposal?.proposedStructureJson
-          ? (() => {
-              try {
-                const parsed = JSON.parse(categoryProposal.proposedStructureJson);
-                console.log('[CategoryEditor] Raw parsed:', Array.isArray(parsed) ? 'is array' : 'is object', parsed[0] || parsed.categories?.[0]);
+        originalStructure={(() => {
+          // Merge variants from originalPricingData into optimizedPricingData
+          // Original data (from scrapedDataJson) has variants, optimized may not
+          const baseCategories = optimizedPricingData?.categories || originalPricingData?.categories || [];
 
-                // Handle both formats: array of categories OR { categories: [...] }
-                const categoriesArray = Array.isArray(parsed) ? parsed : (parsed.categories || []);
-                console.log('[CategoryEditor] Categories array first item:', categoriesArray[0]);
-
-                // Build a lookup map of all services from original data
-                const serviceMap = new Map<string, ServiceItem>();
-                (originalPricingData?.categories || []).forEach(cat => {
-                  cat.services?.forEach(service => {
-                    if (service.name) {
-                      // Store by exact name and normalized name
-                      serviceMap.set(service.name, service);
-                      serviceMap.set(service.name.toLowerCase().trim(), service);
-                    }
-                  });
-                });
-
-                // Convert AI format to Category format
-                // AI saves services as array of strings (service names) OR array of objects
-                return categoriesArray.map((c: { name: string; services?: Array<string | Record<string, unknown>> }) => ({
-                  categoryName: c.name,
-                  services: (c.services || []).map(s => {
-                    // Check if service is a string (just the name) or an object
-                    if (typeof s === 'string') {
-                      // Find full service data from original structure
-                      const fullService = serviceMap.get(s) || serviceMap.get(s.toLowerCase().trim());
-                      if (fullService) {
-                        return fullService;
-                      }
-                      // Fallback: create minimal service object
-                      return {
-                        name: s,
-                        price: '',
-                        isPromo: false,
-                      };
-                    }
-                    // Service is already an object
-                    const serviceName = (s.name || s.serviceName || s.title || s.nazwa || '') as string;
-                    const servicePrice = (s.price || s.cena || s.priceFrom || '') as string;
-                    return {
-                      name: serviceName,
-                      price: servicePrice,
-                      description: (s.description || s.opis || '') as string | undefined,
-                      duration: (s.duration || s.czas || s.time || '') as string | undefined,
-                      isPromo: Boolean(s.isPromo || s.promo || false),
-                    };
-                  }),
-                }));
-              } catch (e) {
-                console.error('[CategoryEditor] Failed to parse proposedStructure:', e);
-                return [];
+          // Build variants map from original data
+          const variantsMap = new Map<string, ServiceItem['variants']>();
+          originalPricingData?.categories?.forEach(cat => {
+            cat.services?.forEach(service => {
+              if (service.name && service.variants) {
+                variantsMap.set(service.name, service.variants);
+                variantsMap.set(service.name.toLowerCase().trim(), service.variants);
               }
-            })()
-          : []
-        }
+            });
+          });
+
+          // Merge variants into base categories
+          return baseCategories.map(cat => ({
+            ...cat,
+            services: cat.services.map(service => ({
+              ...service,
+              variants: service.variants || variantsMap.get(service.name) || variantsMap.get(service.name.toLowerCase().trim()),
+            })),
+          }));
+        })()}
+        proposedStructure={(() => {
+          // Priority: userModificationsJson (user-modified) > proposedStructureJson (AI proposal)
+          const sourceJson = categoryProposal?.userModificationsJson || categoryProposal?.proposedStructureJson;
+          if (!sourceJson) return [];
+
+          try {
+            const parsed = JSON.parse(sourceJson);
+            console.log('[CategoryEditor] Using source:', categoryProposal?.userModificationsJson ? 'userModifications' : 'proposedStructure');
+
+            // Handle both formats: array of categories OR { categories: [...] }
+            const categoriesArray = Array.isArray(parsed) ? parsed : (parsed.categories || []);
+
+            // Build a lookup map of all services from OPTIMIZED data (with AI-improved names/descriptions)
+            // Falls back to original data if optimized not available
+            const serviceMap = new Map<string, ServiceItem>();
+            const sourceCategories = optimizedPricingData?.categories || originalPricingData?.categories || [];
+            sourceCategories.forEach(cat => {
+              cat.services?.forEach(service => {
+                if (service.name) {
+                  // Store by exact name and normalized name
+                  serviceMap.set(service.name, service);
+                  serviceMap.set(service.name.toLowerCase().trim(), service);
+                }
+              });
+            });
+
+            // Build a separate map for VARIANTS from original data (scrapedDataJson)
+            // This is needed because old optimized pricelists may not have variants
+            const variantsMap = new Map<string, ServiceItem['variants']>();
+            originalPricingData?.categories?.forEach(cat => {
+              cat.services?.forEach(service => {
+                if (service.name && service.variants) {
+                  variantsMap.set(service.name, service.variants);
+                  variantsMap.set(service.name.toLowerCase().trim(), service.variants);
+                }
+              });
+            });
+
+            // Convert AI format to Category format
+            // AI saves services as array of strings (service names) OR array of objects
+            return categoriesArray.map((c: { name: string; services?: Array<string | Record<string, unknown>> }) => ({
+              categoryName: c.name,
+              services: (c.services || []).map(s => {
+                // Check if service is a string (just the name) or an object
+                if (typeof s === 'string') {
+                  // Find full service data from original structure
+                  const fullService = serviceMap.get(s) || serviceMap.get(s.toLowerCase().trim());
+                  if (fullService) {
+                    // Merge variants from original data if not present in optimized
+                    const variants = fullService.variants || variantsMap.get(s) || variantsMap.get(s.toLowerCase().trim());
+                    return { ...fullService, variants };
+                  }
+                  // Fallback: create minimal service object with variants from original
+                  const variants = variantsMap.get(s) || variantsMap.get(s.toLowerCase().trim());
+                  return {
+                    name: s,
+                    price: '',
+                    isPromo: false,
+                    variants,
+                  };
+                }
+                // Service is already an object (from userModifications - has full data)
+                const serviceName = (s.name || s.serviceName || s.title || s.nazwa || '') as string;
+                const servicePrice = (s.price || s.cena || s.priceFrom || '') as string;
+
+                // Try to find full service data from optimized structure for any missing fields
+                const fullService = serviceMap.get(serviceName) || serviceMap.get(serviceName.toLowerCase().trim());
+
+                // Get variants: prefer from saved object, then fullService, then variantsMap (original data)
+                const savedVariants = s.variants as ServiceItem['variants'] | undefined;
+                const variants = savedVariants || fullService?.variants || variantsMap.get(serviceName) || variantsMap.get(serviceName.toLowerCase().trim());
+
+                return {
+                  name: serviceName,
+                  price: servicePrice,
+                  // Use saved description/duration if available (from userModifications), otherwise from fullService
+                  description: (s.description || s.opis || fullService?.description || '') as string | undefined,
+                  duration: (s.duration || s.czas || s.time || fullService?.duration || '') as string | undefined,
+                  isPromo: Boolean(s.isPromo || s.promo || fullService?.isPromo || false),
+                  imageUrl: (s.imageUrl || fullService?.imageUrl || '') as string | undefined,
+                  tags: (s.tags || fullService?.tags || []) as string[] | undefined,
+                  // PRESERVE VARIANTS - from saved data, optimized data OR original scraped data
+                  variants,
+                };
+              }),
+            }));
+          } catch (e) {
+            console.error('[CategoryEditor] Failed to parse proposedStructure:', e);
+            return [];
+          }
+        })()}
         onSave={async (modifiedStructure) => {
           if (!auditId) return;
           // Save user modifications and update status to 'modified'
@@ -1770,6 +1871,8 @@ const AuditResultsPage: React.FC = () => {
                 description: s.description,
                 duration: s.duration,
                 isPromo: s.isPromo,
+                // PRESERVE VARIANTS
+                variants: s.variants,
               })),
             })),
           };
@@ -1780,6 +1883,15 @@ const AuditResultsPage: React.FC = () => {
           });
         }}
         proposedChanges={categoryProposal?.changes || []}
+        transformedServices={transformedServices}
+        verificationReport={(() => {
+          if (!categoryProposal?.verificationReportJson) return undefined;
+          try {
+            return JSON.parse(categoryProposal.verificationReportJson);
+          } catch {
+            return undefined;
+          }
+        })()}
       />
     </ResultsLayout>
   );

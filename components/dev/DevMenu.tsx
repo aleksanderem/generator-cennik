@@ -73,6 +73,7 @@ const DevMenu: React.FC = () => {
   const createTestAudit = useMutation(api.dev.createTestAudit);
   const updateAuditStatus = useMutation(api.dev.updateAuditStatus);
   const deleteAudit = useMutation(api.dev.deleteAudit);
+  const rerunAudit = useMutation(api.dev.rerunAudit);
   const createTestPurchase = useMutation(api.dev.createTestPurchase);
   const deletePurchase = useMutation(api.dev.deletePurchase);
   const updatePurchaseStatus = useMutation(api.dev.updatePurchaseStatus);
@@ -376,12 +377,22 @@ const DevMenu: React.FC = () => {
                           {audit.sourceUrl?.slice(0, 20) || 'no url'}
                         </span>
                       </div>
-                      <button
-                        onClick={() => deleteAudit({ auditId: audit._id })}
-                        className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => rerunAudit({ auditId: audit._id })}
+                          className="p-1 text-blue-400 hover:text-blue-300 hover:bg-blue-900/30 rounded transition-colors"
+                          title="Re-run audit (re-scrape & re-analyze)"
+                        >
+                          <RefreshCw size={14} />
+                        </button>
+                        <button
+                          onClick={() => deleteAudit({ auditId: audit._id })}
+                          className="p-1 text-red-400 hover:text-red-300 hover:bg-red-900/30 rounded transition-colors"
+                          title="Delete audit"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
                     </div>
                   ))}
                 </div>

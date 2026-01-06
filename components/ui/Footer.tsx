@@ -49,7 +49,7 @@ const Footer: React.FC<FooterProps> = ({ showContactCTA = false }) => {
                 <ShineBorder
                   borderWidth={2}
                   duration={10}
-                  color={["#D4A574", "#B8860B", "#D4A574"]}
+                  shineColor={["#D4A574", "#B8860B", "#D4A574"]}
                 />
                 <div className="absolute inset-0 bg-gradient-to-br from-white/70 via-white/40 to-transparent pointer-events-none" />
 

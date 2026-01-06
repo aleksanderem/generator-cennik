@@ -162,7 +162,7 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
                         onClick={onColorZoneClick}
                       >
                         <h3
-                          className="text-base"
+                          className="text-base flex items-center gap-2"
                           style={{
                             color: service.isPromo ? theme.promoColor : theme.textColor,
                             fontFamily: theme.fontHeading,
@@ -171,32 +171,43 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
                           {service.name}
                           {service.isPromo && (
                             <span
-                              className="ml-2 text-[10px] uppercase tracking-wider"
+                              className="text-[10px] uppercase tracking-wider"
                               style={{ color: theme.promoColor }}
                             >
                               promo
                             </span>
                           )}
+                          {/* Variants count badge */}
+                          {service.variants && service.variants.length > 0 && (
+                            <span
+                              className="text-[10px] uppercase tracking-wider"
+                              style={{ color: theme.primaryColor }}
+                            >
+                              ({service.variants.length})
+                            </span>
+                          )}
                         </h3>
                       </ColorZone>
 
-                      {/* Price */}
-                      <ColorZone
-                        zone={getZone('price')}
-                        theme={theme}
-                        editMode={editMode}
-                        isActive={activeZone === 'price'}
-                        onClick={onColorZoneClick}
-                      >
-                        <span
-                          className="text-base tabular-nums"
-                          style={{
-                            color: service.isPromo ? theme.promoColor : theme.textColor,
-                          }}
+                      {/* Price - only show if no variants */}
+                      {(!service.variants || service.variants.length === 0) && (
+                        <ColorZone
+                          zone={getZone('price')}
+                          theme={theme}
+                          editMode={editMode}
+                          isActive={activeZone === 'price'}
+                          onClick={onColorZoneClick}
                         >
-                          {service.price}
-                        </span>
-                      </ColorZone>
+                          <span
+                            className="text-base tabular-nums"
+                            style={{
+                              color: service.isPromo ? theme.promoColor : theme.textColor,
+                            }}
+                          >
+                            {service.price}
+                          </span>
+                        </ColorZone>
+                      )}
                     </div>
 
                     {/* Description & Duration - subtle */}
@@ -258,6 +269,45 @@ const MinimalTemplate: React.FC<TemplateProps> = ({
                               {tag}
                             </span>
                           </ColorZone>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Nested variants display */}
+                    {service.variants && service.variants.length > 0 && (
+                      <div
+                        className="mt-2 pl-4 border-l space-y-1"
+                        style={{ borderColor: theme.boxBorderColor }}
+                      >
+                        {service.variants.map((variant, vIdx) => (
+                          <div
+                            key={vIdx}
+                            className="flex items-baseline justify-between py-0.5"
+                          >
+                            <span
+                              className="text-sm"
+                              style={{ color: theme.mutedColor }}
+                            >
+                              {variant.label}
+                            </span>
+                            <div className="flex items-center gap-3">
+                              {variant.duration && (
+                                <span
+                                  className="text-xs flex items-center gap-1"
+                                  style={{ color: theme.mutedColor }}
+                                >
+                                  <Clock size={10} />
+                                  {variant.duration}
+                                </span>
+                              )}
+                              <span
+                                className="text-sm tabular-nums"
+                                style={{ color: service.isPromo ? theme.promoColor : theme.textColor }}
+                              >
+                                {variant.price}
+                              </span>
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}

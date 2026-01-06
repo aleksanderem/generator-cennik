@@ -79,6 +79,7 @@ export const getCategoryProposal = internalQuery({
         v.literal("rejected")
       ),
       userModificationsJson: v.optional(v.string()),
+      verificationReportJson: v.optional(v.string()),
       acceptedAt: v.optional(v.number()),
       createdAt: v.number(),
     }),
@@ -95,6 +96,7 @@ export const getCategoryProposal = internalQuery({
       changes: proposal.changes,
       status: proposal.status,
       userModificationsJson: proposal.userModificationsJson,
+      verificationReportJson: proposal.verificationReportJson,
       acceptedAt: proposal.acceptedAt,
       createdAt: proposal.createdAt,
     };
@@ -196,6 +198,7 @@ export const getCategoryProposalForAudit = query({
         v.literal("rejected")
       ),
       userModificationsJson: v.optional(v.string()),
+      verificationReportJson: v.optional(v.string()),
       acceptedAt: v.optional(v.number()),
       createdAt: v.number(),
     }),
@@ -229,6 +232,7 @@ export const getCategoryProposalForAudit = query({
       changes: proposal.changes,
       status: proposal.status,
       userModificationsJson: proposal.userModificationsJson,
+      verificationReportJson: proposal.verificationReportJson,
       acceptedAt: proposal.acceptedAt,
       createdAt: proposal.createdAt,
     };
@@ -300,6 +304,7 @@ export const saveCategoryProposal = internalMutation({
         reason: v.string(),
       })
     ),
+    verificationReportJson: v.optional(v.string()),
   },
   returns: v.id("categoryProposals"),
   handler: async (ctx, args) => {
@@ -308,6 +313,7 @@ export const saveCategoryProposal = internalMutation({
       originalStructureJson: args.originalStructureJson,
       proposedStructureJson: args.proposedStructureJson,
       changes: args.changes,
+      verificationReportJson: args.verificationReportJson,
       status: "pending",
       createdAt: Date.now(),
     });

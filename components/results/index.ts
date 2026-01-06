@@ -35,4 +35,4 @@ export type {
   ProposedKeyword,
 } from './types';
 
-export type { CategoryEditorModalProps } from './CategoryEditorModal';
+export type { CategoryEditorModalProps, VerificationReport, VerificationIssue } from './CategoryEditorModal';

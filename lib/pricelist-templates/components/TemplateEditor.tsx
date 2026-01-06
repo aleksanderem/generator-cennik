@@ -39,6 +39,29 @@ export const generateEmbedHTML = (data: PricingData, theme: ThemeConfig): string
         });
       }
 
+      // Check if service has variants
+      const hasVariants = svc.variants && svc.variants.length > 0;
+
+      // Variants badge
+      if (hasVariants) {
+        tagsHTML += `<span class="tag variants">${svc.variants!.length} wariantów</span>`;
+      }
+
+      // Variants HTML
+      const variantsHTML = hasVariants ? `
+        <div class="service-variants">
+          ${svc.variants!.map(v => `
+            <div class="variant-item">
+              <span class="variant-label">${v.label}</span>
+              <div class="variant-right">
+                ${v.duration ? `<span class="variant-duration">⏱ ${v.duration}</span>` : ''}
+                <span class="variant-price">${v.price}</span>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      ` : '';
+
       return `
         <div class="service-item ${svc.isPromo ? 'is-promo-row' : ''}">
           <div class="service-main">
@@ -52,7 +75,8 @@ export const generateEmbedHTML = (data: PricingData, theme: ThemeConfig): string
               ${svc.duration ? `<p class="service-duration">⏱ ${svc.duration}</p>` : ''}
             </div>
           </div>
-          <div class="service-price">${svc.price}</div>
+          ${!hasVariants ? `<div class="service-price">${svc.price}</div>` : ''}
+          ${variantsHTML}
         </div>
       `}).join('');
 
@@ -158,6 +182,17 @@ export const generateEmbedHTML = (data: PricingData, theme: ThemeConfig): string
     text-align: left;
   }
   .salon-pricing .service-item.is-promo-row .service-price { color: var(--bp-promo-text); }
+
+  /* Variants */
+  .salon-pricing .tag.variants { background: color-mix(in srgb, var(--bp-primary), transparent 85%); color: var(--bp-primary); }
+  .salon-pricing .service-variants { margin-top: 0.75rem; margin-left: 1rem; padding-left: 0.75rem; border-left: 2px solid color-mix(in srgb, var(--bp-primary), transparent 70%); }
+  .salon-pricing .variant-item { display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0; }
+  .salon-pricing .variant-item:not(:last-child) { border-bottom: 1px solid var(--bp-box-border); }
+  .salon-pricing .variant-label { font-size: 0.9rem; color: var(--bp-text); }
+  .salon-pricing .variant-right { display: flex; align-items: center; gap: 1rem; }
+  .salon-pricing .variant-duration { font-size: 0.75rem; color: var(--bp-text-muted); opacity: 0.8; }
+  .salon-pricing .variant-price { font-weight: 700; color: var(--bp-primary); font-size: 1rem; }
+  .salon-pricing .service-item.is-promo-row .variant-price { color: var(--bp-promo-text); }
 
 </style>
 
@@ -840,18 +875,73 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                                   ⏱ {service.duration}
                                 </p>
                               )}
+
+                              {/* Variants count badge */}
+                              {service.variants && service.variants.length > 0 && (
+                                <span
+                                  className="inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium"
+                                  style={{ backgroundColor: `${theme.primaryColor}15`, color: theme.primaryColor }}
+                                >
+                                  {service.variants.length} wariantów
+                                </span>
+                              )}
                             </div>
-                            <span
-                              className="font-bold flex-shrink-0"
-                              style={{
-                                fontFamily: theme.fontBody,
-                                color: service.isPromo ? theme.promoColor : theme.primaryColor,
-                                fontSize: `${theme.fontSizePrice}px`,
-                              }}
-                            >
-                              {service.price}
-                            </span>
+
+                            {/* Price - only show if no variants */}
+                            {(!service.variants || service.variants.length === 0) && (
+                              <span
+                                className="font-bold flex-shrink-0"
+                                style={{
+                                  fontFamily: theme.fontBody,
+                                  color: service.isPromo ? theme.promoColor : theme.primaryColor,
+                                  fontSize: `${theme.fontSizePrice}px`,
+                                }}
+                              >
+                                {service.price}
+                              </span>
+                            )}
                           </div>
+
+                          {/* Nested variants display */}
+                          {service.variants && service.variants.length > 0 && (
+                            <div
+                              className="mt-2 ml-4 pl-3 border-l-2 space-y-1"
+                              style={{ borderColor: `${theme.primaryColor}30` }}
+                            >
+                              {service.variants.map((variant, vIdx) => (
+                                <div
+                                  key={vIdx}
+                                  className="flex items-center justify-between py-1"
+                                >
+                                  <span
+                                    className="text-sm"
+                                    style={{ color: theme.textColor }}
+                                  >
+                                    {variant.label}
+                                  </span>
+                                  <div className="flex items-center gap-3">
+                                    {variant.duration && (
+                                      <span
+                                        className="text-xs opacity-70"
+                                        style={{ color: theme.mutedColor }}
+                                      >
+                                        ⏱ {variant.duration}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="font-bold"
+                                      style={{
+                                        color: service.isPromo ? theme.promoColor : theme.primaryColor,
+                                        fontSize: `${theme.fontSizePrice}px`,
+                                      }}
+                                    >
+                                      {variant.price}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

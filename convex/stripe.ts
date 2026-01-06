@@ -515,10 +515,11 @@ export const handleWebhook = internalAction({
                     expand: ["tax_ids"],
                   });
 
-                  if (customer && !customer.deleted) {
+                  if (customer && "email" in customer) {
+                    // customer is NOT deleted (DeletedCustomer has no 'email')
                     // Wyciągnij NIP z tax_ids (jeśli nie ma z custom field)
                     let companyNip = customNip;
-                    if (!companyNip && "tax_ids" in customer && customer.tax_ids?.data) {
+                    if (!companyNip && customer.tax_ids?.data) {
                       const euVat = customer.tax_ids.data.find(
                         (t) => t.type === "eu_vat" && t.value?.startsWith("PL")
                       );

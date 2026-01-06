@@ -538,16 +538,25 @@ export default function CategoryManager({
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-medium text-slate-800 truncate">
-                                  {service.name}
-                                </p>
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-medium text-slate-800 truncate">
+                                    {service.name}
+                                  </p>
+                                  {service.variants && service.variants.length > 0 && (
+                                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-indigo-100 text-indigo-700">
+                                      {service.variants.length} war.
+                                    </span>
+                                  )}
+                                </div>
                                 {service.description && (
                                   <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
                                     {service.description}
                                   </p>
                                 )}
                                 <p className="text-xs text-slate-400 mt-1">
-                                  {service.price}
+                                  {service.variants && service.variants.length > 0
+                                    ? `${service.variants.length} wariantów cenowych`
+                                    : service.price}
                                   {service.duration && ` • ${service.duration}`}
                                 </p>
                               </div>

@@ -67,6 +67,9 @@ export default defineSchema({
     // Modyfikacje użytkownika (jeśli status = modified)
     userModificationsJson: v.optional(v.string()),
 
+    // Raport weryfikacji (sprawdzenie poprawności zmian)
+    verificationReportJson: v.optional(v.string()),
+
     acceptedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_audit", ["auditId"]),

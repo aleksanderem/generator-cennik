@@ -273,6 +273,19 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
                                     </span>
                                   </ColorZone>
                                 ))}
+
+                                {/* Variants count badge */}
+                                {service.variants && service.variants.length > 0 && (
+                                  <span
+                                    className="text-[10px] uppercase tracking-wider px-2 py-1 rounded font-medium"
+                                    style={{
+                                      color: theme.primaryColor,
+                                      backgroundColor: `${theme.primaryColor}15`,
+                                    }}
+                                  >
+                                    {service.variants.length} wariantów
+                                  </span>
+                                )}
                               </div>
 
                               {service.description && (
@@ -311,27 +324,71 @@ const ElegantTemplate: React.FC<TemplateProps> = ({
                               )}
                             </div>
 
-                            {/* Price */}
-                            <ColorZone
-                              zone={getZone('price')}
-                              theme={theme}
-                              editMode={editMode}
-                              isActive={activeZone === 'price'}
-                              onClick={onColorZoneClick}
-                            >
-                              <div
-                                className="text-xl font-bold flex-shrink-0"
-                                style={{
-                                  color: service.isPromo
-                                    ? theme.promoColor
-                                    : theme.primaryColor,
-                                  fontFamily: theme.fontHeading,
-                                }}
+                            {/* Price - only show if no variants */}
+                            {(!service.variants || service.variants.length === 0) && (
+                              <ColorZone
+                                zone={getZone('price')}
+                                theme={theme}
+                                editMode={editMode}
+                                isActive={activeZone === 'price'}
+                                onClick={onColorZoneClick}
                               >
-                                {service.price}
-                              </div>
-                            </ColorZone>
+                                <div
+                                  className="text-xl font-bold flex-shrink-0"
+                                  style={{
+                                    color: service.isPromo
+                                      ? theme.promoColor
+                                      : theme.primaryColor,
+                                    fontFamily: theme.fontHeading,
+                                  }}
+                                >
+                                  {service.price}
+                                </div>
+                              </ColorZone>
+                            )}
                           </div>
+
+                          {/* Nested variants display */}
+                          {service.variants && service.variants.length > 0 && (
+                            <div
+                              className="mt-3 pl-4 border-l-2 space-y-2"
+                              style={{ borderColor: `${theme.primaryColor}30` }}
+                            >
+                              {service.variants.map((variant, vIdx) => (
+                                <div
+                                  key={vIdx}
+                                  className="flex items-center justify-between py-1"
+                                >
+                                  <span
+                                    className="text-sm italic"
+                                    style={{ color: theme.textColor }}
+                                  >
+                                    {variant.label}
+                                  </span>
+                                  <div className="flex items-center gap-4">
+                                    {variant.duration && (
+                                      <span
+                                        className="text-xs flex items-center gap-1"
+                                        style={{ color: theme.mutedColor }}
+                                      >
+                                        <Clock size={10} />
+                                        {variant.duration}
+                                      </span>
+                                    )}
+                                    <span
+                                      className="font-bold text-lg"
+                                      style={{
+                                        color: service.isPromo ? theme.promoColor : theme.primaryColor,
+                                        fontFamily: theme.fontHeading,
+                                      }}
+                                    >
+                                      {variant.price}
+                                    </span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

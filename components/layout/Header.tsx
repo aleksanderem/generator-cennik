@@ -24,7 +24,7 @@ import { AuroraText } from '../ui/aurora-text';
 import { PulsatingButton } from '../ui/pulsating-button';
 import NotificationBell from '../NotificationBell';
 
-type Page = 'home' | 'generator' | 'audit' | 'optimization' | 'campaigns-meta' | 'campaigns-google' | 'agency' | 'profile';
+type Page = 'home' | 'generator' | 'audit' | 'settings' | 'success' | 'profile' | 'start-audit' | 'start-generator' | 'optimization-results' | 'audit-results' | 'campaigns-meta' | 'campaigns-google' | 'preview';
 
 interface NavSubItem {
   id: Page | string;

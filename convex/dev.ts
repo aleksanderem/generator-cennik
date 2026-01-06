@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, internalQuery, internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 // Debug: Delete pricelist by ID
 export const debugDeletePricelist = internalMutation({
@@ -655,5 +656,45 @@ export const addAnalysisData = mutation({
     });
 
     return { keywordReportId, categoryProposalId };
+  },
+});
+
+// Re-run audit from scratch (dev only)
+// This will re-scrape and re-analyze the audit, preserving variants
+export const rerunAudit = mutation({
+  args: { auditId: v.id("audits") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audyt nie znaleziony");
+    }
+
+    if (!audit.sourceUrl) {
+      throw new Error("Audyt nie ma URL źródłowego");
+    }
+
+    // Reset audit status and clear old data
+    await ctx.db.patch(args.auditId, {
+      status: "scraping",
+      progress: 0,
+      progressMessage: "Re-running audit...",
+      errorMessage: undefined,
+      retryCount: 0,
+      // Clear old analysis data to force regeneration
+      scrapedDataJson: undefined,
+      rawData: undefined,
+      reportJson: undefined,
+      overallScore: undefined,
+      keywordReportId: undefined,
+      categoryProposalId: undefined,
+    });
+
+    // Schedule the scraping action
+    await ctx.scheduler.runAfter(0, internal.auditActions.scrapeBooksyProfile, {
+      auditId: args.auditId,
+    });
+
+    return null;
   },
 });

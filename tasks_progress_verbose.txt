@@ -283,3 +283,51 @@ Convex deploy: successful
 STATUS: PASSING
 
 ---
+
+=== SESSION S0067 START === 2026-01-06T14:30:00Z
+Focus: Fix variants being dropped in pricelist data pipeline
+Active tasks: #18 - fix_variants_pipeline
+
+---
+
+S0067. Task #18 - Fix Variants Pipeline:
+
+ROOT CAUSE:
+Variants from Booksy API were correctly scraped and stored in scrapedDataJson,
+but were being DROPPED at multiple points in the data pipeline:
+1. convex/audits.ts - saveScrapedData() wasn't preserving variants in pricingData
+2. convex/optimizationJobsAction.ts - optimization code lacked ServiceVariant type
+
+FIXES IMPLEMENTED:
+1. convex/audits.ts - Added variants preservation in saveScrapedData()
+2. convex/optimizationJobsAction.ts - Added ServiceVariant interface, updated types, preserved variants
+3. convex/dev.ts - Added rerunAudit mutation for re-running existing audits
+4. components/dev/DevMenu.tsx - Added re-run button
+5. components/pages/AuditResultsPage.tsx - Added variantsMap to merge variants from originalPricingData
+6. components/results/CategoryEditorModal.tsx - UI improvements:
+   - Sort variants by price (cheapest first)
+   - Polish declension: "1 wariant", "2-4 warianty", "5+ wariantów"
+   - Single variant: duration/price aligned right on same line as name
+   - Description limited width: max-w-[400px]
+
+STATUS: PASSING - Build successful, all changes verified
+
+---
+
+=== SESSION S0068 START === 2026-01-06T15:00:00Z
+Focus: Session continuation - verify variant implementation
+Active tasks: none (all complete)
+
+---
+
+S0068. Session Resume:
+- Context refresh from previous session
+- Verified CategoryEditorModal.tsx has all variant changes in place:
+  * Polish declension (lines 788-792)
+  * Single variant layout (lines 810-818)
+  * Limited description width (line 828)
+  * Sorted variants (lines 833-841)
+- Build passes successfully
+- All variant-related work from S0067 is complete
+
+---

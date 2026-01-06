@@ -5,11 +5,25 @@
 
 // --- TYPES ---
 
+export interface ServiceVariant {
+  label: string;
+  price: string;
+  duration?: string;
+}
+
+export type AutoFixType =
+  | 'description_added'     // Opis został wygenerowany automatycznie
+  | 'name_deduplicated'     // Nazwa była duplikatem - dodano numer
+  | 'name_transformed';     // Nazwa została poprawiona przez AI
+
 export interface ScrapedService {
   name: string;
   price: string;
   duration?: string;
   description?: string;
+  imageUrl?: string;
+  variants?: ServiceVariant[];
+  _autoFixes?: AutoFixType[]; // Etykiety zmian automatycznych
 }
 
 export interface ScrapedCategory {
@@ -56,11 +70,16 @@ export type SearchVolume = "high" | "medium" | "low";
 export type TransformationType = "name" | "description" | "category";
 
 export interface AuditStats {
-  totalServices: number;
+  totalServices: number;           // Liczba usług głównych
+  totalVariants: number;           // Liczba wariantów (np. różne strefy ciała)
+  totalPricePoints: number;        // totalServices + totalVariants (rzeczywista liczba pozycji cennikowych)
+  servicesWithVariants: number;    // Ile usług ma warianty
   totalCategories: number;
   servicesWithDescription: number;
   servicesWithDuration: number;
   servicesWithFixedPrice: number;  // Nie "od..." tylko konkretna cena
+  servicesWithImage: number;       // Ile usług ma zdjęcie
+  variantsWithDuration: number;    // Ile wariantów ma czas trwania
   avgServicesPerCategory: number;
   largestCategory: { name: string; count: number };
   smallestCategory: { name: string; count: number };
@@ -414,6 +433,17 @@ export function parseAuditReport(jsonString: string): AuditReport {
     report.salesPotential = "";
   }
 
+  // IMPORTANT: Cap score at 95% if there are any weaknesses, recommendations, or growth tips
+  // It makes no sense to show 100% when there are suggestions for improvement
+  const hasIssues =
+    report.weaknesses.length > 0 ||
+    report.recommendations.length > 0 ||
+    report.growthTips.length > 0;
+
+  if (hasIssues && report.overallScore > 95) {
+    report.overallScore = 95;
+  }
+
   return report;
 }
 
@@ -451,11 +481,34 @@ function isFixedPrice(price: string): boolean {
 export function calculateAuditStats(data: ScrapedData): AuditStats {
   const allServices = data.categories.flatMap(c => c.services);
 
-  // Basic counts
+  // Basic counts - including variants
   const totalServices = allServices.length;
   const totalCategories = data.categories.length;
 
-  // Field completeness
+  // Variant statistics
+  let totalVariants = 0;
+  let servicesWithVariants = 0;
+  let variantsWithDuration = 0;
+
+  for (const service of allServices) {
+    if (service.variants && service.variants.length > 0) {
+      servicesWithVariants++;
+      totalVariants += service.variants.length;
+
+      // Count variants that have duration
+      for (const variant of service.variants) {
+        if (variant.duration && variant.duration.trim().length > 0) {
+          variantsWithDuration++;
+        }
+      }
+    }
+  }
+
+  // Total price points = services without variants + all variants
+  const servicesWithoutVariants = totalServices - servicesWithVariants;
+  const totalPricePoints = servicesWithoutVariants + totalVariants;
+
+  // Field completeness (for main services)
   const servicesWithDescription = allServices.filter(s =>
     s.description && s.description.trim().length > 0
   ).length;
@@ -468,25 +521,45 @@ export function calculateAuditStats(data: ScrapedData): AuditStats {
     s.price && isFixedPrice(s.price)
   ).length;
 
-  // Category size analysis
-  const categorySizes = data.categories.map(c => ({
-    name: c.name,
-    count: c.services.length
-  }));
+  const servicesWithImage = allServices.filter(s =>
+    s.imageUrl && s.imageUrl.trim().length > 0
+  ).length;
 
+  // Category size analysis - count actual price points (including variants)
+  const categorySizes = data.categories.map(c => {
+    let count = 0;
+    for (const svc of c.services) {
+      if (svc.variants && svc.variants.length > 0) {
+        count += svc.variants.length;
+      } else {
+        count += 1;
+      }
+    }
+    return { name: c.name, count };
+  });
+
+  const totalPricePointsForAvg = categorySizes.reduce((sum, c) => sum + c.count, 0);
   const avgServicesPerCategory = totalCategories > 0
-    ? Math.round((totalServices / totalCategories) * 10) / 10
+    ? Math.round((totalPricePointsForAvg / totalCategories) * 10) / 10
     : 0;
 
   const sortedBySize = [...categorySizes].sort((a, b) => b.count - a.count);
   const largestCategory = sortedBySize[0] || { name: "Brak", count: 0 };
   const smallestCategory = sortedBySize[sortedBySize.length - 1] || { name: "Brak", count: 0 };
 
-  // Find duplicate service names
+  // Find duplicate service names (including variant labels as separate entries)
   const nameCounts = new Map<string, number>();
   for (const service of allServices) {
-    const normalizedName = service.name.toLowerCase().trim();
-    nameCounts.set(normalizedName, (nameCounts.get(normalizedName) || 0) + 1);
+    if (service.variants && service.variants.length > 0) {
+      // Count each variant as "ServiceName - VariantLabel"
+      for (const variant of service.variants) {
+        const fullName = `${service.name} - ${variant.label}`.toLowerCase().trim();
+        nameCounts.set(fullName, (nameCounts.get(fullName) || 0) + 1);
+      }
+    } else {
+      const normalizedName = service.name.toLowerCase().trim();
+      nameCounts.set(normalizedName, (nameCounts.get(normalizedName) || 0) + 1);
+    }
   }
   const duplicateNames = Array.from(nameCounts.entries())
     .filter(([_, count]) => count > 1)
@@ -498,19 +571,30 @@ export function calculateAuditStats(data: ScrapedData): AuditStats {
     .map(c => c.name);
 
   const oversizedCategories = data.categories
-    .filter(c => c.services.length > 20)
+    .filter(c => {
+      const size = categorySizes.find(cs => cs.name === c.name)?.count || 0;
+      return size > 20;
+    })
     .map(c => c.name);
 
   const undersizedCategories = data.categories
-    .filter(c => c.services.length > 0 && c.services.length < 3)
+    .filter(c => {
+      const size = categorySizes.find(cs => cs.name === c.name)?.count || 0;
+      return size > 0 && size < 3;
+    })
     .map(c => c.name);
 
   return {
     totalServices,
+    totalVariants,
+    totalPricePoints,
+    servicesWithVariants,
     totalCategories,
     servicesWithDescription,
     servicesWithDuration,
     servicesWithFixedPrice,
+    servicesWithImage,
+    variantsWithDuration,
     avgServicesPerCategory,
     largestCategory,
     smallestCategory,

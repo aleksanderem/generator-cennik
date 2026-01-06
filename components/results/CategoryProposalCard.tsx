@@ -254,29 +254,41 @@ const CategoryProposalCard: React.FC<CategoryProposalCardProps> = ({
           </div>
         )}
 
-        {/* Status indicator for non-pending states */}
+        {/* Status indicator and edit button for non-pending states */}
         {status !== 'pending' && (
           <div className="mt-4 pt-4 border-t border-slate-100">
-            <div
-              className="flex items-center justify-center gap-2 py-2 rounded-lg"
-              style={{
-                backgroundColor: status === 'accepted' ? '#d1fae5' : status === 'modified' ? '#dbeafe' : '#fee2e2',
-              }}
-            >
-              {React.createElement(currentStatus.icon, {
-                className: `w-4 h-4`,
-                style: {
-                  color: status === 'accepted' ? '#047857' : status === 'modified' ? '#1d4ed8' : '#dc2626',
-                },
-              })}
-              <span
-                className="text-sm font-medium"
+            <div className="flex items-center gap-3">
+              <div
+                className="flex-1 flex items-center justify-center gap-2 py-2 rounded-lg"
                 style={{
-                  color: status === 'accepted' ? '#047857' : status === 'modified' ? '#1d4ed8' : '#dc2626',
+                  backgroundColor: status === 'accepted' ? '#d1fae5' : status === 'modified' ? '#dbeafe' : '#fee2e2',
                 }}
               >
-                {currentStatus.label}
-              </span>
+                {React.createElement(currentStatus.icon, {
+                  className: `w-4 h-4`,
+                  style: {
+                    color: status === 'accepted' ? '#047857' : status === 'modified' ? '#1d4ed8' : '#dc2626',
+                  },
+                })}
+                <span
+                  className="text-sm font-medium"
+                  style={{
+                    color: status === 'accepted' ? '#047857' : status === 'modified' ? '#1d4ed8' : '#dc2626',
+                  }}
+                >
+                  {currentStatus.label}
+                </span>
+              </div>
+              {/* Allow re-editing for accepted/modified states */}
+              {(status === 'accepted' || status === 'modified') && (
+                <button
+                  onClick={onModify}
+                  className="py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <Edit3 className="w-4 h-4" />
+                  Edytuj
+                </button>
+              )}
             </div>
           </div>
         )}

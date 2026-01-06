@@ -253,6 +253,19 @@ const ModernTemplate: React.FC<TemplateProps> = ({
                                 </span>
                               </ColorZone>
                             ))}
+
+                            {/* Variants count badge */}
+                            {service.variants && service.variants.length > 0 && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                                style={{
+                                  color: theme.primaryColor,
+                                  backgroundColor: `${theme.primaryColor}15`,
+                                }}
+                              >
+                                {service.variants.length} wariantów
+                              </span>
+                            )}
                           </div>
 
                           {service.description && (
@@ -291,24 +304,60 @@ const ModernTemplate: React.FC<TemplateProps> = ({
                           )}
                         </div>
 
-                        {/* Price */}
-                        <ColorZone
-                          zone={service.isPromo ? getZone('promo') : getZone('price')}
-                          theme={theme}
-                          editMode={editMode}
-                          isActive={activeZone === (service.isPromo ? 'promo' : 'price')}
-                          onClick={onColorZoneClick}
-                        >
-                          <div
-                            className="font-semibold text-sm flex-shrink-0"
-                            style={{
-                              color: service.isPromo ? theme.promoColor : theme.primaryColor,
-                            }}
+                        {/* Price - only show if no variants */}
+                        {(!service.variants || service.variants.length === 0) && (
+                          <ColorZone
+                            zone={service.isPromo ? getZone('promo') : getZone('price')}
+                            theme={theme}
+                            editMode={editMode}
+                            isActive={activeZone === (service.isPromo ? 'promo' : 'price')}
+                            onClick={onColorZoneClick}
                           >
-                            {service.price}
-                          </div>
-                        </ColorZone>
+                            <div
+                              className="font-semibold text-sm flex-shrink-0"
+                              style={{
+                                color: service.isPromo ? theme.promoColor : theme.primaryColor,
+                              }}
+                            >
+                              {service.price}
+                            </div>
+                          </ColorZone>
+                        )}
                       </div>
+
+                      {/* Nested variants display */}
+                      {service.variants && service.variants.length > 0 && (
+                        <div
+                          className="mt-2 ml-4 pl-3 border-l-2 space-y-1"
+                          style={{ borderColor: `${theme.primaryColor}30` }}
+                        >
+                          {service.variants.map((variant, vIdx) => (
+                            <div
+                              key={vIdx}
+                              className="flex items-center justify-between py-1 text-xs"
+                            >
+                              <span style={{ color: theme.textColor }}>{variant.label}</span>
+                              <div className="flex items-center gap-3">
+                                {variant.duration && (
+                                  <span
+                                    className="flex items-center gap-1"
+                                    style={{ color: theme.mutedColor }}
+                                  >
+                                    <Clock size={10} />
+                                    {variant.duration}
+                                  </span>
+                                )}
+                                <span
+                                  className="font-semibold"
+                                  style={{ color: service.isPromo ? theme.promoColor : theme.primaryColor }}
+                                >
+                                  {variant.price}
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </ColorZone>
                   ))}
                 </div>

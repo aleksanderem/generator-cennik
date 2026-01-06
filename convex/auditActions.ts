@@ -25,7 +25,7 @@ import {
 
 /**
  * Strip markdown formatting from AI responses.
- * Removes bold (**), italic (*/_), headers (#), backticks, etc.
+ * Removes bold, italic, headers, backticks, etc.
  */
 function stripMarkdown(text: string): string {
   return text
@@ -133,6 +133,7 @@ async function fetchFromBooksyApi(businessId: string): Promise<BooksyApiResponse
 
 /**
  * Convert Booksy API response to ScrapedData format.
+ * PRESERVES all data including variants - nothing is lost.
  */
 function convertBooksyApiToScrapedData(apiResponse: BooksyApiResponse): ScrapedData {
   const business = apiResponse.business;
@@ -143,20 +144,41 @@ function convertBooksyApiToScrapedData(apiResponse: BooksyApiResponse): ScrapedD
   const categories = (business.service_categories || []).map((cat) => ({
     name: cat.name,
     services: cat.services.map((svc) => {
-      // Get duration from first variant if available
-      const variant = svc.variants?.[0];
-      const durationMinutes = variant?.duration;
+      const booksyVariants = svc.variants || [];
+
+      // Convert Booksy variants to our format - PRESERVE ALL
+      const variants = booksyVariants.length > 0
+        ? booksyVariants.map((v) => ({
+            label: v.label,
+            price: v.service_price || (v.price ? `${v.price} zł` : ""),
+            duration: v.duration ? formatDuration(v.duration) : undefined,
+          }))
+        : undefined;
+
+      // Get duration from first variant if service doesn't have one
+      const firstVariant = booksyVariants[0];
 
       return {
         name: svc.name,
         price: svc.service_price || (svc.price ? `${svc.price} zł` : "Darmowa"),
-        duration: durationMinutes ? formatDuration(durationMinutes) : undefined,
-        description: svc.description?.slice(0, 200),
+        duration: firstVariant?.duration ? formatDuration(firstVariant.duration) : undefined,
+        description: svc.description?.slice(0, 500),
+        variants,
       };
     }),
   }));
 
-  const totalServices = categories.reduce((acc, c) => acc + c.services.length, 0);
+  // Count total services INCLUDING variants
+  let totalServices = 0;
+  for (const cat of categories) {
+    for (const svc of cat.services) {
+      if (svc.variants && svc.variants.length > 0) {
+        totalServices += svc.variants.length;
+      } else {
+        totalServices += 1;
+      }
+    }
+  }
 
   return {
     salonName: business.name,
@@ -708,28 +730,51 @@ async function analyzeNamingQuality(
 
 ${pricelistText}
 
-ZADANIE: Oceń JAKOŚĆ NAZW usług. Skala 0-20 punktów.
+ZADANIE: Oceń JAKOŚĆ NAZW usług i WYCZYŚĆ zbędne elementy. Skala 0-20 punktów.
 
 KRYTERIA:
-- Czy nazwy są ZROZUMIAŁE dla klienta? (nie tylko dla specjalisty)
-- Czy komunikują KORZYŚĆ/EFEKT? (np. "Odmłodzenie" vs tylko "Mezoterapia")
-- Czy mają odpowiednią DŁUGOŚĆ? (ideał: 3-8 słów)
-- Czy zawierają SŁOWA KLUCZOWE które klienci wyszukują?
-- Czy są UNIKALNE? (brak duplikatów/bardzo podobnych)
+- Czy nazwy są KRÓTKIE i ZROZUMIAŁE? (ideał: 2-6 słów, max 40 znaków)
+- Czy nie zawierają MARKETINGOWYCH BZDUR? (typu "100% skuteczności", "gładkość na długo")
+- Czy są UNIKALNE? (brak duplikatów)
 
-FORMAT ODPOWIEDZI (dokładnie ten format):
+TWOJE ZADANIE TO CZYSZCZENIE NAZW - USUWANIE ZBĘDNYCH ELEMENTÓW:
+
+1. USUŃ marketingowe sufiksy po myślniku lub dwukropku:
+   ZŁE: "Pachy + Całe nogi - 100% skuteczności niezależnie od koloru skóry"
+   DOBRE: "Pachy + Całe nogi"
+
+2. USUŃ frazesy korzyści:
+   ZŁE: "Mezoterapia: głębokie nawilżenie i odmłodzenie"
+   DOBRE: "Mezoterapia"
+
+3. USUŃ instrukcje i notatki:
+   ZŁE: "Ramiona: łączyć z przedramionami"
+   DOBRE: "Ramiona"
+
+4. USUŃ zbędne opisy w nawiasach (chyba że to istotna informacja):
+   ZŁE: "Depilacja (trwałe efekty gładkiej skóry)"
+   DOBRE: "Depilacja"
+   OK: "Depilacja (pachy + bikini)" - to jest OK bo określa zakres
+
+5. NIE DODAWAJ niczego do nazw - tylko USUWAJ zbędne elementy
+
+PRZYKŁADY TRANSFORMACJI:
+- "Pachy + Całe nogi - 100% skuteczności" → "Pachy + Całe nogi"
+- "Mezoterapia igłowa: odmłodzenie skóry twarzy" → "Mezoterapia igłowa twarzy"
+- "2 okolice małe: wąsik + broda / pachy + wąsik" → "2 okolice małe"
+- "Masaż relaksacyjny - pełen relaks i odprężenie" → "Masaż relaksacyjny"
+
+FORMAT ODPOWIEDZI:
 
 SCORE: [0-20]
 
 TOP_ISSUES:
-ISSUE: [critical/major/minor] | naming | [opis problemu] | [wpływ na rezerwacje] | [ile usług dotyczy] | [przykład] | [jak naprawić]
-ISSUE: [kolejny problem...]
+ISSUE: [critical/major/minor] | naming | [opis problemu] | [wpływ] | [ile usług] | [przykład] | [jak naprawić]
 
 TRANSFORMATIONS:
-TRANSFORM: name | [oryginalna nazwa usługi] | [proponowana lepsza nazwa] | [dlaczego lepsza] | [wpływ 1-10]
-TRANSFORM: [kolejna transformacja...]
+TRANSFORM: name | [oryginalna nazwa ZE ŚMIECIAMI] | [OCZYSZCZONA krótka nazwa] | [co usunięto] | [wpływ 1-10]
 
-Podaj maksymalnie 5 ISSUE i 5 TRANSFORM. Skup się na największych problemach.`;
+Podaj TRANSFORM tylko dla nazw które mają zbędne elementy do usunięcia. Jeśli nazwa jest już krótka i czysta - NIE zmieniaj jej.`;
 
   const text = await callGeminiText(apiKey, prompt);
   return parseNamingAnalysis(text);
@@ -744,6 +789,7 @@ function parseNamingAnalysis(text: string): {
   let score = 10;
   const issues: AuditIssue[] = [];
   const transformations: ServiceTransformation[] = [];
+  const transformedNames = new Set<string>(); // Track to avoid duplicates
 
   for (const line of lines) {
     if (line.startsWith("SCORE:")) {
@@ -752,32 +798,198 @@ function parseNamingAnalysis(text: string): {
     } else if (line.startsWith("ISSUE:")) {
       const parts = line.replace("ISSUE:", "").split("|").map(p => stripMarkdown(p.trim()));
       if (parts.length >= 7) {
+        const example = parts[5] || "";
+        const fix = parts[6] || "";
+
         issues.push({
           severity: (parts[0] as IssueSeverity) || "minor",
           dimension: (parts[1] as AuditDimension) || "naming",
           issue: parts[2] || "",
           impact: parts[3] || "",
           affectedCount: parseInt(parts[4], 10) || 1,
-          example: parts[5] || "",
-          fix: parts[6] || "",
+          example,
+          fix,
         });
+
+        // IMPORTANT: Extract transformations from ISSUE fix suggestions
+        // If the fix looks like an improved name (contains the original + extra text),
+        // create a transformation entry automatically
+        if (example && fix) {
+          // Parse example - might be comma-separated like: "Konsultacja", "MS AquaLift"
+          const exampleNames = example
+            .split(/[,;]/)
+            .map(n => n.replace(/^["'„""'']+|["'„""'']+$/g, '').trim())
+            .filter(n => n.length > 2);
+
+          // Extract all quoted strings from fix text
+          // Pattern: "Some Name: with improvement" or 'Some Name - with details'
+          const quotedStrings = fix.match(/["'„""''][^"'„""'']+["'„""'']/g) || [];
+          const cleanQuotedStrings = quotedStrings.map(s =>
+            s.replace(/^["'„""'']+|["'„""'']+$/g, '').trim()
+          );
+
+          // For each example name, find a CLEANED (shorter) version in fix
+          for (const originalName of exampleNames) {
+            const normalizedOriginal = originalName.toLowerCase();
+            if (transformedNames.has(normalizedOriginal)) continue;
+
+            // Look for cleaned version: shorter than original, or original starts with candidate
+            for (const candidate of cleanQuotedStrings) {
+              const candidateLower = candidate.toLowerCase();
+
+              // Check if candidate is a cleaned version of original:
+              // 1. Original name starts with candidate (candidate is prefix)
+              // 2. Candidate is shorter than original
+              // 3. Candidate is at least 3 chars
+              const isCleanedVersion =
+                (normalizedOriginal.startsWith(candidateLower) ||
+                 normalizedOriginal.includes(candidateLower + ":") ||
+                 normalizedOriginal.includes(candidateLower + " -")) &&
+                candidate.length < originalName.length &&
+                candidate.length >= 3;
+
+              if (isCleanedVersion && validateNameTransformation(originalName, candidate)) {
+                transformedNames.add(normalizedOriginal);
+                transformations.push({
+                  type: "name",
+                  serviceName: originalName,
+                  before: originalName,
+                  after: candidate,
+                  reason: "Cleaned from issue fix suggestion",
+                  impactScore: 6,
+                });
+                console.log(`[parseNamingAnalysis] Extracted CLEANED name from ISSUE: "${originalName}" -> "${candidate}"`);
+                break;
+              }
+            }
+          }
+        }
       }
     } else if (line.startsWith("TRANSFORM:")) {
       const parts = line.replace("TRANSFORM:", "").split("|").map(p => stripMarkdown(p.trim()));
       if (parts.length >= 5) {
-        transformations.push({
-          type: "name",
-          serviceName: parts[1] || "",
-          before: parts[1] || "",
-          after: parts[2] || "",
-          reason: parts[3] || "",
-          impactScore: parseInt(parts[4], 10) || 5,
-        });
+        const before = parts[1] || "";
+        const after = parts[2] || "";
+        const normalizedBefore = before.toLowerCase().trim();
+
+        // VALIDATION: Reject bad transformations
+        const isValidTransform = validateNameTransformation(before, after);
+
+        // Skip if we already have a transformation for this name or if invalid
+        if (!transformedNames.has(normalizedBefore) && isValidTransform) {
+          transformedNames.add(normalizedBefore);
+          transformations.push({
+            type: "name",
+            serviceName: before,
+            before,
+            after,
+            reason: parts[3] || "",
+            impactScore: parseInt(parts[4], 10) || 5,
+          });
+        } else if (!isValidTransform) {
+          console.log(`[parseNamingAnalysis] REJECTED invalid transform: "${before}" -> "${after}"`);
+        }
       }
     }
   }
 
-  return { score, issues: issues.slice(0, 5), transformations: transformations.slice(0, 5) };
+  return { score, issues: issues.slice(0, 5), transformations: transformations.slice(0, 10) };
+}
+
+/**
+ * Validate that a name transformation is sensible.
+ * NEW PHILOSOPHY: Transformations should CLEAN (shorten) names, not add to them.
+ */
+function validateNameTransformation(before: string, after: string): boolean {
+  // Rule 1: After name should be SHORTER or same length (we're cleaning, not adding)
+  // Allow small increase only for fixing typos/clarity (max +5 chars)
+  if (after.length > before.length + 5) {
+    console.log(`[validateNameTransformation] Rejected: result is longer than original (${after.length} vs ${before.length})`);
+    return false;
+  }
+
+  // Rule 2: After name can't be longer than 50 chars total
+  if (after.length > 50) {
+    console.log(`[validateNameTransformation] Rejected: too long (${after.length} chars)`);
+    return false;
+  }
+
+  // Rule 3: After name can't have colon followed by descriptive phrase
+  const colonIndex = after.indexOf(":");
+  if (colonIndex > 0) {
+    const afterColon = after.substring(colonIndex + 1).trim().toLowerCase();
+    // Check if what's after colon looks like a benefit phrase (lowercase, long)
+    if (afterColon.length > 15 && /^[a-ząćęłńóśźż]/.test(afterColon)) {
+      console.log(`[validateNameTransformation] Rejected: still has descriptive suffix after colon`);
+      return false;
+    }
+  }
+
+  // Rule 4: Reject if after STILL contains marketing garbage words
+  const garbagePatterns = [
+    /100%\s*skuteczn/i,
+    /długotrwał[ąa]\s+gładkoś/i,
+    /niezależnie\s+od/i,
+    /pełen\s+relaks/i,
+    /głębok[ie]\s+nawilżen/i,
+    /trwał[eay]\s+(efekt|usuw)/i,
+  ];
+
+  for (const pattern of garbagePatterns) {
+    if (pattern.test(after)) {
+      console.log(`[validateNameTransformation] Rejected: still contains marketing garbage`);
+      return false;
+    }
+  }
+
+  // Rule 5: If we cleaned a name, the after should NOT contain the garbage that was in before
+  // (this ensures we actually removed something, not just reshuffled)
+  if (before.includes(":") && after.includes(":")) {
+    const beforeAfterColon = before.split(":")[1]?.trim() || "";
+    const afterAfterColon = after.split(":")[1]?.trim() || "";
+    // If after colon part is still long, reject
+    if (afterAfterColon.length > 20) {
+      console.log(`[validateNameTransformation] Rejected: didn't clean the colon suffix properly`);
+      return false;
+    }
+  }
+
+  // Rule 6: After name must be at least 3 chars
+  if (after.trim().length < 3) {
+    console.log(`[validateNameTransformation] Rejected: result too short`);
+    return false;
+  }
+
+  // Rule 7: Prefer transformations that actually shorten the name
+  // If the name is the same or longer, it better be fixing something specific
+  if (after.length >= before.length) {
+    // Only allow if it's a minor fix (typo, capitalization)
+    const similarity = calculateSimilarity(before.toLowerCase(), after.toLowerCase());
+    if (similarity < 0.8) {
+      console.log(`[validateNameTransformation] Rejected: not shorter and too different (similarity: ${similarity})`);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Simple similarity calculation (Jaccard-like on words)
+ */
+function calculateSimilarity(a: string, b: string): number {
+  const wordsA = new Set(a.split(/\s+/).filter(w => w.length > 1));
+  const wordsB = new Set(b.split(/\s+/).filter(w => w.length > 1));
+
+  if (wordsA.size === 0 && wordsB.size === 0) return 1;
+
+  let intersection = 0;
+  for (const word of wordsA) {
+    if (wordsB.has(word)) intersection++;
+  }
+
+  const union = wordsA.size + wordsB.size - intersection;
+  return union === 0 ? 1 : intersection / union;
 }
 
 /**
@@ -1073,13 +1285,20 @@ function calculateCompletenessScore(stats: AuditStats): number {
  */
 function calculateSeoScore(missingSeoKeywords: MissingSeoKeyword[], stats: AuditStats): number {
   // 0-10 points
-  // Fewer missing high-volume keywords = better score
+  // Fewer missing keywords = better score
   const highVolumeMissing = missingSeoKeywords.filter(k => k.searchVolume === "high").length;
   const mediumVolumeMissing = missingSeoKeywords.filter(k => k.searchVolume === "medium").length;
+  const lowVolumeMissing = missingSeoKeywords.filter(k => k.searchVolume === "low").length;
 
   // Start at 10, subtract for missing keywords
-  let score = 10 - (highVolumeMissing * 2) - (mediumVolumeMissing * 1);
-  return Math.max(0, Math.min(10, score));
+  let score = 10 - (highVolumeMissing * 2) - (mediumVolumeMissing * 1) - (lowVolumeMissing * 0.5);
+
+  // IMPORTANT: If there are ANY missing keywords, cap at 9 (can't be perfect if there are suggestions)
+  if (missingSeoKeywords.length > 0 && score > 9) {
+    score = 9;
+  }
+
+  return Math.max(0, Math.min(10, Math.round(score)));
 }
 
 /**
@@ -1178,7 +1397,7 @@ export async function generateEnhancedAuditReport(
     ux: uxScore,
   };
 
-  const totalScore = Object.values(scoreBreakdown).reduce((a, b) => a + b, 0);
+  let totalScore = Object.values(scoreBreakdown).reduce((a, b) => a + b, 0);
 
   // Combine all issues and sort by severity
   const allIssues = [
@@ -1191,6 +1410,19 @@ export async function generateEnhancedAuditReport(
   const topIssues = allIssues
     .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
     .slice(0, 10);
+
+  // IMPORTANT: Cap total score if there are any issues, quick wins, or missing keywords
+  // It makes no sense to show 100% when there are recommendations for improvement
+  const hasAnyRecommendations =
+    topIssues.length > 0 ||
+    structureAnalysis.quickWins.length > 0 ||
+    structureAnalysis.missingSeoKeywords.length > 0 ||
+    namingAnalysis.transformations.length > 0 ||
+    descAnalysis.transformations.length > 0;
+
+  if (hasAnyRecommendations && totalScore > 95) {
+    totalScore = 95;
+  }
 
   // Combine transformations
   const transformations = [

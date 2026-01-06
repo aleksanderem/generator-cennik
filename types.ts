@@ -1,12 +1,25 @@
 
+export interface ServiceVariant {
+  label: string;
+  price: string;
+  duration?: string;
+}
+
+export type AutoFixType =
+  | 'description_added'     // Opis został wygenerowany automatycznie
+  | 'name_deduplicated'     // Nazwa była duplikatem - dodano numer
+  | 'name_transformed';     // Nazwa została poprawiona przez AI
+
 export interface ServiceItem {
   name: string;
   price: string;
   description?: string;
   duration?: string;
   isPromo: boolean;
-  imageUrl?: string; // Optional image URL
-  tags?: string[];   // Optional tags like "Bestseller", "Nowość"
+  imageUrl?: string;
+  tags?: string[];
+  variants?: ServiceVariant[];
+  _autoFixes?: AutoFixType[]; // Etykiety zmian automatycznych
 }
 
 export interface Category {

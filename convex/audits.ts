@@ -462,17 +462,29 @@ export const saveScrapedData = internalMutation({
     }
 
     // Convert scraped data to PricingData format for base pricelist
+    // IMPORTANT: Preserve variants from Booksy API - they are nested price options
     const scrapedData = JSON.parse(args.scrapedDataJson);
     const pricingData = {
       salonName: scrapedData.salonName,
-      categories: scrapedData.categories.map((cat: { name: string; services: Array<{ name: string; price: string; description?: string; duration?: string }> }) => ({
+      categories: scrapedData.categories.map((cat: {
+        name: string;
+        services: Array<{
+          name: string;
+          price: string;
+          description?: string;
+          duration?: string;
+          variants?: Array<{ label: string; price: string; duration?: string }>;
+        }>
+      }) => ({
         categoryName: cat.name,
-        services: cat.services.map((service: { name: string; price: string; description?: string; duration?: string }) => ({
+        services: cat.services.map((service) => ({
           name: service.name,
           price: service.price,
           description: service.description,
           duration: service.duration,
           isPromo: false,
+          // PRESERVE VARIANTS - nested price options from Booksy
+          variants: service.variants,
         })),
       })),
     };

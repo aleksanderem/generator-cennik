@@ -656,7 +656,7 @@ const OptimizationResultsPage: React.FC = () => {
     <div className="min-h-screen bg-slate-50">
       {/* Application Header/Navbar */}
       <Header
-        currentPage="optimization"
+        currentPage="optimization-results"
         onNavigate={() => { }}
       />
 

@@ -24,6 +24,12 @@ type OptimizationOption =
   | "duration"
   | "tags";
 
+interface ServiceVariant {
+  label: string;
+  price: string;
+  duration?: string;
+}
+
 interface ServiceInput {
   name: string;
   price: string;
@@ -31,6 +37,7 @@ interface ServiceInput {
   duration?: string;
   isPromo?: boolean;
   tags?: string[];
+  variants?: ServiceVariant[];
 }
 
 interface CategoryInput {
@@ -50,6 +57,7 @@ interface OptimizedService {
   duration?: string;
   isPromo: boolean;
   tags?: string[];
+  variants?: ServiceVariant[];
 }
 
 interface OptimizedCategory {
@@ -281,6 +289,7 @@ export const runOptimization = internalAction({
       };
 
       // Sanitize all string data to remove problematic characters
+      // IMPORTANT: Preserve variants - they are nested price options from Booksy
       const sanitizedCategories = optimizedCategories.map(cat => ({
         categoryName: sanitizeString(cat.categoryName),
         services: cat.services.map(svc => ({
@@ -290,6 +299,12 @@ export const runOptimization = internalAction({
           duration: svc.duration ? sanitizeString(svc.duration) : undefined,
           isPromo: svc.isPromo,
           tags: svc.tags?.map(t => sanitizeString(t)),
+          // PRESERVE VARIANTS - nested price options from Booksy API
+          variants: svc.variants?.map(v => ({
+            label: sanitizeString(v.label),
+            price: sanitizeString(v.price),
+            duration: v.duration ? sanitizeString(v.duration) : undefined,
+          })),
         })),
       }));
 
@@ -524,6 +539,8 @@ Odpowiedz TYLKO w podanym formacie.`;
         duration: (parts[4] && parts[4] !== "-") ? parts[4] : originalService.duration,
         isPromo: originalService.isPromo || false,
         tags: originalService.tags,
+        // PRESERVE VARIANTS - nested price options from Booksy API
+        variants: originalService.variants,
       };
 
       optimizedServices.push(optimizedService);
@@ -546,6 +563,8 @@ Odpowiedz TYLKO w podanym formacie.`;
         duration: svc.duration,
         isPromo: svc.isPromo || false,
         tags: svc.tags,
+        // PRESERVE VARIANTS - nested price options from Booksy API
+        variants: svc.variants,
       })),
     };
   }
