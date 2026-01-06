@@ -51,6 +51,48 @@ export const getCurrentUser = query({
   },
 });
 
+// Upewnij się że użytkownik istnieje - jeśli nie, utwórz go
+// Wywoływane client-side przy wejściu na chronione strony
+export const ensureCurrentUser = mutation({
+  args: {},
+  returns: v.union(userValidator, v.null()),
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    console.log("[ensureCurrentUser] identity:", identity ? { subject: identity.subject, email: identity.email } : null);
+
+    if (!identity) {
+      console.log("[ensureCurrentUser] No identity - returning null");
+      return null;
+    }
+
+    // Sprawdź czy użytkownik istnieje
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (existingUser) {
+      console.log("[ensureCurrentUser] Found existing user:", existingUser._id);
+      return existingUser;
+    }
+
+    // Utwórz użytkownika jeśli nie istnieje
+    console.log("[ensureCurrentUser] Creating new user for:", identity.email);
+    const userId = await ctx.db.insert("users", {
+      clerkId: identity.subject,
+      email: identity.email || "",
+      name: identity.name,
+      avatarUrl: identity.pictureUrl,
+      createdAt: Date.now(),
+      credits: 0,
+    });
+
+    const newUser = await ctx.db.get(userId);
+    console.log("[ensureCurrentUser] Created user:", newUser?._id);
+    return newUser;
+  },
+});
+
 // Utwórz lub zaktualizuj użytkownika (wywoływane przez webhook Clerk)
 export const upsertUser = internalMutation({
   args: {

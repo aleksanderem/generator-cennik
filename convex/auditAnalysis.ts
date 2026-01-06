@@ -68,6 +68,33 @@ interface CategoryProposal {
 }
 
 // ============================================
+// UTILITY FUNCTIONS
+// ============================================
+
+/**
+ * Strip markdown formatting from AI responses.
+ * Removes bold (**), italic (*/_), headers (#), backticks, etc.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    // Remove bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // Remove italic: *text* or _text_ (be careful with underscores in words)
+    .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '$1')
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '$1')
+    // Remove inline code: `text`
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove headers: # ## ### etc
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove strikethrough: ~~text~~
+    .replace(/~~(.+?)~~/g, '$1')
+    // Clean up any remaining asterisks at start/end
+    .replace(/^\*+|\*+$/g, '')
+    .trim();
+}
+
+// ============================================
 // KEYWORD ANALYSIS
 // ============================================
 
@@ -232,12 +259,12 @@ ZASADY:
   const result = (await response.json()) as GeminiResponse;
   const text = result.candidates?.[0]?.content?.parts?.[0]?.text || "";
 
-  // Parse the suggestions from the response
+  // Parse the suggestions from the response, stripping markdown formatting
   const suggestions: string[] = [];
   const lines = text.split("\n").filter((l) => l.trim().startsWith("-"));
 
   for (const line of lines) {
-    const suggestion = line.replace(/^-\s*/, "").trim();
+    const suggestion = stripMarkdown(line.replace(/^-\s*/, "").trim());
     if (suggestion) {
       suggestions.push(suggestion);
     }
@@ -351,12 +378,12 @@ ZASADY:
   const changes: CategoryChange[] = [];
   const proposedCategoryNames: string[] = [];
 
-  // Parse proposed categories
+  // Parse proposed categories (strip markdown formatting)
   const categorySection = text.match(/PROPOSED_CATEGORIES:([\s\S]*?)(?=CHANGES:|$)/i);
   if (categorySection) {
     const categoryLines = categorySection[1].split("\n").filter((l) => l.trim().startsWith("-"));
     for (const line of categoryLines) {
-      const name = line.replace(/^-\s*/, "").trim();
+      const name = stripMarkdown(line.replace(/^-\s*/, "").trim());
       if (name) {
         proposedCategoryNames.push(name);
       }
@@ -387,10 +414,10 @@ ZASADY:
       if (validTypes.includes(changeType)) {
         changes.push({
           type: changeType,
-          description: descMatch[1].trim(),
-          fromCategory: fromMatch?.[1]?.trim() !== "N/A" ? fromMatch?.[1]?.trim() : undefined,
-          toCategory: toMatch?.[1]?.trim(),
-          reason: reasonMatch[1].trim(),
+          description: stripMarkdown(descMatch[1].trim()),
+          fromCategory: fromMatch?.[1]?.trim() !== "N/A" ? stripMarkdown(fromMatch?.[1]?.trim() || "") : undefined,
+          toCategory: toMatch?.[1]?.trim() ? stripMarkdown(toMatch[1].trim()) : undefined,
+          reason: stripMarkdown(reasonMatch[1].trim()),
         });
       }
     }

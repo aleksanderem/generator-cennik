@@ -1,5 +1,172 @@
 import { v } from "convex/values";
-import { mutation } from "./_generated/server";
+import { mutation, internalQuery, internalMutation } from "./_generated/server";
+
+// Debug: Delete pricelist by ID
+export const debugDeletePricelist = internalMutation({
+  args: { pricelistId: v.id("pricelists") },
+  returns: v.object({ success: v.boolean(), message: v.string() }),
+  handler: async (ctx, args) => {
+    const pricelist = await ctx.db.get(args.pricelistId);
+    if (!pricelist) {
+      return { success: false, message: "Pricelist not found" };
+    }
+    await ctx.db.delete(args.pricelistId);
+    return { success: true, message: `Deleted pricelist: ${pricelist.name}` };
+  },
+});
+
+// Debug: Delete duplicate audit and refund credit
+export const debugDeleteDuplicateAudit = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    refundCredit: v.boolean(),
+  },
+  returns: v.object({
+    success: v.boolean(),
+    message: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      return { success: false, message: "Audit not found" };
+    }
+
+    // Get user
+    const user = await ctx.db.get(audit.userId);
+    if (!user) {
+      return { success: false, message: "User not found" };
+    }
+
+    // Delete the audit
+    await ctx.db.delete(args.auditId);
+
+    // Refund credit if requested
+    if (args.refundCredit) {
+      await ctx.db.patch(user._id, {
+        credits: user.credits + 1,
+      });
+      return {
+        success: true,
+        message: `Deleted audit and refunded 1 credit to ${user.email}. New balance: ${user.credits + 1}`
+      };
+    }
+
+    return {
+      success: true,
+      message: `Deleted audit for ${user.email}. No credit refunded.`
+    };
+  },
+});
+
+// Debug: Mark stuck audit as failed (internal only - for fixing stuck audits)
+export const debugFixStuckAudit = internalMutation({
+  args: { auditId: v.id("audits") },
+  returns: v.object({
+    success: v.boolean(),
+    previousStatus: v.string(),
+    newStatus: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const audit = await ctx.db.get(args.auditId);
+    if (!audit) {
+      throw new Error("Audit not found");
+    }
+
+    const previousStatus = audit.status;
+
+    // Only fix audits that are stuck in processing states
+    const stuckStatuses = ["processing", "scraping", "scraping_retry", "analyzing"];
+    if (!stuckStatuses.includes(previousStatus)) {
+      return { success: false, previousStatus, newStatus: previousStatus };
+    }
+
+    await ctx.db.patch(args.auditId, {
+      status: "failed",
+      completedAt: Date.now(),
+      errorMessage: "Audyt utknął w trakcie przetwarzania i został automatycznie oznaczony jako nieudany. Możesz spróbować ponownie.",
+    });
+
+    return { success: true, previousStatus, newStatus: "failed" };
+  },
+});
+
+// Debug: Query audits for a specific user by email (no auth required, internal only)
+export const debugGetUserAudits = internalQuery({
+  args: { email: v.string() },
+  returns: v.object({
+    user: v.union(v.object({
+      _id: v.id("users"),
+      email: v.string(),
+      name: v.optional(v.string()),
+      credits: v.number(),
+    }), v.null()),
+    audits: v.array(v.object({
+      _id: v.id("audits"),
+      status: v.string(),
+      sourceUrl: v.optional(v.string()),
+      salonName: v.optional(v.string()),
+      createdAt: v.number(),
+      startedAt: v.optional(v.number()),
+      completedAt: v.optional(v.number()),
+      proPricelistId: v.optional(v.id("pricelists")),
+      basePricelistId: v.optional(v.id("pricelists")),
+    })),
+    pricelists: v.array(v.object({
+      _id: v.id("pricelists"),
+      name: v.optional(v.string()),
+      createdAt: v.number(),
+      auditId: v.optional(v.id("audits")),
+    })),
+  }),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("email"), args.email))
+      .first();
+
+    if (!user) {
+      return { user: null, audits: [], pricelists: [] };
+    }
+
+    const audits = await ctx.db
+      .query("audits")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
+
+    const pricelists = await ctx.db
+      .query("pricelists")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .order("desc")
+      .collect();
+
+    return {
+      user: {
+        _id: user._id,
+        email: user.email,
+        name: user.name,
+        credits: user.credits,
+      },
+      audits: audits.map((a) => ({
+        _id: a._id,
+        status: a.status,
+        sourceUrl: a.sourceUrl,
+        salonName: a.salonName,
+        createdAt: a.createdAt,
+        startedAt: a.startedAt,
+        completedAt: a.completedAt,
+        proPricelistId: a.proPricelistId,
+        basePricelistId: a.basePricelistId,
+      })),
+      pricelists: pricelists.map((p) => ({
+        _id: p._id,
+        name: p.name,
+        createdAt: p.createdAt,
+        auditId: p.auditId,
+      })),
+    };
+  },
+});
 
 // Status audytu - rozbudowane statusy
 const auditStatusValidator = v.union(

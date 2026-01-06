@@ -130,6 +130,9 @@ export const MultiStepLoader = ({
 
   const currentText = loadingStates[currentState]?.text || "Przetwarzanie...";
 
+  // Zabezpieczenie - currentState nie może przekroczyć długości tablicy
+  const safeCurrentState = Math.min(currentState, loadingStates.length - 1);
+
   return (
     <AnimatePresence mode="wait">
       {loading && (
@@ -137,61 +140,65 @@ export const MultiStepLoader = ({
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm"
         >
-          {/* Evervault background effect */}
-          <EvervaultBackground />
-
           {/* Card - matching project style */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ duration: 0.4, ease: "easeOut" }}
-            className="bg-white rounded-3xl shadow-2xl shadow-slate-200/50 border border-slate-100 p-8 max-w-md w-full mx-4 overflow-hidden"
+            className="relative bg-white rounded-3xl shadow-2xl shadow-slate-200/50 border border-slate-100 p-8 max-w-md w-full mx-4 overflow-hidden"
           >
-            {/* Header with emblem */}
-            <div className="text-center mb-6">
-              <motion.div
-                className="w-16 h-16 mx-auto mb-4"
-                animate={{ scale: [1, 1.05, 1] }}
-                transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-              >
-                <img
-                  src="/emblem.png"
-                  alt="Beauty Audit"
-                  className="w-full h-full object-contain"
-                />
-              </motion.div>
-
-              {/* Animated title */}
-              <TextGenerateEffect
-                words="Optymalizacja w toku"
-                className="text-xl font-semibold text-slate-800"
-                duration={0.3}
-              />
-              <p className="text-sm text-slate-500 mt-1">AI pracuje nad Twoim cennikiem</p>
+            {/* Evervault background effect - teraz WEWNĄTRZ karty z overflow-hidden */}
+            <div className="absolute inset-0 overflow-hidden rounded-3xl pointer-events-none">
+              <EvervaultBackground className="opacity-30" />
             </div>
-
-            {/* Steps */}
-            <div className="bg-slate-50/50 rounded-2xl p-4 mb-6">
-              <LoaderCore loadingStates={loadingStates} value={currentState} />
-            </div>
-
-            {/* Progress bar */}
-            <div>
-              <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+            {/* Zawartość karty - nad tłem */}
+            <div className="relative z-10">
+              {/* Header with emblem */}
+              <div className="text-center mb-6">
                 <motion.div
-                  className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full"
-                  initial={{ width: "0%" }}
-                  animate={{
-                    width: `${((currentState + 1) / loadingStates.length) * 100}%`
-                  }}
-                  transition={{ duration: 0.5, ease: "easeOut" }}
+                  className="w-16 h-16 mx-auto mb-4"
+                  animate={{ scale: [1, 1.05, 1] }}
+                  transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  <img
+                    src="/emblem.png"
+                    alt="Beauty Audit"
+                    className="w-full h-full object-contain"
+                  />
+                </motion.div>
+
+                {/* Animated title */}
+                <TextGenerateEffect
+                  words="Optymalizacja w toku"
+                  className="text-xl font-semibold text-slate-800"
+                  duration={0.3}
                 />
+                <p className="text-sm text-slate-500 mt-1">AI pracuje nad Twoim cennikiem</p>
               </div>
-              <p className="text-center text-xs text-slate-400 mt-2">
-                Krok {currentState + 1} z {loadingStates.length}
-              </p>
+
+              {/* Steps */}
+              <div className="bg-slate-50/80 backdrop-blur-sm rounded-2xl p-4 mb-6">
+                <LoaderCore loadingStates={loadingStates} value={safeCurrentState} />
+              </div>
+
+              {/* Progress bar */}
+              <div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full"
+                    initial={{ width: "0%" }}
+                    animate={{
+                      width: `${((safeCurrentState + 1) / loadingStates.length) * 100}%`
+                    }}
+                    transition={{ duration: 0.5, ease: "easeOut" }}
+                  />
+                </div>
+                <p className="text-center text-xs text-slate-400 mt-2">
+                  Krok {safeCurrentState + 1} z {loadingStates.length}
+                </p>
+              </div>
             </div>
           </motion.div>
         </motion.div>

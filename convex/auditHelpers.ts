@@ -46,6 +46,127 @@ export interface AuditReport {
   }>;
 }
 
+// --- ENHANCED AUDIT TYPES ---
+
+export type IssueSeverity = "critical" | "major" | "minor";
+export type AuditDimension = "completeness" | "naming" | "descriptions" | "structure" | "pricing" | "seo" | "ux";
+export type EffortLevel = "low" | "medium" | "high";
+export type ImpactLevel = "high" | "medium" | "low";
+export type SearchVolume = "high" | "medium" | "low";
+export type TransformationType = "name" | "description" | "category";
+
+export interface AuditStats {
+  totalServices: number;
+  totalCategories: number;
+  servicesWithDescription: number;
+  servicesWithDuration: number;
+  servicesWithFixedPrice: number;  // Nie "od..." tylko konkretna cena
+  avgServicesPerCategory: number;
+  largestCategory: { name: string; count: number };
+  smallestCategory: { name: string; count: number };
+  duplicateNames: string[];  // Lista zduplikowanych nazw usług
+  emptyCategories: string[];  // Kategorie bez usług
+  oversizedCategories: string[];  // Kategorie z >20 usługami
+  undersizedCategories: string[];  // Kategorie z <3 usługami
+}
+
+export interface AuditIssue {
+  severity: IssueSeverity;
+  dimension: AuditDimension;
+  issue: string;
+  impact: string;  // Jak wpływa na rezerwacje
+  affectedCount: number;  // Ile usług/kategorii dotyczy
+  example: string;  // Konkretny przykład z cennika
+  fix: string;  // Jak naprawić
+}
+
+export interface ServiceTransformation {
+  type: TransformationType;
+  serviceName: string;  // Nazwa usługi której dotyczy
+  before: string;
+  after: string;
+  reason: string;
+  impactScore: number;  // 1-10 jak bardzo poprawi
+}
+
+export interface MissingSeoKeyword {
+  keyword: string;
+  searchVolume: SearchVolume;
+  suggestedPlacement: string;  // Gdzie dodać (kategoria lub usługa)
+  reason?: string;  // Uzasadnienie dlaczego warto dodać
+}
+
+export interface QuickWin {
+  action: string;
+  effort: EffortLevel;
+  impact: ImpactLevel;
+  example: string;
+  affectedServices: number;  // Ile usług dotyczy
+}
+
+export interface ScoreBreakdown {
+  completeness: number;   // 0-15: % usług z opisem, czasem, ceną
+  naming: number;         // 0-20: jakość nazw usług
+  descriptions: number;   // 0-20: jakość opisów
+  structure: number;      // 0-15: logika kategorii
+  pricing: number;        // 0-15: strategia cenowa
+  seo: number;            // 0-10: słowa kluczowe
+  ux: number;             // 0-5: user experience
+}
+
+export interface IndustryComparison {
+  yourScore: number;
+  industryAverage: number;
+  topPerformers: number;
+  percentile: number;  // W jakim percentylu jest ten cennik
+}
+
+export interface EnhancedAuditReport {
+  // Wersja raportu - dla backward compatibility
+  version: "v2";
+
+  // Podsumowanie
+  totalScore: number;  // 0-100 (suma wymiarów)
+  scoreBreakdown: ScoreBreakdown;
+
+  // Statystyki faktyczne (bez AI)
+  stats: AuditStats;
+
+  // Top problemy (priorytetyzowane przez AI)
+  topIssues: AuditIssue[];
+
+  // Transformacje przed/po (konkretne przykłady)
+  transformations: ServiceTransformation[];
+
+  // Brakujące słowa kluczowe
+  missingSeoKeywords: MissingSeoKeyword[];
+
+  // Quick wins - szybkie wygrane
+  quickWins: QuickWin[];
+
+  // Benchmark branżowy
+  industryComparison: IndustryComparison;
+
+  // Ogólne podsumowanie tekstowe
+  summary: string;
+
+  // Zachowanie starego formatu dla kompatybilności
+  legacyReport?: AuditReport;
+}
+
+/**
+ * Type guard dla sprawdzania czy raport jest w nowym formacie
+ */
+export function isEnhancedAuditReport(report: unknown): report is EnhancedAuditReport {
+  return (
+    typeof report === "object" &&
+    report !== null &&
+    "version" in report &&
+    (report as EnhancedAuditReport).version === "v2" &&
+    "scoreBreakdown" in report
+  );
+}
+
 // --- PARSERS ---
 
 /**
@@ -303,6 +424,101 @@ export function sanitizeAiResponse(text: string): string {
   // Remove emojis using unicode ranges
   const emojiPattern = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]/gu;
   return text.replace(emojiPattern, "").trim();
+}
+
+// --- AUDIT STATS CALCULATION ---
+
+/**
+ * Check if a price string represents a fixed price (not "od...", "od ", "from...")
+ */
+function isFixedPrice(price: string): boolean {
+  const lowerPrice = price.toLowerCase().trim();
+  // Check for "od", "from", "ab" (German) patterns indicating variable pricing
+  if (lowerPrice.startsWith("od ") || lowerPrice.startsWith("od") && /\d/.test(lowerPrice[2])) {
+    return false;
+  }
+  if (lowerPrice.includes("od ")) return false;
+  if (lowerPrice.includes("from ")) return false;
+  if (lowerPrice.includes(" - ")) return false; // Range like "100 - 200 zł"
+  if (lowerPrice.includes("–")) return false; // En-dash range
+  return true;
+}
+
+/**
+ * Calculate comprehensive audit statistics from scraped data.
+ * These are hard numbers, not AI-generated - fully deterministic.
+ */
+export function calculateAuditStats(data: ScrapedData): AuditStats {
+  const allServices = data.categories.flatMap(c => c.services);
+
+  // Basic counts
+  const totalServices = allServices.length;
+  const totalCategories = data.categories.length;
+
+  // Field completeness
+  const servicesWithDescription = allServices.filter(s =>
+    s.description && s.description.trim().length > 0
+  ).length;
+
+  const servicesWithDuration = allServices.filter(s =>
+    s.duration && s.duration.trim().length > 0
+  ).length;
+
+  const servicesWithFixedPrice = allServices.filter(s =>
+    s.price && isFixedPrice(s.price)
+  ).length;
+
+  // Category size analysis
+  const categorySizes = data.categories.map(c => ({
+    name: c.name,
+    count: c.services.length
+  }));
+
+  const avgServicesPerCategory = totalCategories > 0
+    ? Math.round((totalServices / totalCategories) * 10) / 10
+    : 0;
+
+  const sortedBySize = [...categorySizes].sort((a, b) => b.count - a.count);
+  const largestCategory = sortedBySize[0] || { name: "Brak", count: 0 };
+  const smallestCategory = sortedBySize[sortedBySize.length - 1] || { name: "Brak", count: 0 };
+
+  // Find duplicate service names
+  const nameCounts = new Map<string, number>();
+  for (const service of allServices) {
+    const normalizedName = service.name.toLowerCase().trim();
+    nameCounts.set(normalizedName, (nameCounts.get(normalizedName) || 0) + 1);
+  }
+  const duplicateNames = Array.from(nameCounts.entries())
+    .filter(([_, count]) => count > 1)
+    .map(([name, _]) => name);
+
+  // Problematic categories
+  const emptyCategories = data.categories
+    .filter(c => c.services.length === 0)
+    .map(c => c.name);
+
+  const oversizedCategories = data.categories
+    .filter(c => c.services.length > 20)
+    .map(c => c.name);
+
+  const undersizedCategories = data.categories
+    .filter(c => c.services.length > 0 && c.services.length < 3)
+    .map(c => c.name);
+
+  return {
+    totalServices,
+    totalCategories,
+    servicesWithDescription,
+    servicesWithDuration,
+    servicesWithFixedPrice,
+    avgServicesPerCategory,
+    largestCategory,
+    smallestCategory,
+    duplicateNames,
+    emptyCategories,
+    oversizedCategories,
+    undersizedCategories,
+  };
 }
 
 // --- URL VALIDATION ---

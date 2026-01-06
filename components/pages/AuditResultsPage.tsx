@@ -45,8 +45,11 @@ import {
   type Tab,
   type QuickAction,
   type OptimizationOptionType,
+  type ProposedKeyword,
 } from '../results';
 import AuditReportTab from '../AuditReportTab';
+import EnhancedAuditReportTab from '../EnhancedAuditReportTab';
+import { isEnhancedAuditReport, type EnhancedAuditReport } from '../../convex/auditHelpers';
 import { RainbowButton } from '../ui/rainbow-button';
 import { StripedPattern } from '../ui/striped-pattern';
 import { BorderBeam } from '../ui/border-beam';
@@ -197,16 +200,95 @@ const AuditResultsPage: React.FC = () => {
     prevJobStatusRef.current = currentStatus;
   }, [optimizationJob?.status]);
 
-  // Parse audit report
-  const auditReport: AuditResult | null = useMemo(() => {
+  // Parse audit report - supports both V1 (AuditResult) and V2 (EnhancedAuditReport)
+  const parsedReport: AuditResult | EnhancedAuditReport | null = useMemo(() => {
     if (!audit?.reportJson) return null;
     try {
-      return JSON.parse(audit.reportJson) as AuditResult;
+      return JSON.parse(audit.reportJson);
     } catch (e) {
       console.error('Failed to parse audit reportJson:', e);
       return null;
     }
   }, [audit?.reportJson]);
+
+  // Type guards for report version
+  const isV2Report = parsedReport && isEnhancedAuditReport(parsedReport);
+  const enhancedReport = isV2Report ? parsedReport as EnhancedAuditReport : null;
+  const auditReport = isV2Report ? null : parsedReport as AuditResult | null;
+
+  // Compute proposed keywords from V2 report, transformations, and keyword report suggestions
+  const proposedKeywords: ProposedKeyword[] = useMemo(() => {
+    const result: ProposedKeyword[] = [];
+    const addedKeywords = new Set<string>(); // Track to avoid duplicates
+
+    // 1. Convert missing SEO keywords from enhanced report (highest priority - have searchVolume)
+    if (enhancedReport?.missingSeoKeywords) {
+      enhancedReport.missingSeoKeywords.forEach(mk => {
+        const keyword = mk.keyword.replace(/"/g, '').toLowerCase();
+        if (!addedKeywords.has(keyword)) {
+          addedKeywords.add(keyword);
+          result.push({
+            keyword: mk.keyword.replace(/"/g, ''),
+            source: 'suggestion',
+            searchVolume: mk.searchVolume,
+            placement: mk.suggestedPlacement,
+            reason: mk.reason,
+          });
+        }
+      });
+    }
+
+    // 2. Add suggestions from keyword report (parse "keyword: reason" format)
+    if (keywordReport?.suggestions) {
+      keywordReport.suggestions.forEach(suggestion => {
+        // Format is typically "keyword: reason" or just "keyword"
+        const colonIndex = suggestion.indexOf(':');
+        let keyword: string;
+        let reason: string | undefined;
+
+        if (colonIndex > 0) {
+          keyword = suggestion.substring(0, colonIndex).trim();
+          reason = suggestion.substring(colonIndex + 1).trim();
+        } else {
+          keyword = suggestion.trim();
+        }
+
+        const keywordLower = keyword.toLowerCase();
+        if (!addedKeywords.has(keywordLower) && keyword.length > 2) {
+          addedKeywords.add(keywordLower);
+          result.push({
+            keyword,
+            source: 'suggestion',
+            searchVolume: 'medium', // Default for keyword report suggestions
+            reason,
+          });
+        }
+      });
+    }
+
+    // 3. Convert transformations to proposed keywords (with before/after phrases)
+    if (enhancedReport?.transformations) {
+      enhancedReport.transformations.forEach(t => {
+        // Extract main keyword from the transformation
+        const keywords = t.after.toLowerCase().match(/[a-ząćęłńóśźżА-Яа-яіїєґ]+/gi) || [];
+        const mainKeyword = keywords.find(k => k.length > 5) || t.serviceName.split(' ')[0];
+        const keywordLower = mainKeyword.toLowerCase();
+
+        if (!addedKeywords.has(keywordLower)) {
+          addedKeywords.add(keywordLower);
+          result.push({
+            keyword: mainKeyword,
+            source: 'transformation',
+            beforePhrase: t.before,
+            afterPhrase: t.after,
+            placement: t.serviceName,
+          });
+        }
+      });
+    }
+
+    return result;
+  }, [enhancedReport, keywordReport?.suggestions]);
 
   // Build loading states from audit recommendations
   const optimizationLoadingStates = useMemo(() => {
@@ -351,18 +433,18 @@ const AuditResultsPage: React.FC = () => {
     }
 
     const baseTabs: Tab[] = [
-      { id: 'report', label: 'Raport z audytu' },
+      { id: 'report', label: '1. Raport' },
       {
         id: 'analysis',
-        label: 'Analiza AI',
+        label: '2. Optymalizacja',
         badge: keywordReport?.keywords?.length || undefined,
       },
       {
         id: 'summary',
-        label: 'Podsumowanie',
+        label: '3. Podsumowanie',
         badge: hasOptimizationChanges ? optimizationResult?.changes.length : undefined,
       },
-      { id: 'original', label: 'Cennik pobrany z Booksy' },
+      { id: 'original', label: 'Cennik Booksy' },
       {
         id: 'optimized',
         label: optimizedTabLabel,
@@ -606,7 +688,7 @@ const AuditResultsPage: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         {/* ===== RAPORT Z AUDYTU TAB ===== */}
-        {activeTab === 'report' && auditReport && (
+        {activeTab === 'report' && (auditReport || enhancedReport) && (
           <motion.div
             key="report"
             initial={{ opacity: 0, y: 10 }}
@@ -762,16 +844,24 @@ const AuditResultsPage: React.FC = () => {
               </motion.div>
             )}
 
-            <AuditReportTab
-              auditReport={auditReport}
-              isPricelistOptimized={hasOptimizationChanges}
-              onEditPricelist={hasOptimizationChanges ? () => {
-                if (audit.proPricelistId) {
-                  navigate(`/start-generator?pricelist=${audit.proPricelistId}`);
-                }
-              } : undefined}
-              onOptimizePricelist={!hasOptimizationChanges && !isJobRunning ? handleStartOptimization : undefined}
-            />
+            {/* Conditional rendering: V2 Enhanced Report vs V1 Legacy Report */}
+            {isV2Report && enhancedReport ? (
+              <EnhancedAuditReportTab
+                report={enhancedReport}
+                onOptimizePricelist={!hasOptimizationChanges && !isJobRunning ? handleStartOptimization : undefined}
+              />
+            ) : auditReport && (
+              <AuditReportTab
+                auditReport={auditReport}
+                isPricelistOptimized={hasOptimizationChanges}
+                onEditPricelist={hasOptimizationChanges ? () => {
+                  if (audit.proPricelistId) {
+                    navigate(`/start-generator?pricelist=${audit.proPricelistId}`);
+                  }
+                } : undefined}
+                onOptimizePricelist={!hasOptimizationChanges && !isJobRunning ? handleStartOptimization : undefined}
+              />
+            )}
           </motion.div>
         )}
 
@@ -788,6 +878,7 @@ const AuditResultsPage: React.FC = () => {
                 keywords={keywordReport?.keywords || []}
                 categoryDistribution={keywordReport?.categoryDistribution || []}
                 suggestions={keywordReport?.suggestions || []}
+                proposedKeywords={proposedKeywords}
                 isLoading={keywordReport === undefined}
                 onExportCSV={() => {
                   // Export keywords to CSV
@@ -1560,8 +1651,8 @@ const AuditResultsPage: React.FC = () => {
           </motion.div>
         )}
 
-        {/* Fallback for report tab */}
-        {activeTab === 'report' && !auditReport && (
+        {/* Fallback for report tab - only show if BOTH V1 and V2 reports are missing */}
+        {activeTab === 'report' && !auditReport && !enhancedReport && (
           <div className="text-center py-12">
             <AlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
             <p className="text-slate-600">Brak danych raportu audytu.</p>

@@ -17,6 +17,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { StripedPattern } from '../ui/striped-pattern';
+import { stripMarkdown } from '@/lib/utils';
 import type { CategoryProposalCardProps, CategoryChange } from './types';
 
 /**
@@ -144,7 +145,7 @@ const CategoryProposalCard: React.FC<CategoryProposalCardProps> = ({
             <div className="space-y-1.5">
               {originalStructure.slice(0, 5).map((cat, idx) => (
                 <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-600 truncate">{cat.name}</span>
+                  <span className="text-slate-600 truncate">{stripMarkdown(cat.name)}</span>
                   <span className="text-slate-400 text-xs">{cat.servicesCount}</span>
                 </div>
               ))}
@@ -160,7 +161,7 @@ const CategoryProposalCard: React.FC<CategoryProposalCardProps> = ({
             <div className="space-y-1.5">
               {proposedStructure.slice(0, 5).map((cat, idx) => (
                 <div key={idx} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700 truncate font-medium">{cat.name}</span>
+                  <span className="text-slate-700 truncate font-medium">{stripMarkdown(cat.name)}</span>
                   <span className="text-emerald-600 text-xs font-medium">{cat.servicesCount}</span>
                 </div>
               ))}
@@ -196,8 +197,8 @@ const CategoryProposalCard: React.FC<CategoryProposalCardProps> = ({
                             {changeTypeLabels[change.type]}
                           </span>
                         </div>
-                        <p className="text-sm text-slate-700">{change.description}</p>
-                        <p className="text-xs text-slate-500 mt-1 italic">{change.reason}</p>
+                        <p className="text-sm text-slate-700">{stripMarkdown(change.description)}</p>
+                        <p className="text-xs text-slate-500 mt-1 italic">{stripMarkdown(change.reason)}</p>
                       </div>
                     </div>
                   </div>

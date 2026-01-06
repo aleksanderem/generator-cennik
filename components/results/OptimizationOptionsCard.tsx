@@ -11,8 +11,7 @@ import {
   Copy,
   Clock,
   Tag,
-  CheckCircle2,
-  Circle,
+  Check,
   Loader2,
   AlertCircle,
 } from 'lucide-react';
@@ -20,13 +19,7 @@ import { StripedPattern } from '../ui/striped-pattern';
 import type { OptimizationOptionsCardProps, OptimizationOptionType } from './types';
 
 /**
- * OptimizationOptionsCard - Lets user select which optimization areas to apply
- *
- * Features:
- * - 8 toggleable optimization options
- * - Select all / deselect all
- * - Category option disabled until proposal accepted
- * - Start optimization button
+ * OptimizationOptionsCard - Untitled UI style checkbox group
  */
 
 interface OptionConfig {
@@ -161,7 +154,7 @@ const OptimizationOptionsCard: React.FC<OptimizationOptionsCardProps> = ({
 
       <div className="relative z-10 overflow-hidden rounded-xl bg-white p-6 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)]">
         {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-[#D4A574]" />
             <span className="text-sm text-slate-400 uppercase tracking-wide">Opcje optymalizacji</span>
@@ -170,7 +163,7 @@ const OptimizationOptionsCard: React.FC<OptimizationOptionsCardProps> = ({
             <button
               onClick={onSelectAll}
               disabled={allSelected}
-              className="text-xs text-emerald-600 hover:text-emerald-700 disabled:text-slate-300 transition-colors"
+              className="text-xs text-emerald-600 hover:text-emerald-700 disabled:text-slate-300 transition-colors font-medium"
             >
               Zaznacz wszystkie
             </button>
@@ -185,7 +178,7 @@ const OptimizationOptionsCard: React.FC<OptimizationOptionsCardProps> = ({
           </div>
         </div>
 
-        {/* Options grid */}
+        {/* Options grid - Untitled UI checkbox card style */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
           {optionConfigs.map((config) => {
             const isSelected = isOptionSelected(config.key);
@@ -193,80 +186,85 @@ const OptimizationOptionsCard: React.FC<OptimizationOptionsCardProps> = ({
             const Icon = config.icon;
 
             return (
-              <button
+              <label
                 key={config.key}
-                onClick={() => handleToggle(config.key)}
-                disabled={isDisabled}
                 className={`
-                  relative p-3 rounded-lg border transition-all duration-200 text-left
+                  relative flex items-start gap-3 p-4 rounded-xl border-2 cursor-pointer transition-all duration-200
                   ${isSelected
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : 'border-slate-100 bg-slate-50/50 hover:border-slate-200'
+                    ? 'border-[#D4A574] bg-[#D4A574]/5 ring-1 ring-[#D4A574]/20'
+                    : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                   }
-                  ${isDisabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+                  ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}
                 `}
               >
-                <div className="flex items-start gap-3">
+                {/* Custom checkbox */}
+                <div className="relative flex items-center justify-center shrink-0 mt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => handleToggle(config.key)}
+                    disabled={isDisabled}
+                    className="sr-only"
+                  />
                   <div
                     className={`
-                      w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-colors
-                      ${isSelected ? 'bg-emerald-100' : 'bg-slate-100'}
+                      w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all duration-200
+                      ${isSelected
+                        ? 'bg-[#D4A574] border-[#D4A574]'
+                        : 'bg-white border-slate-300'
+                      }
                     `}
                   >
-                    <Icon
-                      className={`w-4 h-4 ${isSelected ? 'text-emerald-600' : 'text-slate-500'}`}
-                    />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`text-sm font-medium ${isSelected ? 'text-emerald-700' : 'text-slate-700'}`}
-                      >
-                        {config.label}
-                      </span>
-                      {isSelected ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                      ) : (
-                        <Circle className="w-4 h-4 text-slate-300" />
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-0.5">{config.description}</p>
+                    {isSelected && <Check className="w-3 h-3 text-white stroke-[3]" />}
                   </div>
                 </div>
 
-                {/* Category warning */}
+                {/* Content */}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Icon
+                      className={`w-4 h-4 shrink-0 ${isSelected ? 'text-[#D4A574]' : 'text-slate-400'}`}
+                    />
+                    <span
+                      className={`text-sm font-semibold ${isSelected ? 'text-slate-900' : 'text-slate-700'}`}
+                    >
+                      {config.label}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 leading-relaxed">{config.description}</p>
+                </div>
+
+                {/* Category warning overlay */}
                 {config.key === 'categories' && categoryDisabled && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-white/80 rounded-lg">
-                    <div className="flex items-center gap-1.5 text-xs text-amber-600">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span>Zaakceptuj propozycję</span>
+                  <div className="absolute inset-0 flex items-center justify-center bg-white/90 rounded-xl">
+                    <div className="flex items-center gap-1.5 text-xs text-amber-600 font-medium">
+                      <AlertCircle className="w-4 h-4" />
+                      <span>Zaakceptuj propozycję kategorii</span>
                     </div>
                   </div>
                 )}
-              </button>
+              </label>
             );
           })}
         </div>
 
-        {/* Selected count */}
-        <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
-          <span className="text-sm text-slate-500">
-            Wybrano{' '}
-            <span className="font-bold text-slate-700">{selectedOptions.length}</span>
-            {' '}z {optionConfigs.length} obszarów
+        {/* Selected summary */}
+        <div className="flex items-center justify-between mb-5 py-3 px-4 bg-slate-50 rounded-lg">
+          <span className="text-sm text-slate-600">
+            Wybrano <span className="font-bold text-slate-900">{selectedOptions.length}</span> z {optionConfigs.length} obszarów
           </span>
           {selectedOptions.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1.5">
               {selectedOptions.slice(0, 3).map((opt) => (
                 <span
                   key={opt}
-                  className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-medium rounded"
+                  className="px-2 py-0.5 bg-[#D4A574]/10 text-[#B8860B] text-xs font-medium rounded-full"
                 >
                   {optionConfigs.find((c) => c.key === opt)?.label}
                 </span>
               ))}
               {selectedOptions.length > 3 && (
-                <span className="px-1.5 py-0.5 bg-slate-100 text-slate-600 text-[10px] font-medium rounded">
+                <span className="px-2 py-0.5 bg-slate-200 text-slate-600 text-xs font-medium rounded-full">
                   +{selectedOptions.length - 3}
                 </span>
               )}
@@ -279,11 +277,11 @@ const OptimizationOptionsCard: React.FC<OptimizationOptionsCardProps> = ({
           onClick={onStartOptimization}
           disabled={noneSelected || isOptimizing}
           className={`
-            w-full py-3 px-6 rounded-lg font-medium text-sm transition-all duration-200
+            w-full py-3.5 px-6 rounded-xl font-semibold text-sm transition-all duration-200
             flex items-center justify-center gap-2
             ${noneSelected || isOptimizing
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white hover:shadow-lg hover:shadow-[#D4A574]/20'
+              : 'bg-gradient-to-r from-[#D4A574] to-[#B8860B] text-white shadow-lg shadow-[#D4A574]/25 hover:shadow-xl hover:shadow-[#D4A574]/30 hover:-translate-y-0.5'
             }
           `}
         >

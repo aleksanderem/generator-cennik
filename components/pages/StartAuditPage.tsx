@@ -1,6 +1,6 @@
 "use client";
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation } from 'convex/react';
 import { api } from '../../convex/_generated/api';
 import { useUser } from '@clerk/clerk-react';
@@ -15,12 +15,22 @@ import { AuroraText } from '../ui/aurora-text';
 
 const StartAuditPage: React.FC = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isSignedIn, isLoaded: isClerkLoaded } = useUser();
 
-  const [booksyUrl, setBooksyUrl] = useState('');
+  // Pre-fill URL z query param (dla "Powtórz audyt")
+  const prefillUrl = searchParams.get('url') || '';
+  const [booksyUrl, setBooksyUrl] = useState(prefillUrl);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Aktualizuj URL gdy zmieni się query param
+  useEffect(() => {
+    if (prefillUrl) {
+      setBooksyUrl(prefillUrl);
+    }
+  }, [prefillUrl]);
 
   // Get user data from Convex
   const user = useQuery(api.users.getCurrentUser);

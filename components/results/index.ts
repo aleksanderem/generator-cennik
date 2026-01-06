@@ -8,6 +8,7 @@ export { default as QuickActionsCard } from './QuickActionsCard';
 
 // Multi-step audit analysis components
 export { default as KeywordReportCard } from './KeywordReportCard';
+export { default as KeywordSimulationCard } from './KeywordSimulationCard';
 export { default as CategoryProposalCard } from './CategoryProposalCard';
 export { default as OptimizationOptionsCard } from './OptimizationOptionsCard';
 export { default as CategoryEditorModal } from './CategoryEditorModal';
@@ -31,6 +32,7 @@ export type {
   CategoryProposalCardProps,
   OptimizationOptionType,
   OptimizationOptionsCardProps,
+  ProposedKeyword,
 } from './types';
 
 export type { CategoryEditorModalProps } from './CategoryEditorModal';

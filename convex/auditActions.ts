@@ -7,9 +7,44 @@ import {
   parseBooksyData,
   parseAuditReport,
   validateScrapedData,
+  calculateAuditStats,
   type ScrapedData,
   type AuditReport,
+  type AuditStats,
+  type AuditIssue,
+  type ServiceTransformation,
+  type QuickWin,
+  type ScoreBreakdown,
+  type EnhancedAuditReport,
+  type MissingSeoKeyword,
+  type IssueSeverity,
+  type AuditDimension,
 } from "./auditHelpers";
+
+// --- UTILITY FUNCTIONS ---
+
+/**
+ * Strip markdown formatting from AI responses.
+ * Removes bold (**), italic (*/_), headers (#), backticks, etc.
+ */
+function stripMarkdown(text: string): string {
+  return text
+    // Remove bold: **text** or __text__
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    // Remove italic: *text* or _text_ (be careful with underscores in words)
+    .replace(/(?<!\w)\*([^*]+)\*(?!\w)/g, '$1')
+    .replace(/(?<!\w)_([^_]+)_(?!\w)/g, '$1')
+    // Remove inline code: `text`
+    .replace(/`([^`]+)`/g, '$1')
+    // Remove headers: # ## ### etc
+    .replace(/^#{1,6}\s+/gm, '')
+    // Remove strikethrough: ~~text~~
+    .replace(/~~(.+?)~~/g, '$1')
+    // Clean up any remaining asterisks at start/end
+    .replace(/^\*+|\*+$/g, '')
+    .trim();
+}
 
 // --- BOOKSY DIRECT API ---
 
@@ -447,11 +482,11 @@ WAŻNE: Nie używaj JSON. Odpowiedz dokładnie w podanym formacie tekstowym.`;
     } else if (line.startsWith("WEAKNESSES:")) {
       section = "weaknesses";
     } else if (line.startsWith("-")) {
-      const content = line.substring(1).trim();
+      const content = stripMarkdown(line.substring(1).trim());
       if (section === "strengths" && content) {
         strengths.push(content);
       } else if (section === "weaknesses" && content) {
-        const parts = content.split("|").map((p: string) => p.trim());
+        const parts = content.split("|").map((p: string) => stripMarkdown(p.trim()));
         weaknesses.push({
           point: parts[0] || content,
           consequence: parts[1] || "Wpływa negatywnie na doświadczenie klienta",
@@ -533,7 +568,7 @@ WAŻNE:
     } else if (line.startsWith("EXPLANATION:")) {
       beforeAfter.explanation = line.replace("EXPLANATION:", "").trim() || beforeAfter.explanation;
     } else if (line.startsWith("-") && section === "recommendations") {
-      const content = line.substring(1).trim();
+      const content = stripMarkdown(line.substring(1).trim());
       if (content) recommendations.push(content);
     }
   }
@@ -623,6 +658,572 @@ Podaj dokładnie 4 porady, każda w formacie TIP:`;
   }
 
   return tips.slice(0, 4);
+}
+
+// --- ENHANCED AUDIT FUNCTIONS (V2) ---
+
+/**
+ * Build full pricelist for AI analysis (not limited like buildPricelistSummary).
+ * For very large pricelists, we chunk and process separately.
+ */
+function buildFullPricelistText(data: ScrapedData, maxServices: number = 150): string {
+  let text = `SALON: ${data.salonName || "Nieznany"}\n\n`;
+  let serviceCount = 0;
+
+  for (const cat of data.categories) {
+    text += `\n## KATEGORIA: ${cat.name} (${cat.services.length} usług)\n`;
+
+    for (const s of cat.services) {
+      if (serviceCount >= maxServices) {
+        text += `\n[... i jeszcze ${data.totalServices - serviceCount} usług]\n`;
+        return text;
+      }
+
+      text += `- "${s.name}" | ${s.price}`;
+      if (s.duration) text += ` | ${s.duration}`;
+      if (s.description) text += ` | OPIS: ${s.description.substring(0, 100)}`;
+      text += "\n";
+      serviceCount++;
+    }
+  }
+
+  return text;
+}
+
+/**
+ * Analyze service names and return scoring + issues.
+ */
+async function analyzeNamingQuality(
+  apiKey: string,
+  data: ScrapedData,
+  stats: AuditStats
+): Promise<{
+  score: number;
+  issues: AuditIssue[];
+  transformations: ServiceTransformation[];
+}> {
+  const pricelistText = buildFullPricelistText(data, 100);
+
+  const prompt = `Jesteś ekspertem od copywritingu dla salonów beauty w Polsce.
+
+${pricelistText}
+
+ZADANIE: Oceń JAKOŚĆ NAZW usług. Skala 0-20 punktów.
+
+KRYTERIA:
+- Czy nazwy są ZROZUMIAŁE dla klienta? (nie tylko dla specjalisty)
+- Czy komunikują KORZYŚĆ/EFEKT? (np. "Odmłodzenie" vs tylko "Mezoterapia")
+- Czy mają odpowiednią DŁUGOŚĆ? (ideał: 3-8 słów)
+- Czy zawierają SŁOWA KLUCZOWE które klienci wyszukują?
+- Czy są UNIKALNE? (brak duplikatów/bardzo podobnych)
+
+FORMAT ODPOWIEDZI (dokładnie ten format):
+
+SCORE: [0-20]
+
+TOP_ISSUES:
+ISSUE: [critical/major/minor] | naming | [opis problemu] | [wpływ na rezerwacje] | [ile usług dotyczy] | [przykład] | [jak naprawić]
+ISSUE: [kolejny problem...]
+
+TRANSFORMATIONS:
+TRANSFORM: name | [oryginalna nazwa usługi] | [proponowana lepsza nazwa] | [dlaczego lepsza] | [wpływ 1-10]
+TRANSFORM: [kolejna transformacja...]
+
+Podaj maksymalnie 5 ISSUE i 5 TRANSFORM. Skup się na największych problemach.`;
+
+  const text = await callGeminiText(apiKey, prompt);
+  return parseNamingAnalysis(text);
+}
+
+function parseNamingAnalysis(text: string): {
+  score: number;
+  issues: AuditIssue[];
+  transformations: ServiceTransformation[];
+} {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  let score = 10;
+  const issues: AuditIssue[] = [];
+  const transformations: ServiceTransformation[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("SCORE:")) {
+      const match = line.match(/\d+/);
+      if (match) score = Math.min(20, Math.max(0, parseInt(match[0], 10)));
+    } else if (line.startsWith("ISSUE:")) {
+      const parts = line.replace("ISSUE:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 7) {
+        issues.push({
+          severity: (parts[0] as IssueSeverity) || "minor",
+          dimension: (parts[1] as AuditDimension) || "naming",
+          issue: parts[2] || "",
+          impact: parts[3] || "",
+          affectedCount: parseInt(parts[4], 10) || 1,
+          example: parts[5] || "",
+          fix: parts[6] || "",
+        });
+      }
+    } else if (line.startsWith("TRANSFORM:")) {
+      const parts = line.replace("TRANSFORM:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 5) {
+        transformations.push({
+          type: "name",
+          serviceName: parts[1] || "",
+          before: parts[1] || "",
+          after: parts[2] || "",
+          reason: parts[3] || "",
+          impactScore: parseInt(parts[4], 10) || 5,
+        });
+      }
+    }
+  }
+
+  return { score, issues: issues.slice(0, 5), transformations: transformations.slice(0, 5) };
+}
+
+/**
+ * Analyze service descriptions quality.
+ */
+async function analyzeDescriptionsQuality(
+  apiKey: string,
+  data: ScrapedData,
+  stats: AuditStats
+): Promise<{
+  score: number;
+  issues: AuditIssue[];
+  transformations: ServiceTransformation[];
+}> {
+  // Filter services that have descriptions
+  const servicesWithDesc = data.categories.flatMap(c =>
+    c.services.filter(s => s.description && s.description.trim().length > 0)
+      .map(s => ({ category: c.name, ...s }))
+  );
+
+  if (servicesWithDesc.length === 0) {
+    return {
+      score: 0,
+      issues: [{
+        severity: "critical",
+        dimension: "descriptions",
+        issue: "Brak opisów usług",
+        impact: "Klienci nie wiedzą czego się spodziewać, co drastycznie obniża konwersję",
+        affectedCount: stats.totalServices,
+        example: "Żadna usługa nie ma opisu",
+        fix: "Dodaj krótkie opisy (50-150 znaków) do każdej usługi opisujące korzyść dla klienta",
+      }],
+      transformations: [],
+    };
+  }
+
+  let descText = `USŁUGI Z OPISAMI (${servicesWithDesc.length} z ${stats.totalServices}):\n\n`;
+  for (const s of servicesWithDesc.slice(0, 50)) {
+    descText += `- "${s.name}" [${s.category}]\n  OPIS: ${s.description}\n\n`;
+  }
+
+  const prompt = `Jesteś copywriterem specjalizującym się w usługach beauty.
+
+${descText}
+
+STATYSTYKA: ${servicesWithDesc.length} usług ma opis z ${stats.totalServices} (${Math.round(servicesWithDesc.length / stats.totalServices * 100)}%)
+
+ZADANIE: Oceń JAKOŚĆ OPISÓW. Skala 0-20 punktów.
+
+KRYTERIA:
+- Czy mówi CO KLIENT ZYSKA? (efekt, rezultat)
+- Czy określa DLA KOGO jest usługa?
+- Czy ma odpowiednią długość? (ideał: 50-200 znaków)
+- Czy jest przekonujący i budzi zaufanie?
+- Czy NIE jest zbyt techniczny?
+
+FORMAT:
+
+SCORE: [0-20]
+
+TOP_ISSUES:
+ISSUE: [critical/major/minor] | descriptions | [problem] | [wpływ] | [ile usług] | [przykład] | [naprawa]
+
+TRANSFORMATIONS:
+TRANSFORM: description | [nazwa usługi] | [oryginalny opis] | [lepszy opis] | [dlaczego lepszy] | [wpływ 1-10]
+
+Max 5 ISSUE i 3 TRANSFORM.`;
+
+  const text = await callGeminiText(apiKey, prompt);
+  return parseDescriptionAnalysis(text);
+}
+
+function parseDescriptionAnalysis(text: string): {
+  score: number;
+  issues: AuditIssue[];
+  transformations: ServiceTransformation[];
+} {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  let score = 10;
+  const issues: AuditIssue[] = [];
+  const transformations: ServiceTransformation[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("SCORE:")) {
+      const match = line.match(/\d+/);
+      if (match) score = Math.min(20, Math.max(0, parseInt(match[0], 10)));
+    } else if (line.startsWith("ISSUE:")) {
+      const parts = line.replace("ISSUE:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 7) {
+        issues.push({
+          severity: (parts[0] as IssueSeverity) || "minor",
+          dimension: "descriptions",
+          issue: parts[2] || "",
+          impact: parts[3] || "",
+          affectedCount: parseInt(parts[4], 10) || 1,
+          example: parts[5] || "",
+          fix: parts[6] || "",
+        });
+      }
+    } else if (line.startsWith("TRANSFORM:")) {
+      const parts = line.replace("TRANSFORM:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 6) {
+        transformations.push({
+          type: "description",
+          serviceName: parts[1] || "",
+          before: parts[2] || "",
+          after: parts[3] || "",
+          reason: parts[4] || "",
+          impactScore: parseInt(parts[5], 10) || 5,
+        });
+      }
+    }
+  }
+
+  return { score, issues: issues.slice(0, 5), transformations: transformations.slice(0, 3) };
+}
+
+/**
+ * Analyze structure, pricing and generate quick wins.
+ */
+async function analyzeStructureAndPricing(
+  apiKey: string,
+  data: ScrapedData,
+  stats: AuditStats
+): Promise<{
+  structureScore: number;
+  pricingScore: number;
+  issues: AuditIssue[];
+  quickWins: QuickWin[];
+  missingSeoKeywords: MissingSeoKeyword[];
+}> {
+  // Build category summary
+  let structureText = `STRUKTURA CENNIKA:\n\n`;
+  for (const cat of data.categories) {
+    const hasProblems = cat.services.length > 20 ? " [ZA DUŻO]" :
+                        cat.services.length < 3 && cat.services.length > 0 ? " [ZA MAŁO]" :
+                        cat.services.length === 0 ? " [PUSTA]" : "";
+    structureText += `- ${cat.name}: ${cat.services.length} usług${hasProblems}\n`;
+
+    // Show price range
+    const prices = cat.services
+      .map(s => {
+        const match = s.price.match(/(\d+)/);
+        return match ? parseInt(match[0], 10) : null;
+      })
+      .filter((p): p is number => p !== null);
+
+    if (prices.length > 0) {
+      const minPrice = Math.min(...prices);
+      const maxPrice = Math.max(...prices);
+      structureText += `  Ceny: ${minPrice} - ${maxPrice} zł\n`;
+    }
+  }
+
+  structureText += `\nSTATYSTYKI:
+- Kategorii: ${stats.totalCategories}
+- Usług łącznie: ${stats.totalServices}
+- Średnio usług/kategorię: ${stats.avgServicesPerCategory}
+- Największa: ${stats.largestCategory.name} (${stats.largestCategory.count})
+- Najmniejsza: ${stats.smallestCategory.name} (${stats.smallestCategory.count})
+- Duplikaty nazw: ${stats.duplicateNames.length > 0 ? stats.duplicateNames.join(", ") : "brak"}
+- Puste kategorie: ${stats.emptyCategories.length > 0 ? stats.emptyCategories.join(", ") : "brak"}
+- Za duże (>20): ${stats.oversizedCategories.length > 0 ? stats.oversizedCategories.join(", ") : "brak"}
+- Za małe (<3): ${stats.undersizedCategories.length > 0 ? stats.undersizedCategories.join(", ") : "brak"}`;
+
+  const prompt = `Jesteś konsultantem UX i strategii cenowej dla salonów beauty.
+
+${structureText}
+
+ZADANIE: Oceń STRUKTURĘ (0-15 pkt) i STRATEGIĘ CENOWĄ (0-15 pkt).
+
+STRUKTURA - KRYTERIA:
+- Logiczne grupowanie usług
+- Optymalna wielkość kategorii (3-15 usług)
+- Jasne nazwy kategorii
+- Bestsellery/popularne łatwo dostępne
+
+CENY - KRYTERIA:
+- Czy są pakiety/zestawy?
+- Spójność cenowa w kategoriach
+- Czy ceny konkretne (nie "od...")?
+- Psychologia cen (99 vs 100)
+
+FORMAT:
+
+STRUCTURE_SCORE: [0-15]
+PRICING_SCORE: [0-15]
+
+TOP_ISSUES:
+ISSUE: [critical/major/minor] | [structure/pricing] | [problem] | [wpływ] | [ile dotyczy] | [przykład] | [naprawa]
+
+QUICK_WINS:
+WIN: [akcja do wykonania] | [low/medium effort] | [high/medium impact] | [przykład] | [ile usług dotyczy]
+
+SEO_KEYWORDS:
+KEYWORD: [brakujące słowo kluczowe] | [high/medium/low volume] | [gdzie dodać] | [krótkie uzasadnienie dlaczego warto]
+
+Max 5 ISSUE, 5 WIN, 5 KEYWORD.`;
+
+  const text = await callGeminiText(apiKey, prompt);
+  return parseStructureAnalysis(text);
+}
+
+function parseStructureAnalysis(text: string): {
+  structureScore: number;
+  pricingScore: number;
+  issues: AuditIssue[];
+  quickWins: QuickWin[];
+  missingSeoKeywords: MissingSeoKeyword[];
+} {
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l);
+  let structureScore = 8;
+  let pricingScore = 8;
+  const issues: AuditIssue[] = [];
+  const quickWins: QuickWin[] = [];
+  const missingSeoKeywords: MissingSeoKeyword[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith("STRUCTURE_SCORE:")) {
+      const match = line.match(/\d+/);
+      if (match) structureScore = Math.min(15, Math.max(0, parseInt(match[0], 10)));
+    } else if (line.startsWith("PRICING_SCORE:")) {
+      const match = line.match(/\d+/);
+      if (match) pricingScore = Math.min(15, Math.max(0, parseInt(match[0], 10)));
+    } else if (line.startsWith("ISSUE:")) {
+      const parts = line.replace("ISSUE:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 7) {
+        issues.push({
+          severity: (parts[0] as IssueSeverity) || "minor",
+          dimension: (parts[1] as AuditDimension) || "structure",
+          issue: parts[2] || "",
+          impact: parts[3] || "",
+          affectedCount: parseInt(parts[4], 10) || 1,
+          example: parts[5] || "",
+          fix: parts[6] || "",
+        });
+      }
+    } else if (line.startsWith("WIN:")) {
+      const parts = line.replace("WIN:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 5) {
+        quickWins.push({
+          action: parts[0] || "",
+          effort: (parts[1] as "low" | "medium" | "high") || "medium",
+          impact: (parts[2] as "high" | "medium" | "low") || "medium",
+          example: parts[3] || "",
+          affectedServices: parseInt(parts[4], 10) || 1,
+        });
+      }
+    } else if (line.startsWith("KEYWORD:")) {
+      const parts = line.replace("KEYWORD:", "").split("|").map(p => stripMarkdown(p.trim()));
+      if (parts.length >= 3) {
+        missingSeoKeywords.push({
+          keyword: parts[0] || "",
+          searchVolume: (parts[1] as "high" | "medium" | "low") || "medium",
+          suggestedPlacement: parts[2] || "",
+          reason: parts[3] || undefined,
+        });
+      }
+    }
+  }
+
+  return {
+    structureScore,
+    pricingScore,
+    issues: issues.slice(0, 5),
+    quickWins: quickWins.slice(0, 5),
+    missingSeoKeywords: missingSeoKeywords.slice(0, 5),
+  };
+}
+
+/**
+ * Calculate completeness score based on stats.
+ */
+function calculateCompletenessScore(stats: AuditStats): number {
+  // 0-15 points based on field completeness
+  const descriptionRate = stats.totalServices > 0
+    ? stats.servicesWithDescription / stats.totalServices
+    : 0;
+  const durationRate = stats.totalServices > 0
+    ? stats.servicesWithDuration / stats.totalServices
+    : 0;
+  const fixedPriceRate = stats.totalServices > 0
+    ? stats.servicesWithFixedPrice / stats.totalServices
+    : 0;
+
+  // Weight: descriptions (6pt), duration (5pt), fixed price (4pt)
+  const score = Math.round(descriptionRate * 6 + durationRate * 5 + fixedPriceRate * 4);
+  return Math.min(15, score);
+}
+
+/**
+ * Calculate SEO score based on keyword coverage.
+ */
+function calculateSeoScore(missingSeoKeywords: MissingSeoKeyword[], stats: AuditStats): number {
+  // 0-10 points
+  // Fewer missing high-volume keywords = better score
+  const highVolumeMissing = missingSeoKeywords.filter(k => k.searchVolume === "high").length;
+  const mediumVolumeMissing = missingSeoKeywords.filter(k => k.searchVolume === "medium").length;
+
+  // Start at 10, subtract for missing keywords
+  let score = 10 - (highVolumeMissing * 2) - (mediumVolumeMissing * 1);
+  return Math.max(0, Math.min(10, score));
+}
+
+/**
+ * Calculate UX score based on structure.
+ */
+function calculateUxScore(stats: AuditStats): number {
+  // 0-5 points based on user experience factors
+  let score = 5;
+
+  // Penalize empty categories
+  if (stats.emptyCategories.length > 0) score -= 1;
+
+  // Penalize oversized categories (hard to navigate)
+  if (stats.oversizedCategories.length > 0) score -= 1;
+
+  // Penalize undersized categories (fragmented)
+  if (stats.undersizedCategories.length > 2) score -= 1;
+
+  // Penalize duplicate names (confusing)
+  if (stats.duplicateNames.length > 0) score -= 1;
+
+  // Penalize very uneven category sizes
+  if (stats.largestCategory.count > stats.smallestCategory.count * 10) score -= 1;
+
+  return Math.max(0, score);
+}
+
+/**
+ * Generate summary text for the audit.
+ */
+async function generateSummary(
+  apiKey: string,
+  totalScore: number,
+  stats: AuditStats,
+  topIssues: AuditIssue[]
+): Promise<string> {
+  const issuesSummary = topIssues.slice(0, 3).map(i => `- ${i.issue}`).join("\n");
+
+  const prompt = `Napisz krótkie podsumowanie audytu cennika salonu beauty (2-3 zdania).
+
+WYNIK: ${totalScore}/100 punktów
+USŁUG: ${stats.totalServices}
+KATEGORII: ${stats.totalCategories}
+USŁUGI Z OPISEM: ${stats.servicesWithDescription}/${stats.totalServices}
+
+GŁÓWNE PROBLEMY:
+${issuesSummary || "Brak krytycznych problemów"}
+
+Napisz podsumowanie po polsku, bez emoji, profesjonalnie ale przystępnie. Wskaż najważniejszy problem do naprawienia.`;
+
+  return await callGeminiText(apiKey, prompt);
+}
+
+/**
+ * Main function to generate enhanced audit report.
+ * Combines statistical analysis with AI insights.
+ */
+export async function generateEnhancedAuditReport(
+  scrapedDataJson: string
+): Promise<EnhancedAuditReport> {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY not configured");
+  }
+
+  const scrapedData: ScrapedData = JSON.parse(scrapedDataJson);
+
+  // Step 1: Calculate hard statistics (no AI)
+  console.log("[Enhanced Audit] Step 1: Calculating statistics...");
+  const stats = calculateAuditStats(scrapedData);
+
+  // Step 2: AI analysis of naming quality
+  console.log("[Enhanced Audit] Step 2: Analyzing naming quality...");
+  const namingAnalysis = await analyzeNamingQuality(apiKey, scrapedData, stats);
+
+  // Step 3: AI analysis of descriptions
+  console.log("[Enhanced Audit] Step 3: Analyzing descriptions...");
+  const descAnalysis = await analyzeDescriptionsQuality(apiKey, scrapedData, stats);
+
+  // Step 4: AI analysis of structure and pricing
+  console.log("[Enhanced Audit] Step 4: Analyzing structure and pricing...");
+  const structureAnalysis = await analyzeStructureAndPricing(apiKey, scrapedData, stats);
+
+  // Calculate dimension scores
+  const completenessScore = calculateCompletenessScore(stats);
+  const seoScore = calculateSeoScore(structureAnalysis.missingSeoKeywords, stats);
+  const uxScore = calculateUxScore(stats);
+
+  const scoreBreakdown: ScoreBreakdown = {
+    completeness: completenessScore,
+    naming: namingAnalysis.score,
+    descriptions: descAnalysis.score,
+    structure: structureAnalysis.structureScore,
+    pricing: structureAnalysis.pricingScore,
+    seo: seoScore,
+    ux: uxScore,
+  };
+
+  const totalScore = Object.values(scoreBreakdown).reduce((a, b) => a + b, 0);
+
+  // Combine all issues and sort by severity
+  const allIssues = [
+    ...namingAnalysis.issues,
+    ...descAnalysis.issues,
+    ...structureAnalysis.issues,
+  ];
+
+  const severityOrder: Record<IssueSeverity, number> = { critical: 0, major: 1, minor: 2 };
+  const topIssues = allIssues
+    .sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity])
+    .slice(0, 10);
+
+  // Combine transformations
+  const transformations = [
+    ...namingAnalysis.transformations,
+    ...descAnalysis.transformations,
+  ].slice(0, 8);
+
+  // Generate summary
+  console.log("[Enhanced Audit] Step 5: Generating summary...");
+  const summary = await generateSummary(apiKey, totalScore, stats, topIssues);
+
+  // Industry comparison (simplified - could be enhanced with real data)
+  const industryComparison = {
+    yourScore: totalScore,
+    industryAverage: 55, // Placeholder - could fetch from DB
+    topPerformers: 85,
+    percentile: Math.round((totalScore / 100) * 100),
+  };
+
+  console.log(`[Enhanced Audit] Complete. Total score: ${totalScore}/100`);
+
+  return {
+    version: "v2",
+    totalScore,
+    scoreBreakdown,
+    stats,
+    topIssues,
+    transformations,
+    missingSeoKeywords: structureAnalysis.missingSeoKeywords,
+    quickWins: structureAnalysis.quickWins,
+    industryComparison,
+    summary: summary.trim(),
+  };
 }
 
 /**
@@ -835,18 +1436,13 @@ export const analyzeWithAI = internalAction({
     await ctx.runMutation(internal.audits.updateProgress, {
       auditId: args.auditId,
       status: "analyzing",
-      progress: 60,
-      progressMessage: "AI analizuje cennik...",
+      progress: 40,
+      progressMessage: "Obliczanie statystyk cennika...",
     });
 
     try {
-      await ctx.runMutation(internal.audits.updateProgress, {
-        auditId: args.auditId,
-        progress: 75,
-        progressMessage: "Generowanie raportu...",
-      });
-
-      const report = await generateAuditReport(audit.scrapedDataJson);
+      // Use enhanced audit report (V2) with 7-dimension scoring
+      const enhancedReport = await generateEnhancedAuditReport(audit.scrapedDataJson);
 
       await ctx.runMutation(internal.audits.updateProgress, {
         auditId: args.auditId,
@@ -854,25 +1450,44 @@ export const analyzeWithAI = internalAction({
         progressMessage: "Finalizacja raportu...",
       });
 
-      // Sanitize report data to remove problematic characters
-      const sanitizedReport = sanitizeReportData(report);
-      const reportJson = JSON.stringify(sanitizedReport);
+      const reportJson = JSON.stringify(enhancedReport);
 
       // Validate JSON is parseable before saving
       try {
         JSON.parse(reportJson);
-        console.log(`[Audit] Report JSON validated successfully, length: ${reportJson.length}`);
+        console.log(`[Audit V2] Report JSON validated successfully, length: ${reportJson.length}`);
       } catch (validationError) {
-        console.error("[Audit] Generated JSON is invalid:", validationError);
+        console.error("[Audit V2] Generated JSON is invalid:", validationError);
         throw new Error("Wygenerowany raport jest nieprawidłowy. Spróbuj ponownie.");
       }
 
       await ctx.runMutation(internal.audits.completeAudit, {
         auditId: args.auditId,
-        overallScore: sanitizedReport.overallScore,
+        overallScore: enhancedReport.totalScore,
         rawData: audit.scrapedDataJson,
         reportJson: reportJson,
       });
+
+      // Generate additional analysis reports (keyword report + category proposal)
+      // These run in the background after the main audit is complete
+      try {
+        console.log("[Audit] Generating keyword report...");
+        const keywordReportId = await ctx.runAction(
+          internal.auditAnalysis.generateKeywordReport,
+          { auditId: args.auditId }
+        );
+        console.log(`[Audit] Keyword report generated: ${keywordReportId}`);
+
+        console.log("[Audit] Generating category proposal...");
+        await ctx.runAction(
+          internal.auditAnalysis.generateCategoryProposal,
+          { auditId: args.auditId, keywordReportId }
+        );
+        console.log("[Audit] Category proposal generated");
+      } catch (analysisError) {
+        // Don't fail the whole audit if additional analysis fails
+        console.error("[Audit] Additional analysis failed:", analysisError);
+      }
 
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : "Błąd analizy AI";

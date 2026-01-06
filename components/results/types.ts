@@ -104,11 +104,26 @@ export interface CategoryDistribution {
   topKeywords: string[];
 }
 
+// Proposed keyword for after-optimization view
+export interface ProposedKeyword {
+  keyword: string;
+  source: 'transformation' | 'suggestion';
+  searchVolume?: 'high' | 'medium' | 'low';
+  placement?: string;
+  reason?: string;
+  beforePhrase?: string;
+  afterPhrase?: string;
+}
+
 // KeywordReportCard props
 export interface KeywordReportCardProps {
   keywords: KeywordData[];
   categoryDistribution: CategoryDistribution[];
   suggestions: string[];
+  /** Proposed keywords from V2 audit transformations */
+  proposedKeywords?: ProposedKeyword[];
+  /** Improvement percentage after applying changes */
+  improvementPercent?: number;
   onExportCSV?: () => void;
   isLoading?: boolean;
 }

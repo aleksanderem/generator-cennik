@@ -261,14 +261,23 @@ export const startNewAudit = mutation({
 
     // Sprawdź czy nie ma już aktywnego audytu
     const activeStatuses = ["pending", "scraping", "scraping_retry", "analyzing"];
-    const existingAudit = await ctx.db
+    const existingAudits = await ctx.db
       .query("audits")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .collect();
 
-    const hasActiveAudit = existingAudit.some((a) => activeStatuses.includes(a.status));
+    const hasActiveAudit = existingAudits.some((a) => activeStatuses.includes(a.status));
     if (hasActiveAudit) {
       throw new Error("Masz już aktywny audyt w trakcie");
+    }
+
+    // Sprawdź czy nie ma audytu dla tego samego URL utworzonego w ciągu ostatnich 5 minut
+    const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+    const recentSameUrlAudit = existingAudits.find(
+      (a) => a.sourceUrl === args.sourceUrl && a.createdAt > fiveMinutesAgo
+    );
+    if (recentSameUrlAudit) {
+      throw new Error("Audyt dla tego profilu został już rozpoczęty. Poczekaj chwilę.");
     }
 
     // Zużyj kredyt

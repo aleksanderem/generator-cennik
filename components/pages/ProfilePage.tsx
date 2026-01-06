@@ -723,7 +723,22 @@ const ProfilePage: React.FC = () => {
   const activeAudit = useQuery(api.audits.getActiveAudit);
   const purchases = useQuery(api.purchases.getUserPurchases);
   const pricelists = useQuery(api.pricelists.getUserPricelists);
+  const ensureCurrentUser = useMutation(api.users.ensureCurrentUser);
   const updateCompanyData = useMutation(api.users.updateCompanyData);
+
+  // Upewnij się że użytkownik istnieje w bazie Convex przy pierwszym wejściu
+  const hasEnsuredUser = useRef(false);
+  React.useEffect(() => {
+    if (isClerkLoaded && clerkUser && !hasEnsuredUser.current) {
+      hasEnsuredUser.current = true;
+      ensureCurrentUser().then(() => {
+        console.log('[ProfilePage] User ensured in Convex');
+      }).catch((err) => {
+        console.error('[ProfilePage] Error ensuring user:', err);
+        hasEnsuredUser.current = false; // Pozwól na ponowną próbę
+      });
+    }
+  }, [isClerkLoaded, clerkUser, ensureCurrentUser]);
   const deletePricelist = useMutation(api.pricelists.deletePricelist);
   const deleteAudit = useMutation(api.dev.deleteAudit);
   const createPortalSession = useAction(api.stripe.createCustomerPortalSession);
@@ -1323,6 +1338,21 @@ const ProfilePage: React.FC = () => {
             {/* Tab: Audits */}
             {activeTab === 'audits' && (
               <div>
+                {/* Header z przyciskiem nowego audytu */}
+                <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-sm font-medium text-slate-900">Twoje audyty</h3>
+                    <p className="text-xs text-slate-500 mt-0.5">Przeglądaj historię i rozpocznij nowy</p>
+                  </div>
+                  <Link
+                    to="/start-audit"
+                    className="flex items-center gap-2 px-4 py-2 bg-[#722F37] text-white text-sm font-medium rounded-lg hover:bg-[#5a252c] transition-colors shadow-sm"
+                  >
+                    <IconPlus size={16} />
+                    Nowy audyt
+                  </Link>
+                </div>
+
                 {/* Active audit */}
                 {activeAudit && (() => {
                   const activeStatuses = ['processing', 'scraping', 'scraping_retry', 'analyzing'];
@@ -1557,6 +1587,24 @@ const ProfilePage: React.FC = () => {
                                       Otwórz Booksy
                                     </a>
                                   )}
+                                  {/* Powtórz audyt - przekieruj do zakupu z tym samym URL */}
+                                  {audit.status === 'completed' && audit.sourceUrl && (
+                                    <>
+                                      <div className="h-px bg-slate-100 my-1" />
+                                      <button
+                                        className="w-full flex items-center gap-3 px-3 py-2 text-sm text-[#722F37] hover:bg-[#722F37]/5 transition-colors font-medium"
+                                        onClick={async () => {
+                                          setOpenAuditDropdownId(null);
+                                          // Przekieruj do start-audit z prefilled URL
+                                          navigate(`/start-audit?url=${encodeURIComponent(audit.sourceUrl!)}`);
+                                        }}
+                                      >
+                                        <IconPlayerPlay size={16} />
+                                        Powtórz audyt
+                                      </button>
+                                    </>
+                                  )}
+                                  <div className="h-px bg-slate-100 my-1" />
                                   <button
                                     className="w-full flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors"
                                     onClick={async () => {
