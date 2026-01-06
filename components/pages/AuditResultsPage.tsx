@@ -456,7 +456,10 @@ const AuditResultsPage: React.FC = () => {
     if (!proPricelist.isOptimized) return 'optimizing';
 
     // Optimization complete - check if there were changes
-    const changesCount = optimizationResult?.changes?.length ?? 0;
+    // Check both changes array and summary.totalChanges (summary is more reliable)
+    const changesCount = optimizationResult?.summary?.totalChanges
+      ?? optimizationResult?.changes?.length
+      ?? 0;
     return changesCount > 0 ? 'optimized_with_changes' : 'optimized_no_changes';
   }, [audit?.proPricelistId, proPricelist, optimizationResult]);
 

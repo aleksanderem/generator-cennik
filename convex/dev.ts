@@ -207,6 +207,23 @@ export const addCredits = mutation({
   },
 });
 
+// DEV: Add credits by userId (internal only, for testing)
+export const addCreditsByUserId = internalMutation({
+  args: { userId: v.id("users"), amount: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+    await ctx.db.patch(args.userId, {
+      credits: user.credits + args.amount,
+    });
+    console.log(`Added ${args.amount} credits to user ${user.email}. New balance: ${user.credits + args.amount}`);
+    return null;
+  },
+});
+
 // Usuń kredyty (dev only)
 export const removeCredits = mutation({
   args: { amount: v.number() },
@@ -696,5 +713,58 @@ export const rerunAudit = mutation({
     });
 
     return null;
+  },
+});
+
+// DEV ONLY: Create and run audit without auth (for testing)
+export const createAndRunAuditDev = mutation({
+  args: { sourceUrl: v.string() },
+  returns: v.id("audits"),
+  handler: async (ctx, args) => {
+    // Validate URL
+    if (!args.sourceUrl.includes('booksy.com')) {
+      throw new Error("URL musi być linkiem do profilu Booksy");
+    }
+
+    // Get or create a test user
+    let testUser = await ctx.db
+      .query("users")
+      .filter((q) => q.eq(q.field("email"), "dev-test@booksyauditor.pl"))
+      .first();
+
+    if (!testUser) {
+      const userId = await ctx.db.insert("users", {
+        email: "dev-test@booksyauditor.pl",
+        clerkId: "dev-test-clerk-id",
+        credits: 100,
+        createdAt: Date.now(),
+      });
+      testUser = await ctx.db.get(userId);
+    }
+
+    if (!testUser) {
+      throw new Error("Failed to create test user");
+    }
+
+    const now = Date.now();
+
+    // Create audit
+    const auditId = await ctx.db.insert("audits", {
+      userId: testUser._id,
+      status: "scraping",
+      sourceType: "booksy",
+      sourceUrl: args.sourceUrl,
+      createdAt: now,
+      startedAt: now,
+      progress: 0,
+      progressMessage: "Rozpoczynam audyt (dev mode)...",
+    });
+
+    // Schedule the scraping action
+    await ctx.scheduler.runAfter(0, internal.auditActions.scrapeBooksyProfile, {
+      auditId,
+    });
+
+    return auditId;
   },
 });
