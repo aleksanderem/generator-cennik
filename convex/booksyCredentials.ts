@@ -262,11 +262,11 @@ export const getFallbackCredentials = internalQuery({
     fingerprint: v.string(),
   }),
   handler: async () => {
-    // Fallback to original hardcoded credentials
+    // Fallback to working credentials (updated 2026-01-06)
     return {
-      accessToken: "GACioqQNYSx5wVxsgNZfq2DHz5YvSOOt",
+      accessToken: "qc1ywuMrQycKA4bQbbuemOE4IBklNKYN",
       apiKey: "web-e3d812bf-d7a2-445d-ab38-55589ae6a121",
-      fingerprint: "3bd6e818-f4e0-4f78-a2fa-da68498ff9a2",
+      fingerprint: "ed2065e7-ee7d-4290-95ae-795dfaf4402f",
     };
   },
 });
