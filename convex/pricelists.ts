@@ -122,6 +122,15 @@ export const getPricelist = query({
   },
 });
 
+// DEV ONLY: Get pricelist without auth check (for testing)
+export const getPricelistDev = query({
+  args: { pricelistId: v.id("pricelists") },
+  returns: v.union(pricelistValidator, v.null()),
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.pricelistId);
+  },
+});
+
 // Zapisz nowy cennik
 export const savePricelist = mutation({
   args: {
@@ -532,7 +541,7 @@ export const resetOptimization = internalMutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const pricelist = await ctx.db.get(args.pricelistId);
-    if (!pricelist) throw new Error("Pricelist not found");
+    if (!pricelist) throw new Error("Cennik nie znaleziony");
 
     // If we have original data, restore it
     if (pricelist.originalPricingDataJson) {

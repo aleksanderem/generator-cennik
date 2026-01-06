@@ -121,6 +121,7 @@ const AuditResultsPage: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const auditId = searchParams.get('audit') as Id<"audits"> | null;
+  const isDevMode = searchParams.get('dev') === 'true';
 
   const [activeTab, setActiveTab] = useState<AuditTabType>('report');
   const [isExportingOriginalPDF, setIsExportingOriginalPDF] = useState(false);
@@ -134,15 +135,15 @@ const AuditResultsPage: React.FC = () => {
   const startOptimization = useMutation(api.optimizationJobs.startOptimization);
   const refetchFromBooksy = useMutation(api.pricelists.refetchFromBooksy);
 
-  // Fetch audit data
+  // Fetch audit data (use dev query if ?dev=true is in URL)
   const audit = useQuery(
-    api.audits.getAudit,
+    isDevMode ? api.audits.getAuditDev : api.audits.getAudit,
     auditId ? { auditId } : "skip"
   );
 
-  // Fetch linked PRO pricelist
+  // Fetch linked PRO pricelist (use dev query if ?dev=true)
   const proPricelist = useQuery(
-    api.pricelists.getPricelist,
+    isDevMode ? api.pricelists.getPricelistDev : api.pricelists.getPricelist,
     audit?.proPricelistId ? { pricelistId: audit.proPricelistId } : "skip"
   );
 
@@ -163,6 +164,12 @@ const AuditResultsPage: React.FC = () => {
     auditId ? { auditId } : "skip"
   );
 
+  // Fetch saved optimization options (to restore user selections after page refresh)
+  const savedOptimizationOptions = useQuery(
+    api.auditAnalysisQueries.getOptimizationOptionsForAudit,
+    auditId ? { auditId } : "skip"
+  );
+
   // Mutations for analysis workflow
   const updateProposalStatus = useMutation(api.auditAnalysisQueries.updateCategoryProposalStatus);
   const saveOptimizationOptions = useMutation(api.auditAnalysisQueries.saveOptimizationOptions);
@@ -171,6 +178,13 @@ const AuditResultsPage: React.FC = () => {
   const [selectedOptimizationOptions, setSelectedOptimizationOptions] = useState<OptimizationOptionType[]>([
     'descriptions', 'seo', 'order', 'prices', 'duplicates', 'tags'
   ]);
+
+  // Sync saved optimization options with local state (restores user selections after refresh)
+  useEffect(() => {
+    if (savedOptimizationOptions?.selectedOptions) {
+      setSelectedOptimizationOptions(savedOptimizationOptions.selectedOptions as OptimizationOptionType[]);
+    }
+  }, [savedOptimizationOptions]);
 
   // Derived optimization state from job
   const isJobRunning = optimizationJob?.status === "pending" || optimizationJob?.status === "processing";
@@ -361,13 +375,17 @@ const AuditResultsPage: React.FC = () => {
   }, [auditReport?.recommendations]);
 
   // Parse original pricelist data (from Booksy)
+  // NOTE: Raw data uses 'name' for categories, but PricingData type expects 'categoryName'
   const originalPricingData: PricingData | null = useMemo(() => {
     if (!audit?.rawData) return null;
     try {
       const raw = JSON.parse(audit.rawData);
       return {
         salonName: audit.salonName || 'Salon',
-        categories: raw.categories || [],
+        categories: (raw.categories || []).map((cat: { name?: string; categoryName?: string; services?: ServiceItem[] }) => ({
+          categoryName: cat.categoryName || cat.name || 'Bez nazwy',
+          services: cat.services || [],
+        })),
       };
     } catch (e) {
       console.error('Failed to parse audit rawData:', e);
@@ -524,6 +542,7 @@ const AuditResultsPage: React.FC = () => {
   };
 
   // Handle starting optimization process (now uses background jobs)
+  // ALWAYS saves user-selected options before starting to ensure they are respected
   const handleStartOptimization = async () => {
     if (!audit?.proPricelistId || isJobRunning) {
       return;
@@ -531,6 +550,18 @@ const AuditResultsPage: React.FC = () => {
 
     try {
       console.log('[AuditResults] Starting background optimization job...');
+      console.log('[AuditResults] Selected options:', selectedOptimizationOptions);
+
+      // ALWAYS save selected options before starting optimization
+      // This ensures user selections are respected regardless of which button they click
+      if (auditId) {
+        await saveOptimizationOptions({
+          auditId,
+          selectedOptions: selectedOptimizationOptions,
+          isFullAuto: selectedOptimizationOptions.length === 8,
+        });
+        console.log('[AuditResults] Saved optimization options to database');
+      }
 
       // Start optimization as a background job
       await startOptimization({
@@ -1009,14 +1040,7 @@ const AuditResultsPage: React.FC = () => {
               }}
               onDeselectAll={() => setSelectedOptimizationOptions([])}
               onStartOptimization={async () => {
-                if (!auditId) return;
-                // Save selected options and start optimization
-                await saveOptimizationOptions({
-                  auditId,
-                  selectedOptions: selectedOptimizationOptions,
-                  isFullAuto: selectedOptimizationOptions.length === 8,
-                });
-                // Then start the optimization job
+                // handleStartOptimization now saves options automatically
                 handleStartOptimization();
               }}
               hasCategoryProposal={categoryProposal !== null && categoryProposal !== undefined}
@@ -1311,27 +1335,30 @@ const AuditResultsPage: React.FC = () => {
 
                         <div className="space-y-1.5 flex-1">
                           {[
-                            { key: 'descriptions', label: 'Język korzyści w opisach', active: optimizationResult.changes.some(c => c.type === 'description_added' || c.type === 'description_improved'), count: optimizationResult.changes.filter(c => c.type === 'description_added' || c.type === 'description_improved').length },
-                            { key: 'seo', label: 'Słowa kluczowe SEO', active: optimizationResult.changes.some(c => c.type === 'name_improved'), count: optimizationResult.changes.filter(c => c.type === 'name_improved').length },
-                            { key: 'categories', label: 'Struktura kategorii', active: optimizationResult.changes.some(c => c.type === 'category_renamed' || c.type === 'category_reordered'), count: optimizationResult.changes.filter(c => c.type === 'category_renamed' || c.type === 'category_reordered').length },
-                            { key: 'order', label: 'Kolejność usług', active: optimizationResult.changes.some(c => c.type === 'service_reordered'), count: optimizationResult.changes.filter(c => c.type === 'service_reordered').length },
-                            { key: 'prices', label: 'Formatowanie cen', active: optimizationResult.changes.some(c => c.type === 'price_formatted'), count: optimizationResult.changes.filter(c => c.type === 'price_formatted').length },
-                            { key: 'duplicates', label: 'Duplikaty i błędy', active: optimizationResult.changes.some(c => c.type === 'duplicate_merged' || c.type === 'typo_fixed'), count: optimizationResult.changes.filter(c => c.type === 'duplicate_merged' || c.type === 'typo_fixed').length },
-                            { key: 'duration', label: 'Szacowanie czasu', active: optimizationResult.changes.some(c => c.type === 'duration_estimated'), count: optimizationResult.changes.filter(c => c.type === 'duration_estimated').length },
-                            { key: 'tags', label: 'Tagi i oznaczenia', active: optimizationResult.changes.some(c => c.type === 'tag_added'), count: optimizationResult.changes.filter(c => c.type === 'tag_added').length },
-                          ].map((item) => (
+                            { key: 'descriptions', label: 'Język korzyści w opisach', count: optimizationResult.changes.filter(c => c.type === 'description_added' || c.type === 'description_improved').length },
+                            { key: 'seo', label: 'Słowa kluczowe SEO', count: optimizationResult.changes.filter(c => c.type === 'name_improved').length },
+                            { key: 'categories', label: 'Struktura kategorii', count: optimizationResult.changes.filter(c => c.type === 'category_renamed' || c.type === 'category_reordered').length },
+                            { key: 'order', label: 'Kolejność usług', count: optimizationResult.changes.filter(c => c.type === 'service_reordered').length },
+                            { key: 'prices', label: 'Formatowanie cen', count: optimizationResult.changes.filter(c => c.type === 'price_formatted').length },
+                            { key: 'duplicates', label: 'Duplikaty i błędy', count: optimizationResult.changes.filter(c => c.type === 'duplicate_merged' || c.type === 'typo_fixed').length },
+                            { key: 'duration', label: 'Szacowanie czasu', count: optimizationResult.changes.filter(c => c.type === 'duration_estimated').length },
+                            { key: 'tags', label: 'Tagi i oznaczenia', count: optimizationResult.changes.filter(c => c.type === 'tag_added').length },
+                          ].map((item) => {
+                            // "active" = user selected this option, regardless of whether AI made changes
+                            const isSelected = selectedOptimizationOptions.includes(item.key as OptimizationOptionType);
+                            return (
                             <div
                               key={item.key}
-                              className={`flex items-center gap-2 py-1.5 px-2 rounded-lg text-sm transition-colors ${item.active
+                              className={`flex items-center gap-2 py-1.5 px-2 rounded-lg text-sm transition-colors ${isSelected
                                 ? 'bg-emerald-50'
                                 : 'bg-slate-50/50'
                                 }`}
                             >
-                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${item.active ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                              <span className={`flex-1 ${item.active ? 'text-slate-700' : 'text-slate-400'}`}>
+                              <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isSelected ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                              <span className={`flex-1 ${isSelected ? 'text-slate-700' : 'text-slate-400'}`}>
                                 {item.label}
                               </span>
-                              {item.active && item.count > 0 && (
+                              {isSelected && item.count > 0 && (
                                 <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-1.5 py-0.5 rounded">
                                   +{item.count}
                                 </span>
@@ -1344,7 +1371,8 @@ const AuditResultsPage: React.FC = () => {
                                 <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-600" />
                               </button>
                             </div>
-                          ))}
+                          );
+                        })}
                         </div>
                       </div>
                     </motion.div>

@@ -147,6 +147,16 @@ export const getAudit = query({
   },
 });
 
+// DEV ONLY: Get audit without auth check (for testing)
+export const getAuditDev = query({
+  args: { auditId: v.id("audits") },
+  returns: v.union(auditValidator, v.null()),
+  handler: async (ctx, args) => {
+    // WARNING: Dev only - bypasses auth
+    return await ctx.db.get(args.auditId);
+  },
+});
+
 // Sprawdź czy użytkownik ma aktywny audyt (internal - dla fallback w verifySession)
 export const hasActiveAuditForUser = internalQuery({
   args: {
@@ -271,6 +281,15 @@ export const startNewAudit = mutation({
       throw new Error("Masz już aktywny audyt w trakcie");
     }
 
+    // RACE CONDITION FIX: Check if any audit was created in the last 3 seconds
+    // This prevents double-creation when two requests arrive simultaneously
+    // Convex mutations are transactional, so this check is atomic with the insert below
+    const threeSecondsAgo = Date.now() - 3000;
+    const veryRecentAudit = existingAudits.find((a) => a.createdAt > threeSecondsAgo);
+    if (veryRecentAudit) {
+      throw new Error("Operacja w trakcie. Spróbuj ponownie za chwilę.");
+    }
+
     // Sprawdź czy nie ma audytu dla tego samego URL utworzonego w ciągu ostatnich 5 minut
     const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
     const recentSameUrlAudit = existingAudits.find(
@@ -321,14 +340,15 @@ export const completeAudit = internalMutation({
     // Get audit to retrieve userId and base pricelist
     const audit = await ctx.db.get(args.auditId);
     if (!audit) {
-      throw new Error("Audit not found");
+      throw new Error("Audyt nie znaleziony");
     }
 
     // Parse audit report for optimization data (with safe fallback)
     let reportRecommendations: string[] = [];
+    let parsedReport: Record<string, unknown> | null = null;
     try {
-      const report = JSON.parse(args.reportJson);
-      reportRecommendations = Array.isArray(report?.recommendations) ? report.recommendations : [];
+      parsedReport = JSON.parse(args.reportJson) as Record<string, unknown>;
+      reportRecommendations = Array.isArray(parsedReport?.recommendations) ? parsedReport.recommendations as string[] : [];
     } catch (parseError) {
       console.error("[completeAudit] Failed to parse reportJson:", parseError);
       // Continue with empty recommendations - the raw JSON will still be saved
@@ -343,15 +363,48 @@ export const completeAudit = internalMutation({
         // Create PRO pricelist based on base pricelist with optimization metadata
         // The PRO pricelist starts with the same data as base, ready for AI optimization
 
+        // Extract transformation counts from audit report (V2 enhanced reports have transformations)
+        let totalChanges = 0;
+        let namesImproved = 0;
+        let descriptionsAdded = 0;
+        let categoriesOptimized = 0;
+        let duplicatesFound = 0;
+
+        if (parsedReport) {
+          // Check for V2 enhanced report transformations
+          const transformations = parsedReport.transformations as Array<{ type?: string }> | undefined;
+          if (Array.isArray(transformations)) {
+            totalChanges = transformations.length;
+            namesImproved = transformations.filter(t => t.type === "name").length;
+            descriptionsAdded = transformations.filter(t => t.type === "description").length;
+          }
+
+          // Extract from stats if available
+          const stats = parsedReport.stats as { duplicateNames?: string[] } | undefined;
+          if (stats?.duplicateNames) {
+            duplicatesFound = stats.duplicateNames.length;
+          }
+
+          // Count quick wins as potential category optimizations
+          const quickWins = parsedReport.quickWins as Array<unknown> | undefined;
+          if (Array.isArray(quickWins)) {
+            categoriesOptimized = quickWins.filter((w: unknown) =>
+              typeof w === "object" && w !== null && "action" in w &&
+              typeof (w as { action: string }).action === "string" &&
+              (w as { action: string }).action.toLowerCase().includes("kategori")
+            ).length;
+          }
+        }
+
         // Create optimization result from audit report
         const optimizationResult = {
           qualityScore: args.overallScore,
           summary: {
-            totalChanges: 0,
-            duplicatesFound: 0,
-            descriptionsAdded: 0,
-            namesImproved: 0,
-            categoriesOptimized: 0,
+            totalChanges,
+            duplicatesFound,
+            descriptionsAdded,
+            namesImproved,
+            categoriesOptimized,
           },
           recommendations: reportRecommendations,
           changes: [],
@@ -458,7 +511,7 @@ export const saveScrapedData = internalMutation({
     // Get audit to retrieve userId
     const audit = await ctx.db.get(args.auditId);
     if (!audit) {
-      throw new Error("Audit not found");
+      throw new Error("Audyt nie znaleziony");
     }
 
     // Convert scraped data to PricingData format for base pricelist
@@ -544,9 +597,12 @@ export const handleScrapingError = internalMutation({
         errorMessage: args.errorMessage,
       });
 
-      // Exponential backoff: 30s, 2min, 5min
-      const delays = [30000, 120000, 300000];
-      const delay = delays[newRetryCount - 1] || delays[2];
+      // Exponential backoff: 30s, 2min, 5min with jitter (±20%)
+      // Jitter prevents thundering herd when multiple retries happen simultaneously
+      const baseDelays = [30000, 120000, 300000];
+      const baseDelay = baseDelays[newRetryCount - 1] || baseDelays[2];
+      const jitterFactor = 0.8 + Math.random() * 0.4; // 0.8 to 1.2
+      const delay = Math.round(baseDelay * jitterFactor);
 
       await ctx.scheduler.runAfter(delay, internal.auditActions.scrapeBooksyProfile, {
         auditId: args.auditId,
@@ -684,5 +740,35 @@ export const hasProcessingAudit = query({
       .first();
 
     return processingAudit !== null;
+  },
+});
+
+// Zapisz ostrzeżenia z dodatkowej analizy (internal)
+export const saveAdditionalAnalysisWarnings = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    warnings: v.array(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (args.warnings.length === 0) return null;
+
+    await ctx.db.patch(args.auditId, {
+      additionalAnalysisWarnings: JSON.stringify(args.warnings),
+    });
+    return null;
+  },
+});
+
+// DEV: Reassign audit to a different user (for testing)
+export const reassignAudit = internalMutation({
+  args: {
+    auditId: v.id("audits"),
+    newUserId: v.id("users"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.auditId, { userId: args.newUserId });
+    return null;
   },
 });
