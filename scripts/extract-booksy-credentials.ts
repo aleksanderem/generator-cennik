@@ -51,23 +51,38 @@ async function extractCredentials(): Promise<BooksyCredentials | null> {
   page.on('request', (request: Request) => {
     const url = request.url();
 
+    // Log all requests to booksy.com for debugging
+    if (url.includes('booksy.com')) {
+      console.error(`[Request] ${request.method()} ${url.substring(0, 100)}`);
+    }
+
     if (API_PATTERN.test(url)) {
       const headers = request.headers();
+      console.error(`[Booksy Extractor] API request detected: ${url}`);
+      console.error(`[Booksy Extractor] Headers: ${JSON.stringify(Object.keys(headers))}`);
 
       const accessToken = headers['x-access-token'];
       const apiKey = headers['x-api-key'];
       const fingerprint = headers['x-fingerprint'];
 
-      if (accessToken && apiKey) {
+      // Capture whatever we can - even partial credentials are useful
+      if (apiKey) {
         console.error(`[Booksy Extractor] Captured credentials from: ${url}`);
+        console.error(`[Booksy Extractor] x-access-token: ${accessToken ? 'YES' : 'NO'}, x-api-key: ${apiKey ? 'YES' : 'NO'}, x-fingerprint: ${fingerprint ? 'YES' : 'NO'}`);
 
-        credentials = {
-          accessToken,
-          apiKey,
-          fingerprint: fingerprint || '',
-          extractedAt: new Date().toISOString(),
-          expiresAt: null, // Booksy tokens don't have explicit expiry in headers
-        };
+        // Only update if we have more complete credentials than before
+        const hasAccessToken = !!accessToken;
+        const prevHasAccessToken = credentials?.accessToken && credentials.accessToken !== '';
+
+        if (hasAccessToken || !prevHasAccessToken) {
+          credentials = {
+            accessToken: accessToken || '',
+            apiKey,
+            fingerprint: fingerprint || '',
+            extractedAt: new Date().toISOString(),
+            expiresAt: null,
+          };
+        }
       }
     }
   });
@@ -76,12 +91,13 @@ async function extractCredentials(): Promise<BooksyCredentials | null> {
     // Navigate to a salon page to trigger API calls
     console.error('[Booksy Extractor] Navigating to salon page...');
     await page.goto(SAMPLE_SALON_URL, {
-      waitUntil: 'networkidle',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
     });
 
     // Wait for API calls to complete
-    await page.waitForTimeout(3000);
+    console.error('[Booksy Extractor] Page loaded, waiting for API calls...');
+    await page.waitForTimeout(5000);
 
     // If no credentials yet, try scrolling to trigger more API calls
     if (!credentials) {
@@ -102,12 +118,18 @@ async function extractCredentials(): Promise<BooksyCredentials | null> {
     }
 
     if (credentials) {
-      console.error('[Booksy Extractor] Credentials extracted successfully!');
+      if (credentials.accessToken) {
+        console.error('[Booksy Extractor] Full credentials extracted successfully!');
+      } else {
+        console.error('[Booksy Extractor] Partial credentials extracted (no access token)');
+        console.error('[Booksy Extractor] Public endpoints work but authenticated endpoints may fail');
+        console.error('[Booksy Extractor] Try running with BOOKSY_EMAIL and BOOKSY_PASSWORD for full credentials');
+      }
       // Output to stdout (for programmatic consumption)
       console.log(JSON.stringify(credentials, null, 2));
     } else {
       console.error('[Booksy Extractor] Failed to extract credentials');
-      console.error('[Booksy Extractor] This may happen if Booksy changed their API or requires login');
+      console.error('[Booksy Extractor] This may happen if Booksy changed their API');
     }
 
   } catch (error) {
@@ -175,12 +197,12 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
     // Go to login page
     console.error('[Booksy Extractor] Navigating to login page...');
     await page.goto('https://booksy.com/pl-pl/login', {
-      waitUntil: 'networkidle',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
     });
 
     // Wait for login form
-    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 10000 });
+    await page.waitForSelector('input[type="email"], input[name="email"]', { timeout: 15000 });
 
     // Fill login form
     console.error('[Booksy Extractor] Filling login form...');
@@ -196,11 +218,12 @@ async function extractWithLogin(): Promise<BooksyCredentials | null> {
     // Navigate to salon page
     console.error('[Booksy Extractor] Navigating to salon page...');
     await page.goto(SAMPLE_SALON_URL, {
-      waitUntil: 'networkidle',
-      timeout: 30000,
+      waitUntil: 'domcontentloaded',
+      timeout: 60000,
     });
 
-    await page.waitForTimeout(3000);
+    console.error('[Booksy Extractor] Page loaded, waiting for API calls...');
+    await page.waitForTimeout(5000);
 
     if (credentials) {
       console.error('[Booksy Extractor] Credentials extracted successfully after login!');
