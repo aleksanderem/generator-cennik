@@ -25,6 +25,8 @@ import {
   FileText,
   Scissors,
   BarChart3,
+  List,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type { Id } from '../../convex/_generated/dataModel';
 import { AuditResult, PricingData, ThemeConfig, DEFAULT_THEME, OptimizationResult, ServiceItem } from '../../types';
@@ -104,7 +106,7 @@ const criterionToChangeTypes: Record<string, string[]> = {
   tags: ['tag_added'],
 };
 
-type AuditTabType = 'report' | 'analysis' | 'summary' | 'original' | 'optimized';
+type AuditTabType = 'report' | 'analysis' | 'summary' | 'changes' | 'original' | 'optimized';
 
 /**
  * AuditResultsPage - Displays audit results with reusable components
@@ -510,6 +512,12 @@ const AuditResultsPage: React.FC = () => {
         id: 'summary',
         label: '3. Podsumowanie',
         badge: hasOptimizationChanges ? optimizationResult?.changes.length : undefined,
+      },
+      {
+        id: 'changes',
+        label: '4. Lista zmian',
+        badge: hasOptimizationChanges ? optimizationResult?.changes.length : undefined,
+        disabled: !hasOptimizationChanges,
       },
       { id: 'original', label: 'Cennik Booksy' },
       {
@@ -1294,7 +1302,15 @@ const AuditResultsPage: React.FC = () => {
                             if (dupeCount > 0) parts.push(`naprawiono ${dupeCount} ${dupeCount === 1 ? 'błąd' : dupeCount < 5 ? 'błędy' : 'błędów'} i duplikaty`);
 
                             if (parts.length === 0) {
-                              return 'Twój cennik był już dobrze zoptymalizowany. Nie znaleźliśmy elementów wymagających poprawy.';
+                              // Even with 0 changes, provide valuable context based on score
+                              const score = optimizationResult.qualityScore;
+                              if (score >= 80) {
+                                return 'Twój cennik ma solidną podstawę. Aby przyciągnąć więcej klientów, rozważ kampanie reklamowe Google Ads i social media.';
+                              } else if (score >= 60) {
+                                return 'Twój cennik wymaga jeszcze dopracowania. Skontaktuj się z nami, aby omówić strategię marketingową i optymalizację.';
+                              } else {
+                                return 'Twój cennik ma duży potencjał do poprawy. Rekomendujemy profesjonalną optymalizację oraz kampanie reklamowe.';
+                              }
                             }
 
                             return `AI przeanalizowało Twój cennik i wprowadziło ${optimizationResult.summary.totalChanges} zmian: ${parts.join(', ')}.`;
@@ -1397,7 +1413,7 @@ const AuditResultsPage: React.FC = () => {
                         <Lightbulb className="w-4 h-4 text-slate-400" />
                         <span className="text-xs text-slate-400 uppercase tracking-wide">Sugestie</span>
                         <span className="ml-auto px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
-                          {(auditReport?.recommendations?.length || 0) + (optimizationResult?.recommendations?.length || 0)} wskazówek
+                          {Math.max(3, (auditReport?.recommendations?.length || 0) + (optimizationResult?.recommendations?.length || 0))} wskazówek
                         </span>
                       </div>
 
@@ -1405,32 +1421,58 @@ const AuditResultsPage: React.FC = () => {
                         Dodatkowe rekomendacje
                       </h3>
 
-                      {((auditReport?.recommendations && auditReport.recommendations.length > 0) || (optimizationResult?.recommendations && optimizationResult.recommendations.length > 0)) ? (
-                        <div className="space-y-2">
-                          {[...(auditReport?.recommendations || []), ...(optimizationResult?.recommendations || [])].slice(0, 3).map((rec, idx) => (
-                            <div
-                              key={idx}
-                              className="flex items-start gap-3 p-2.5 bg-amber-50/50 rounded-lg border border-amber-100"
-                            >
-                              <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                                <span className="text-xs font-medium text-amber-700">{idx + 1}</span>
+                      {(() => {
+                        // Combine audit and optimization recommendations
+                        const auditRecs = auditReport?.recommendations || [];
+                        const optRecs = optimizationResult?.recommendations || [];
+                        const combinedRecs = [...auditRecs, ...optRecs];
+
+                        // Marketing upsell recommendations - ALWAYS show these
+                        const marketingRecs = [
+                          "🚀 Kampania Google Ads dla salonu beauty – zwiększ widoczność i przyciągnij nowych klientów szukających usług w Twojej okolicy",
+                          "📱 Kampania reklamowa na Instagramie i Facebooku – docieraj do idealnych klientów z targetowanymi reklamami",
+                          "📈 Profesjonalne pozycjonowanie SEO – bądź na pierwszej stronie Google gdy klienci szukają usług beauty",
+                        ];
+
+                        // If we have audit/optimization recs, show them first, then marketing
+                        // If not, show marketing recs directly
+                        const displayRecs = combinedRecs.length > 0
+                          ? [...combinedRecs.slice(0, 2), ...marketingRecs.slice(0, 1)]
+                          : marketingRecs;
+
+                        return (
+                          <div className="space-y-2">
+                            {displayRecs.slice(0, 3).map((rec, idx) => (
+                              <div
+                                key={idx}
+                                className={`flex items-start gap-3 p-2.5 rounded-lg border ${
+                                  rec.startsWith('🚀') || rec.startsWith('📱') || rec.startsWith('📈')
+                                    ? 'bg-emerald-50/50 border-emerald-100'
+                                    : 'bg-amber-50/50 border-amber-100'
+                                }`}
+                              >
+                                <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                                  rec.startsWith('🚀') || rec.startsWith('📱') || rec.startsWith('📈')
+                                    ? 'bg-emerald-100'
+                                    : 'bg-amber-100'
+                                }`}>
+                                  <span className={`text-xs font-medium ${
+                                    rec.startsWith('🚀') || rec.startsWith('📱') || rec.startsWith('📈')
+                                      ? 'text-emerald-700'
+                                      : 'text-amber-700'
+                                  }`}>{idx + 1}</span>
+                                </div>
+                                <p className="text-sm text-slate-600 leading-relaxed">{rec}</p>
                               </div>
-                              <p className="text-sm text-slate-600 leading-relaxed">{rec}</p>
+                            ))}
+                            <div className="pt-2 mt-2 border-t border-slate-100">
+                              <p className="text-xs text-emerald-600 text-center font-medium">
+                                💡 Skontaktuj się z nami, aby dowiedzieć się więcej o kampaniach reklamowych
+                              </p>
                             </div>
-                          ))}
-                          {((auditReport?.recommendations?.length || 0) + (optimizationResult?.recommendations?.length || 0)) > 3 && (
-                            <p className="text-xs text-slate-400 text-center pt-1">
-                              +{((auditReport?.recommendations?.length || 0) + (optimizationResult?.recommendations?.length || 0)) - 3} więcej sugestii
-                            </p>
-                          )}
-                        </div>
-                      ) : (
-                        <div className="flex-1 flex items-center justify-center">
-                          <p className="text-sm text-slate-400 text-center">
-                            Brak dodatkowych sugestii - Twój cennik jest dobrze zoptymalizowany!
-                          </p>
-                        </div>
-                      )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </motion.div>
                 </div>
@@ -1547,6 +1589,188 @@ const AuditResultsPage: React.FC = () => {
                   );
                 })()}
               </>
+            )}
+          </motion.div>
+        )}
+
+        {/* ===== LISTA ZMIAN TAB ===== */}
+        {activeTab === 'changes' && optimizationResult && (
+          <motion.div
+            key="changes"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            {/* Header */}
+            <div className="mb-6">
+              <div className="flex items-center gap-3 mb-2">
+                <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center">
+                  <List className="w-5 h-5 text-emerald-600" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Lista wprowadzonych zmian
+                  </h2>
+                  <p className="text-sm text-slate-500">
+                    Łącznie {optimizationResult.summary.totalChanges} {optimizationResult.summary.totalChanges === 1 ? 'zmiana' : optimizationResult.summary.totalChanges < 5 ? 'zmiany' : 'zmian'} w cenniku
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Changes grouped by type */}
+            <div className="space-y-6">
+              {[
+                { type: 'name_improved', label: 'Poprawione nazwy (SEO)', icon: '🔍', changeTypes: ['name_improved'] },
+                { type: 'description', label: 'Dodane/poprawione opisy', icon: '📝', changeTypes: ['description_added', 'description_improved'] },
+                { type: 'category', label: 'Zmiany w kategoriach', icon: '📁', changeTypes: ['category_renamed', 'category_reordered'] },
+                { type: 'order', label: 'Zmiana kolejności usług', icon: '↕️', changeTypes: ['service_reordered'] },
+                { type: 'price', label: 'Formatowanie cen', icon: '💰', changeTypes: ['price_formatted'] },
+                { type: 'duplicate', label: 'Naprawione duplikaty i błędy', icon: '🔧', changeTypes: ['duplicate_merged', 'typo_fixed'] },
+                { type: 'duration', label: 'Szacowany czas trwania', icon: '⏱️', changeTypes: ['duration_estimated'] },
+                { type: 'tag', label: 'Dodane tagi', icon: '🏷️', changeTypes: ['tag_added'] },
+              ].map((group) => {
+                const groupChanges = optimizationResult.changes.filter(c => group.changeTypes.includes(c.type));
+                if (groupChanges.length === 0) return null;
+
+                return (
+                  <motion.div
+                    key={group.type}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm"
+                  >
+                    {/* Group header */}
+                    <div className="px-5 py-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">{group.icon}</span>
+                        <h3 className="font-semibold text-slate-800">{group.label}</h3>
+                      </div>
+                      <span className="px-2.5 py-1 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">
+                        {groupChanges.length} {groupChanges.length === 1 ? 'zmiana' : groupChanges.length < 5 ? 'zmiany' : 'zmian'}
+                      </span>
+                    </div>
+
+                    {/* Changes table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-slate-50/50 border-b border-slate-100">
+                            <th className="text-left px-5 py-3 font-medium text-slate-500 w-[30%]">Dotyczy</th>
+                            <th className="text-left px-5 py-3 font-medium text-slate-500 w-[30%]">Było</th>
+                            <th className="text-center px-2 py-3 font-medium text-slate-400 w-[5%]">
+                              <ArrowRightLeft className="w-4 h-4 mx-auto" />
+                            </th>
+                            <th className="text-left px-5 py-3 font-medium text-slate-500 w-[35%]">Jest teraz</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {groupChanges.map((change, idx) => {
+                            // Cast to access actual data fields (service, before, after, category)
+                            const changeData = change as unknown as {
+                              type: string;
+                              service?: string;
+                              category?: string;
+                              before?: string;
+                              after?: string;
+                              reason?: string;
+                            };
+
+                            // Get service/category name for "Dotyczy" column
+                            let contextName = changeData.service || changeData.category || 'Usługa';
+
+                            // For category_renamed, show category info
+                            if (change.type === 'category_renamed') {
+                              contextName = changeData.before || 'Kategoria';
+                            }
+
+                            // Get field type label
+                            const fieldLabel = change.type === 'name_improved' ? 'Nazwa'
+                              : change.type === 'description_added' || change.type === 'description_improved' ? 'Opis'
+                              : change.type === 'category_renamed' ? 'Kategoria'
+                              : change.type === 'duplicate_merged' ? 'Duplikat'
+                              : change.type === 'price_formatted' ? 'Cena'
+                              : change.type === 'tag_added' ? 'Tag'
+                              : change.type;
+
+                            return (
+                              <tr
+                                key={idx}
+                                className={`border-b border-slate-100 last:border-0 ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}
+                              >
+                                <td className="px-5 py-4 align-top">
+                                  <div className="text-slate-700 font-medium break-words">
+                                    {contextName}
+                                  </div>
+                                  <div className="text-xs text-slate-400 mt-1">
+                                    {fieldLabel}
+                                  </div>
+                                  {changeData.category && change.type !== 'category_renamed' && (
+                                    <div className="text-xs text-slate-300 mt-0.5">
+                                      w: {changeData.category}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                  {changeData.before ? (
+                                    <div className="text-slate-400 line-through break-words text-sm">
+                                      {changeData.before}
+                                    </div>
+                                  ) : (
+                                    <div className="text-slate-300 text-sm italic">(brak)</div>
+                                  )}
+                                </td>
+                                <td className="px-2 py-4 text-center align-top">
+                                  <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+                                    <ArrowRightLeft className="w-3 h-3 text-emerald-600" />
+                                  </div>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                  <div className="text-slate-800 font-medium break-words">
+                                    {changeData.after || '(brak)'}
+                                  </div>
+                                  {changeData.reason && (
+                                    <div className="text-xs text-slate-400 mt-1.5 italic">
+                                      {changeData.reason}
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+
+            {/* Empty state - still provide value with marketing suggestions */}
+            {optimizationResult.changes.length === 0 && (
+              <div className="text-center py-12 bg-gradient-to-b from-emerald-50 to-slate-50 rounded-2xl border border-emerald-100">
+                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4">
+                  <TrendingUp className="w-8 h-8 text-emerald-600" />
+                </div>
+                <h3 className="text-lg font-semibold text-slate-800 mb-2">
+                  Twój cennik ma potencjał!
+                </h3>
+                <p className="text-slate-600 max-w-md mx-auto mb-6">
+                  Struktura Twojego cennika jest w porządku. Teraz czas przyciągnąć więcej klientów!
+                </p>
+                <div className="max-w-lg mx-auto space-y-3">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-emerald-100 text-left">
+                    <span className="text-xl">🚀</span>
+                    <p className="text-sm text-slate-700">Kampania Google Ads – dotrzyj do klientów szukających usług beauty</p>
+                  </div>
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-emerald-100 text-left">
+                    <span className="text-xl">📱</span>
+                    <p className="text-sm text-slate-700">Reklamy na Instagramie i Facebooku – targetowane do idealnych klientów</p>
+                  </div>
+                </div>
+                <p className="text-xs text-emerald-600 font-medium mt-4">
+                  💡 Skontaktuj się z nami, aby dowiedzieć się więcej
+                </p>
+              </div>
             )}
           </motion.div>
         )}

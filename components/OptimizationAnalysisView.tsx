@@ -433,23 +433,46 @@ const OptimizationAnalysisView: React.FC<OptimizationAnalysisViewProps> = ({
               </div>
             </div>
 
-            {/* Recommendations */}
-            {optimizationResult.recommendations.length > 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
-                <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
-                  <Sparkles size={16} className="text-[#D4A574]" />
-                  Dodatkowe rekomendacje
-                </h3>
-                <div className="space-y-3">
-                  {optimizationResult.recommendations.map((rec, idx) => (
-                    <div key={idx} className="flex items-start gap-3">
-                      <ChevronRight size={16} className="text-[#D4A574] mt-0.5 shrink-0" />
-                      <p className="text-sm text-slate-700">{rec}</p>
-                    </div>
-                  ))}
+            {/* Recommendations - ALWAYS show with marketing upsells */}
+            {(() => {
+              // Marketing upsell recommendations - ALWAYS show these
+              const marketingRecs = [
+                "🚀 Kampania Google Ads dla salonu beauty – zwiększ widoczność i przyciągnij nowych klientów szukających usług w Twojej okolicy",
+                "📱 Kampania reklamowa na Instagramie i Facebooku – docieraj do idealnych klientów z targetowanymi reklamami",
+                "📈 Profesjonalne pozycjonowanie SEO – bądź na pierwszej stronie Google gdy klienci szukają usług beauty",
+              ];
+
+              // Combine existing recs with marketing recs
+              const existingRecs = optimizationResult.recommendations || [];
+              const displayRecs = existingRecs.length > 0
+                ? [...existingRecs.slice(0, 2), ...marketingRecs.slice(0, 1)]
+                : marketingRecs;
+
+              return (
+                <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm">
+                  <h3 className="text-sm font-semibold text-slate-900 mb-4 flex items-center gap-2">
+                    <Sparkles size={16} className="text-[#D4A574]" />
+                    Rekomendacje i propozycje rozwoju
+                  </h3>
+                  <div className="space-y-3">
+                    {displayRecs.map((rec, idx) => {
+                      const isMarketing = rec.startsWith('🚀') || rec.startsWith('📱') || rec.startsWith('📈');
+                      return (
+                        <div key={idx} className={`flex items-start gap-3 p-3 rounded-lg ${isMarketing ? 'bg-emerald-50 border border-emerald-100' : ''}`}>
+                          <ChevronRight size={16} className={`${isMarketing ? 'text-emerald-600' : 'text-[#D4A574]'} mt-0.5 shrink-0`} />
+                          <p className={`text-sm ${isMarketing ? 'text-emerald-800' : 'text-slate-700'}`}>{rec}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 pt-4 border-t border-slate-100">
+                    <p className="text-xs text-emerald-600 text-center font-medium">
+                      💡 Skontaktuj się z nami, aby dowiedzieć się więcej o kampaniach reklamowych
+                    </p>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </motion.div>
         )}
 

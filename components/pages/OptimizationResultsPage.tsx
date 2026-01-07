@@ -1085,7 +1085,15 @@ const OptimizationResultsPage: React.FC = () => {
                         if (dupeCount > 0) parts.push(`naprawiono ${dupeCount} ${dupeCount === 1 ? 'błąd' : dupeCount < 5 ? 'błędy' : 'błędów'} i duplikaty`);
 
                         if (parts.length === 0) {
-                          return 'Twój cennik był już dobrze zoptymalizowany. Nie znaleźliśmy elementów wymagających poprawy.';
+                          // Even with 0 changes, provide valuable context based on score
+                          const score = optimizationResult.qualityScore;
+                          if (score >= 80) {
+                            return 'Twój cennik ma solidną podstawę. Aby przyciągnąć więcej klientów, rozważ kampanie reklamowe Google Ads i social media.';
+                          } else if (score >= 60) {
+                            return 'Twój cennik wymaga jeszcze dopracowania. Skontaktuj się z nami, aby omówić strategię marketingową i optymalizację.';
+                          } else {
+                            return 'Twój cennik ma duży potencjał do poprawy. Rekomendujemy profesjonalną optymalizację oraz kampanie reklamowe.';
+                          }
                         }
 
                         return `AI przeanalizowało Twój cennik i wprowadziło ${optimizationResult.summary.totalChanges} zmian: ${parts.join(', ')}.`;
@@ -1293,8 +1301,8 @@ const OptimizationResultsPage: React.FC = () => {
                   <div className="flex items-center gap-2 mb-4">
                     <Lightbulb className="w-4 h-4 text-slate-400" />
                     <span className="text-xs text-slate-400 uppercase tracking-wide">Sugestie</span>
-                    <span className="ml-auto px-2 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-bold rounded-full">
-                      {optimizationResult.recommendations?.length || 0} wskazówek
+                    <span className="ml-auto px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full">
+                      {Math.max(optimizationResult.recommendations?.length || 0, 3)} wskazówek
                     </span>
                   </div>
 
@@ -1302,34 +1310,52 @@ const OptimizationResultsPage: React.FC = () => {
                     Dodatkowe rekomendacje
                   </h3>
 
-                  {optimizationResult.recommendations && optimizationResult.recommendations.length > 0 ? (
-                    <div className="space-y-2">
-                      {optimizationResult.recommendations.slice(0, 3).map((rec, idx) => (
-                        <div
-                          key={idx}
-                          className="flex items-start gap-3 p-2.5 bg-amber-50/50 rounded-lg border border-amber-100"
-                        >
-                          <div className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                            <span className="text-xs font-medium text-amber-700">{idx + 1}</span>
-                          </div>
-                          <p className="text-sm text-slate-600 leading-relaxed">{rec}</p>
+                  {(() => {
+                    // Marketing upsell recommendations - ALWAYS show these
+                    const marketingRecs = [
+                      "🚀 Kampania Google Ads dla salonu beauty – zwiększ widoczność i przyciągnij nowych klientów szukających usług w Twojej okolicy",
+                      "📱 Kampania reklamowa na Instagramie i Facebooku – docieraj do idealnych klientów z targetowanymi reklamami",
+                      "📈 Profesjonalne pozycjonowanie SEO – bądź na pierwszej stronie Google gdy klienci szukają usług beauty",
+                    ];
+
+                    const existingRecs = optimizationResult.recommendations || [];
+                    // If we have existing recs, show them first, then fill with marketing
+                    const displayRecs = existingRecs.length > 0
+                      ? [...existingRecs.slice(0, 2), ...marketingRecs.slice(0, 1)]
+                      : marketingRecs;
+
+                    return (
+                      <div className="space-y-2">
+                        {displayRecs.slice(0, 3).map((rec, idx) => {
+                          const isMarketing = rec.startsWith('🚀') || rec.startsWith('📱') || rec.startsWith('📈');
+                          return (
+                            <div
+                              key={idx}
+                              className={`flex items-start gap-3 p-2.5 rounded-lg border ${
+                                isMarketing
+                                  ? 'bg-emerald-50/50 border-emerald-100'
+                                  : 'bg-amber-50/50 border-amber-100'
+                              }`}
+                            >
+                              <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                                isMarketing ? 'bg-emerald-100' : 'bg-amber-100'
+                              }`}>
+                                <span className={`text-xs font-medium ${isMarketing ? 'text-emerald-700' : 'text-amber-700'}`}>
+                                  {idx + 1}
+                                </span>
+                              </div>
+                              <p className="text-sm text-slate-600 leading-relaxed">{rec}</p>
+                            </div>
+                          );
+                        })}
+                        <div className="pt-2 mt-2 border-t border-slate-100">
+                          <p className="text-xs text-emerald-600 text-center font-medium">
+                            💡 Skontaktuj się z nami, aby dowiedzieć się więcej o kampaniach reklamowych
+                          </p>
                         </div>
-                      ))}
-                      {optimizationResult.recommendations.length > 3 && (
-                        <p className="text-xs text-slate-400 text-center pt-1">
-                          +{optimizationResult.recommendations.length - 3} więcej sugestii
-                        </p>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-6 text-center">
-                      <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center mb-3">
-                        <Check className="w-6 h-6 text-emerald-600" />
                       </div>
-                      <p className="text-sm text-slate-600">Cennik jest w pełni zoptymalizowany!</p>
-                      <p className="text-xs text-slate-400 mt-1">Brak dodatkowych sugestii</p>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </div>
               </motion.div>
             </div>
@@ -1645,21 +1671,21 @@ const OptimizationResultsPage: React.FC = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            {optimizationResult.recommendations.length === 0 ? (
-              <div className="group relative h-full rounded-2xl border border-slate-200 bg-slate-50/50 p-2 md:rounded-3xl md:p-3">
-                <div className="relative z-10 flex h-full flex-col overflow-hidden rounded-xl bg-white p-12 shadow-[0_1px_1px_rgba(0,0,0,0.05),0_4px_6px_rgba(34,42,53,0.04),0_24px_68px_rgba(47,48,55,0.05)] text-center">
-                  <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Check className="w-8 h-8 text-emerald-600" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-2">
-                    Brak dodatkowych sugestii
-                  </h3>
-                  <p className="text-slate-600 max-w-md mx-auto">
-                    Twój cennik jest w pełni zoptymalizowany. Wszystkie automatyczne poprawki zostały już zastosowane.
-                  </p>
-                </div>
-              </div>
-            ) : (
+            {(() => {
+              // Marketing upsell recommendations - ALWAYS show these
+              const marketingRecs = [
+                { text: "🚀 Kampania Google Ads dla salonu beauty – zwiększ widoczność i przyciągnij nowych klientów szukających usług w Twojej okolicy", isMarketing: true },
+                { text: "📱 Kampania reklamowa na Instagramie i Facebooku – docieraj do idealnych klientów z targetowanymi reklamami", isMarketing: true },
+                { text: "📈 Profesjonalne pozycjonowanie SEO – bądź na pierwszej stronie Google gdy klienci szukają usług beauty", isMarketing: true },
+              ];
+
+              const existingRecs = (optimizationResult.recommendations || []).map(r => ({ text: r, isMarketing: false }));
+              // If we have existing recs, show them first, then add marketing
+              const displayRecs = existingRecs.length > 0
+                ? [...existingRecs, ...marketingRecs]
+                : marketingRecs;
+
+              return displayRecs.length > 0 ? (
               <motion.div
                 initial={{ opacity: 0, filter: 'blur(4px)' }}
                 animate={{ opacity: 1, filter: 'blur(0px)' }}
@@ -1678,31 +1704,45 @@ const OptimizationResultsPage: React.FC = () => {
                         Sugestie, które mogą jeszcze bardziej ulepszyć Twój cennik
                       </p>
                     </div>
-                    <span className="ml-auto px-3 py-1 bg-amber-100 text-amber-700 text-sm font-bold rounded-full">
-                      {optimizationResult.recommendations.length} {optimizationResult.recommendations.length === 1 ? 'sugestia' : optimizationResult.recommendations.length < 5 ? 'sugestie' : 'sugestii'}
+                    <span className="ml-auto px-3 py-1 bg-emerald-100 text-emerald-700 text-sm font-bold rounded-full">
+                      {displayRecs.length} {displayRecs.length === 1 ? 'sugestia' : displayRecs.length < 5 ? 'sugestie' : 'sugestii'}
                     </span>
                   </div>
 
                   <div className="p-6">
                     <div className="space-y-4">
-                      {optimizationResult.recommendations.map((rec, idx) => (
+                      {displayRecs.map((rec, idx) => (
                         <div
                           key={idx}
-                          className="flex items-start gap-4 p-4 rounded-xl bg-amber-50/50 border border-amber-100"
+                          className={`flex items-start gap-4 p-4 rounded-xl border ${
+                            rec.isMarketing
+                              ? 'bg-emerald-50/50 border-emerald-100'
+                              : 'bg-amber-50/50 border-amber-100'
+                          }`}
                         >
-                          <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
-                            <span className="text-sm font-bold text-amber-700">{idx + 1}</span>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                            rec.isMarketing ? 'bg-emerald-100' : 'bg-amber-100'
+                          }`}>
+                            <span className={`text-sm font-bold ${rec.isMarketing ? 'text-emerald-700' : 'text-amber-700'}`}>
+                              {idx + 1}
+                            </span>
                           </div>
                           <div className="flex-1">
-                            <p className="text-slate-700 leading-relaxed">{rec}</p>
+                            <p className="text-slate-700 leading-relaxed">{rec.text}</p>
                           </div>
                         </div>
                       ))}
                     </div>
+                    <div className="pt-4 mt-4 border-t border-slate-100">
+                      <p className="text-sm text-emerald-600 text-center font-medium">
+                        💡 Skontaktuj się z nami, aby dowiedzieć się więcej o kampaniach reklamowych
+                      </p>
+                    </div>
                   </div>
                 </div>
               </motion.div>
-            )}
+            ) : null;
+            })()}
           </motion.div>
         )}
 
