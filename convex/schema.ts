@@ -204,6 +204,9 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     createdAt: v.number(),
 
+    // Rola użytkownika
+    role: v.optional(v.union(v.literal("user"), v.literal("admin"))), // domyślnie "user"
+
     // Stripe
     stripeCustomerId: v.optional(v.string()),
 
@@ -227,7 +230,44 @@ export default defineSchema({
   })
     .index("by_clerk_id", ["clerkId"])
     .index("by_email", ["email"])
-    .index("by_stripe", ["stripeCustomerId"]),
+    .index("by_stripe", ["stripeCustomerId"])
+    .index("by_role", ["role"]),
+
+  // Szablony promptów (edytowalne przez admina)
+  promptTemplates: defineTable({
+    // Identyfikator etapu: "optimization_seo", "optimization_descriptions", "audit_report", etc.
+    stage: v.string(),
+
+    // Nazwa do wyświetlenia w panelu admina
+    displayName: v.string(),
+
+    // Opis co robi ten prompt
+    description: v.string(),
+
+    // Treść prompta (może zawierać zmienne jak ${serviceCount}, ${categoryName})
+    promptContent: v.string(),
+
+    // Dodatkowe instrukcje/zasady dla tego etapu
+    rules: v.optional(v.array(v.string())),
+
+    // Przykłady transformacji (przed → po)
+    examples: v.optional(v.array(v.object({
+      before: v.string(),
+      after: v.string(),
+    }))),
+
+    // Parametry AI
+    temperature: v.optional(v.number()), // 0.0 - 1.0
+    maxTokens: v.optional(v.number()),
+
+    // Metadane
+    updatedAt: v.number(),
+    updatedBy: v.optional(v.id("users")),
+    version: v.number(), // do śledzenia zmian
+    isActive: v.boolean(), // czy aktywny (można wyłączyć)
+  })
+    .index("by_stage", ["stage"])
+    .index("by_active", ["isActive"]),
 
   // Zakupy / Transakcje
   purchases: defineTable({
@@ -307,6 +347,9 @@ export default defineSchema({
     keywordReportId: v.optional(v.id("keywordReports")),
     categoryProposalId: v.optional(v.id("categoryProposals")),
     optimizationOptionsId: v.optional(v.id("optimizationOptions")),
+
+    // Additional analysis warnings (non-critical failures that don't fail the audit)
+    additionalAnalysisWarnings: v.optional(v.string()),  // JSON array of warning messages
 
     createdAt: v.number(),
     startedAt: v.optional(v.number()),

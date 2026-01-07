@@ -4,6 +4,17 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 
+// Type for prompt templates from database
+interface PromptTemplate {
+  promptContent: string;
+  rules?: string[];
+  examples?: { before: string; after: string }[];
+  temperature?: number;
+  maxTokens?: number;
+}
+
+type PromptTemplatesMap = Record<string, PromptTemplate>;
+
 // ============================================
 // OPTIMIZATION ACTION (runs in Node.js runtime)
 // ============================================
@@ -125,6 +136,18 @@ export const runOptimization = internalAction({
         }
       }
 
+      // Fetch prompt templates from database (admin-configurable)
+      let promptTemplates: PromptTemplatesMap = {};
+      try {
+        promptTemplates = await ctx.runQuery(internal.admin.getAllActivePromptTemplates, {});
+        const templateCount = Object.keys(promptTemplates).length;
+        if (templateCount > 0) {
+          console.log(`[Optimization] Loaded ${templateCount} prompt templates from database`);
+        }
+      } catch (e) {
+        console.log("[Optimization] No custom prompt templates found, using defaults");
+      }
+
       // Initialize Gemini
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -133,7 +156,8 @@ export const runOptimization = internalAction({
 
       const { GoogleGenerativeAI } = await import("@google/generative-ai");
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      // Using gemini-2.5-flash - fast AND follows instructions well (2.0-flash ignored rules, 2.5-pro too slow)
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const totalCategories = pricingData.categories.length;
       const optimizedCategories: OptimizedCategory[] = [];
@@ -158,13 +182,14 @@ export const runOptimization = internalAction({
         });
 
         try {
-          // Optimize single category with selected options
+          // Optimize single category with selected options and custom templates
           const optimizedCategory = await optimizeSingleCategory(
             model,
             category,
             recommendations,
             pricingData.salonName,
-            selectedOptions
+            selectedOptions,
+            promptTemplates
           );
 
           // Validate service count matches
@@ -385,88 +410,295 @@ async function optimizeSingleCategory(
   category: CategoryInput,
   recommendations: string[],
   salonName?: string,
-  selectedOptions: OptimizationOption[] = ["descriptions", "seo", "order", "prices", "duplicates", "duration", "tags"]
+  selectedOptions: OptimizationOption[] = ["descriptions", "seo", "order", "prices", "duplicates", "duration", "tags"],
+  promptTemplates: PromptTemplatesMap = {}
 ): Promise<OptimizedCategory> {
   const serviceCount = category.services.length;
+
+  // Helper to get template or use default
+  const getTemplateContent = (stage: string, defaultContent: string): string => {
+    if (promptTemplates[stage]?.promptContent) {
+      return promptTemplates[stage].promptContent;
+    }
+    return defaultContent;
+  };
+
+  // Helper to format examples from template
+  const formatExamples = (stage: string): string => {
+    const template = promptTemplates[stage];
+    if (template?.examples && template.examples.length > 0) {
+      return template.examples
+        .map(ex => `- Przykład: "${ex.before}" → "${ex.after}"`)
+        .join("\n");
+    }
+    return "";
+  };
 
   // Build dynamic prompt based on selected options
   let optionsInstructions = "";
 
+  // Default prompt contents (used if no database template exists)
+  // These should match the templates in admin.ts initializeDefaultPromptTemplates
+
+  const defaultDescriptions = `=== TWORZENIE PROFESJONALNYCH OPISÓW USŁUG ===
+
+CEL: Napisz opisy, które przekonają klienta do rezerwacji, używając języka korzyści.
+
+STRUKTURA OPISU (max 150 znaków):
+1. CO ZYSKUJE KLIENT (efekt/rezultat)
+2. DLA KOGO jest usługa (opcjonalnie)
+3. WYRÓŻNIK (co czyni ją wyjątkową)
+
+JĘZYK KORZYŚCI - używaj:
+✓ "Zyskasz...", "Efekt to...", "Rezultat: ..."
+✓ "Idealne dla...", "Polecane przy..."
+✓ "Natychmiastowy efekt", "Długotrwałe działanie"
+✓ Konkrety: "gładka skóra do 4 tygodni", "redukcja zmarszczek o 30%"
+
+UNIKAJ:
+✗ Cen w opisie (są w osobnym polu!)
+✗ Ogólników: "profesjonalny zabieg", "wysoka jakość"
+✗ Zbyt długich opisów (max 2-3 zdania)
+✗ Emoji i symboli
+✗ Powtarzania nazwy usługi w opisie
+
+JEŚLI USŁUGA NIE MA OPISU:
+Stwórz krótki, przekonujący opis bazując na nazwie usługi.
+
+JEŚLI USŁUGA MA OPIS Z CENĄ:
+Usuń informację o cenie z opisu - zostaw tylko część merytoryczną.`;
+
+  const defaultSeo = `=== OPTYMALIZACJA SEO NAZW USŁUG ===
+
+CEL: Dodaj słowa kluczowe, które klienci wpisują w Google szukając danej usługi, zachowując oryginalną nazwę.
+
+STRATEGIA TWORZENIA NAZW SEO:
+1. Zidentyfikuj GŁÓWNE słowo kluczowe (co klient szuka w Google)
+2. Zachowaj ORYGINALNĄ nazwę usługi jako bazę
+3. DODAJ kontekst/korzyść/efekt do nazwy
+4. Format: "[Słowo kluczowe] - [oryginalna nazwa] | [korzyść]" lub "[Oryginalna nazwa] - [korzyść/efekt]"
+
+DOZWOLONE MODYFIKACJE:
+✓ Dodanie słów kluczowych na początku: "Trądzik - Konsultacja specjalistyczna"
+✓ Dodanie korzyści na końcu: "Peeling kawitacyjny - czysta i gładka skóra"
+✓ Rozwinięcie skrótu: "Depilacja woskiem nogi" → "Depilacja woskiem nogi - gładkość do 4 tygodni"
+✓ Dodanie separatora z kontekstem: "Masaż relaksacyjny | redukcja stresu i napięcia"
+
+ZABRONIONE MODYFIKACJE:
+✗ Całkowita zmiana nazwy: "Peeling" → "Zabieg oczyszczający" (BŁĄD!)
+✗ Zamiana nazw między usługami
+✗ Zmiana nazw autorskich: "MS AquaLift" → "Lifting nawilżający" (BŁĄD!)
+✗ Usunięcie charakterystycznych elementów nazwy
+✗ Dodawanie emoji lub symboli
+
+NAZWY AUTORSKIE - NIE ZMIENIAJ:
+Jeśli nazwa zawiera: MS, BTX, Hydra, Endo, LPG, lub wygląda na nazwę własną zabiegu - ZOSTAW BEZ ZMIAN.
+Przykłady nazw do zachowania: "MS AquaLift", "BTX Lift Pro", "Endermologie LPG", "HydraFacial MD"`;
+
+  const defaultOrder = `=== OPTYMALIZACJA KOLEJNOŚCI USŁUG ===
+
+CEL: Ułóż usługi w kolejności maksymalizującej konwersję i ułatwiającej klientom wybór.
+
+PRIORYTET SORTOWANIA (od góry do dołu):
+
+1. BESTSELLERY I NAJPOPULARNIEJSZE
+   - Usługi z tagami "Bestseller", "Hit", "Najpopularniejsze"
+   - Podstawowe usługi danej kategorii (np. "Manicure klasyczny" przed "Manicure japoński")
+
+2. USŁUGI FLAGOWE / PREMIUM
+   - Zabiegi wyróżniające salon
+   - Usługi z wyższą marżą
+   - Nowości (ale NIE na samej górze)
+
+3. WARIANTY I ROZSZERZENIA
+   - Różne wersje tej samej usługi pogrupowane razem
+   - Od podstawowej do najbardziej rozbudowanej
+
+4. PAKIETY I ZESTAWY
+   - Pakiety łączone na końcu sekcji
+   - Karnety i abonamenty
+
+ZASADY GRUPOWANIA:
+- Podobne usługi obok siebie (np. wszystkie manicure razem)
+- Warianty od najtańszego do najdroższego
+- Zachowaj logiczny przepływ (basic → advanced → premium)
+
+UWAGA: Nie usuwaj ani nie dodawaj usług - tylko zmień ich kolejność!`;
+
+  const defaultPrices = `=== FORMATOWANIE I UJEDNOLICANIE CEN ===
+
+CEL: Ujednolić format wszystkich cen dla spójnego, profesjonalnego wyglądu.
+
+STANDARDOWY FORMAT CEN:
+
+1. POJEDYNCZA CENA:
+   - "150 zł" (bez groszy dla pełnych kwot)
+   - "149,50 zł" (z groszami gdy są)
+   - NIE: "150.00 zł", "150 PLN", "150,-"
+
+2. CENA OD:
+   - "od 100 zł"
+   - NIE: "od 100zł", "OD 100 zł", "100+ zł"
+
+3. ZAKRES CEN:
+   - "100 - 200 zł" (ze spacjami wokół myślnika)
+   - NIE: "100-200 zł", "100zł-200zł", "100 do 200 zł"
+
+ZASADY:
+- NIE zmieniaj WARTOŚCI cen - tylko FORMAT
+- Usuń "PLN" i zamień na "zł"
+- Usuń niepotrzebne zera po przecinku (150,00 → 150)
+- Popraw literówki (np. "zł" nie "zl" nie "ZŁ")`;
+
+  const defaultDuplicates = `=== WYKRYWANIE DUPLIKATÓW I POPRAWIANIE LITERÓWEK ===
+
+CEL: Zidentyfikuj potencjalne duplikaty i popraw oczywiste błędy, BEZ usuwania usług.
+
+WYKRYWANIE DUPLIKATÓW:
+Oznacz jako potencjalny duplikat gdy:
+- Dwie usługi mają niemal identyczne nazwy (np. "Manicure klasyczny" i "Klasyczny manicure")
+- Identyczna cena + bardzo podobny opis
+- Ta sama usługa pod różnymi nazwami
+
+JAK OZNACZAĆ DUPLIKATY:
+- W polu OPIS dodaj na końcu: "[Możliwy duplikat z: nazwa_usługi]"
+- NIE usuwaj żadnej usługi - tylko oznacz
+- Decyzję o usunięciu podejmie właściciel salonu
+
+POPRAWIANIE LITERÓWEK:
+Popraw oczywiste błędy: "Manikure" → "Manicure", "Masaż relakacyjny" → "Masaż relaksacyjny"
+NIE poprawiaj nazw autorskich (mogą wyglądać na błędne, ale są celowe)
+
+ZACHOWAJ WSZYSTKIE USŁUGI - tylko oznacz duplikaty i popraw literówki!`;
+
+  const defaultDuration = `=== CZAS TRWANIA USŁUG ===
+
+CEL: Ujednolić format czasu i uzupełnić brakujące wartości dla usług bez podanego czasu.
+
+STANDARDOWY FORMAT CZASU:
+- MINUTY: "30 min", "45 min", "60 min" (NIE: "30min", "30 minut")
+- GODZINY: "1h", "1h 30 min", "2h" (NIE: "1 godzina", "90 min")
+- ZAKRES: "30 - 45 min" (NIE: "30-45min", "ok. 30 min")
+
+TYPOWE CZASY DLA USŁUG BEAUTY:
+- Konsultacja: 15 - 30 min
+- Manicure klasyczny: 30 - 45 min
+- Manicure hybrydowy: 60 - 90 min
+- Masaż częściowy: 30 min
+- Masaż całego ciała: 60 - 90 min
+- Peeling twarzy: 30 - 45 min
+- Depilacja woskiem (nogi): 30 - 45 min
+
+ZASADY:
+- Jeśli nie jesteś pewny czasu - zostaw pole puste
+- Zaokrąglaj do 5 lub 15 minut`;
+
+  const defaultTags = `=== SYSTEM TAGÓW USŁUG ===
+
+CEL: Dodaj tagi które wyróżnią kluczowe usługi i ułatwią klientom wybór.
+
+DOSTĘPNE TAGI:
+- "Bestseller" - najpopularniejsza usługa (max 1-2 na kategorię)
+- "Nowość" - nowa usługa w ofercie
+- "Hit" - zyskująca popularność
+- "Premium" - usługa z wyższej półki
+- "Dla par" - usługa dla dwóch osób
+- "Dla mężczyzn" - dedykowana mężczyznom
+
+ZASADY TAGOWANIA:
+1. NIE taguj wszystkiego - max 30% usług w kategorii
+2. Max 2 tagi na usługę
+3. Jeden tag promujący na usługę (Bestseller LUB Nowość LUB Hit)
+
+KTÓRE USŁUGI TAGOWAĆ:
+✓ Najpopularniejsze/najczęściej rezerwowane
+✓ Usługi z najwyższą marżą
+✓ Nowości w ofercie
+
+FORMAT: "Bestseller" lub "Nowość, Premium" lub "-" (jeśli brak tagów)`;
+
   if (selectedOptions.includes("descriptions")) {
-    optionsInstructions += `
-[OPISY USŁUG] ✓
-- Dodaj język korzyści do opisów (co klient zyskuje)
-- Jakie efekty można się spodziewać
-- Maksymalnie 2-3 zdania na opis (do 100 znaków)
-- Jeśli usługa nie ma opisu, dodaj go
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_descriptions", defaultDescriptions);
   }
 
   if (selectedOptions.includes("seo")) {
-    optionsInstructions += `
-[SŁOWA KLUCZOWE SEO] ✓
-- Użyj popularnych słów kluczowych w nazwach i opisach
-- Słowa które klienci wyszukują (np. "depilacja laserowa", "mezoterapia", "botox")
-`;
+    let seoContent = getTemplateContent("optimization_seo", defaultSeo);
+    const seoExamples = formatExamples("optimization_seo");
+    if (seoExamples) {
+      seoContent += "\n" + seoExamples;
+    }
+    optionsInstructions += "\n" + seoContent;
   }
 
   if (selectedOptions.includes("order")) {
-    optionsInstructions += `
-[KOLEJNOŚĆ USŁUG] ✓
-- Najpopularniejsze/bestsellerowe usługi na początku
-- Usługi premium wyżej
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_order", defaultOrder);
   }
 
   if (selectedOptions.includes("prices")) {
-    optionsInstructions += `
-[FORMATOWANIE CEN] ✓
-- Ujednolicić format cen (np. "od 50 zł" lub "50-100 zł")
-- Popraw literówki w cenach
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_prices", defaultPrices);
   }
 
   if (selectedOptions.includes("duplicates")) {
-    optionsInstructions += `
-[DUPLIKATY I BŁĘDY] ✓
-- Popraw oczywiste literówki w nazwach
-- Oznacz podobne usługi w opisie
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_duplicates", defaultDuplicates);
   }
 
   if (selectedOptions.includes("duration")) {
-    optionsInstructions += `
-[CZAS TRWANIA] ✓
-- Dodaj szacowany czas usługom bez czasu
-- Format: "30 min", "1h", "1h 30min"
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_duration", defaultDuration);
   }
 
   if (selectedOptions.includes("tags")) {
-    optionsInstructions += `
-[TAGI] ✓
-- Dodaj tagi: Bestseller, Nowość, Premium (max 1-2 na usługę)
-- Nie wszystkim usługom (max 30%)
-`;
+    optionsInstructions += "\n" + getTemplateContent("optimization_tags", defaultTags);
   }
 
   // If no options selected, use minimal optimization
-  if (!optionsInstructions) {
+  if (!optionsInstructions.trim()) {
     optionsInstructions = `
 [MINIMALNA OPTYMALIZACJA]
 - Popraw oczywiste literówki
-- NIE zmieniaj niczego innego
-`;
+- NIE zmieniaj niczego innego`;
   }
+
+  // Get main rules from template or use defaults
+  const defaultMainRules = `=== NIEPODWAŻALNE ZASADY OPTYMALIZACJI ===
+
+!!! KRYTYCZNE - OPIS USŁUGI !!!
+- OPIS to TYLKO 1-2 zdania o KORZYŚCI dla klienta (np. "Gładka skóra na długo")
+- W OPISIE NIE MOŻE BYĆ: cen, kwot, "zł", pakietów, wariantów, markdown (**)
+- BŁĘDNY opis: "**Pakiet 4 zabiegów: 1150 zł** Depilacja bikini" - ZABRONIONE!
+- POPRAWNY opis: "Gładka skóra i komfort na długie tygodnie"
+
+!!! ZAKAZ MARKDOWN !!!
+- NIGDY nie używaj ** ani * ani żadnego formatowania markdown
+- Tekst musi być CZYSTY, bez formatowania
+
+ZASADA #1 - ZACHOWANIE INTEGRALNOŚCI DANYCH:
+- W kategorii jest DOKŁADNIE \${serviceCount} usług
+- Na wyjściu MUSI być DOKŁADNIE \${serviceCount} usług
+- Usługa #1 na wejściu = usługa #1 na wyjściu (kolejność NIETYKALNA)
+
+ZASADA #2 - OCHRONA TOŻSAMOŚCI USŁUG:
+- Nazwy autorskie/brandowane są NIETYKALNE: MS AquaLift, Thunder MT, Endermologie, LPG, Hydrafacial
+- Nazwa może być WZBOGACONA o kontekst, ale NIE ZAMIENIONA
+
+ZASADA #3 - FORMATOWANIE:
+- NIE używaj emoji
+- NIE używaj markdown (**, *, #)
+- CENY tylko w kolumnie CENA, NIGDY w opisie
+- Zachowaj profesjonalny ton
+
+ZASADA #4 - ODPOWIEDŹ:
+- TYLKO format tabelaryczny
+- Każda linia = jedna usługa
+- Zachowaj kolejność jak na wejściu`;
+
+  let mainRules = getTemplateContent("optimization_main", defaultMainRules);
+  // Replace ${serviceCount} placeholder in template
+  mainRules = mainRules.replace(/\$\{serviceCount\}/g, String(serviceCount));
 
   const prompt = `Jesteś ekspertem od optymalizacji cenników dla salonów beauty.
 Zoptymalizuj poniższą kategorię usług TYLKO w wybranych obszarach.
 
-KRYTYCZNE ZASADY:
-1. ZACHOWAJ DOKŁADNIE ${serviceCount} usług - NIE dodawaj, NIE usuwaj
-2. NIE zmieniaj cen (chyba że zaznaczono formatowanie cen)
-3. NIE używaj emoji
-4. Zachowaj kolejność (chyba że zaznaczono kolejność usług)
+${mainRules}
 
 WYBRANE OBSZARY OPTYMALIZACJI:
 ${optionsInstructions}
@@ -481,19 +713,28 @@ ${category.services.map((svc, idx) =>
   `${idx + 1} | ${svc.name} | ${svc.price} | ${svc.description || "-"} | ${svc.duration || "-"}`
 ).join("\n")}
 
-ODPOWIEDŹ - DOKŁADNIE ${serviceCount} linii:
-NUMER | NAZWA | CENA | OPIS | CZAS | TAGI
+ODPOWIEDŹ - DOKŁADNIE ${serviceCount} linii w tej samej kolejności:
+NUMER | ULEPSZONA_NAZWA | CENA | OPIS | CZAS | TAGI
+
+WAŻNE:
+- Linia 1 = ulepszona wersja usługi #1 z listy wejściowej
+- Linia 2 = ulepszona wersja usługi #2 z listy wejściowej
+- itd. NIE zamieniaj kolejności!
 
 Na końcu:
 KATEGORIA: Nazwa kategorii
 
 Odpowiedz TYLKO w podanym formacie.`;
 
+  // Get temperature from main template or use default
+  const temperature = promptTemplates["optimization_main"]?.temperature ?? 0.1;
+  const maxTokens = promptTemplates["optimization_main"]?.maxTokens ?? 4096;
+
   const result = await model.generateContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     generationConfig: {
-      temperature: 0.3, // Lower temperature for more consistent output
-      maxOutputTokens: 4096,
+      temperature,
+      maxOutputTokens: maxTokens,
     },
   });
 
@@ -535,7 +776,8 @@ Odpowiedz TYLKO w podanym formacie.`;
       const optimizedService: OptimizedService = {
         name: parts[1] || originalService.name,
         price: originalService.price, // Always keep original price
-        description: (parts[3] && parts[3] !== "-") ? parts[3] : originalService.description,
+        // Clean AI-provided description or fallback to cleaned original
+        description: cleanDescription((parts[3] && parts[3] !== "-") ? parts[3] : originalService.description),
         duration: (parts[4] && parts[4] !== "-") ? parts[4] : originalService.duration,
         isPromo: originalService.isPromo || false,
         tags: originalService.tags,
@@ -559,7 +801,8 @@ Odpowiedz TYLKO w podanym formacie.`;
       services: category.services.map(svc => ({
         name: svc.name,
         price: svc.price,
-        description: svc.description,
+        // Clean description to remove markdown and prices from original Booksy data
+        description: cleanDescription(svc.description),
         duration: svc.duration,
         isPromo: svc.isPromo || false,
         tags: svc.tags,
@@ -591,6 +834,38 @@ function sanitizeString(str: string): string {
     // Limit string length
     .substring(0, 2000)
     .trim();
+}
+
+// Helper: Clean description text - remove markdown and prices
+function cleanDescription(desc: string | undefined): string {
+  if (!desc) return '';
+
+  let cleaned = desc
+    // Remove bold markdown **text**
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    // Remove italic markdown *text*
+    .replace(/\*([^*]+)\*/g, '$1')
+    // Remove lines that are primarily prices/packages (e.g., "Pakiet 4 zabiegów: 1260 zł")
+    .replace(/^.*(?:Pakiet|pakiet|PAKIET)\s+\d+\s+(?:zabiegów|zabiegu).*?zł.*$/gm, '')
+    // Remove standalone price patterns like "od 250 zł" at start
+    .replace(/^od\s+[\d\s,.]+\s*zł\s*$/gi, '')
+    // Remove price mentions within text (careful to not break valid content)
+    .replace(/\*\*Pakiet[^*]+\*\*/g, '')
+    // Remove "**Laser Thunder MT...**" style technical specs
+    .replace(/\*\*Laser[^*]+\*\*/g, '')
+    .replace(/\*\*Qool-air\*\*/g, '')
+    .replace(/\*\*\d+[–-]\d+\s+(?:zabiegów|tygodni)\*\*/g, '')
+    // Clean up multiple newlines
+    .replace(/\n{3,}/g, '\n\n')
+    // Clean up leading/trailing whitespace
+    .trim();
+
+  // If description became empty or too short, return empty
+  if (cleaned.length < 10) {
+    return '';
+  }
+
+  return cleaned;
 }
 
 // Helper: Calculate quality score based on optimization results
